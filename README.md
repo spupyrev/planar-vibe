@@ -26,6 +26,21 @@ See it in action: https://spupyrev.github.io/planar-vibe/
 
 On startup, the app auto-loads the default sample (`sample1`) and draws it.
 
+## Unit Tests
+
+Unit tests are in `tests/planarity.test.mjs` and use Node's built-in test runner
+(`node:test`).
+
+Run:
+
+```bash
+npm test
+```
+
+Requirements:
+
+- Node.js 18+ (for `node --test`)
+
 ## License
 
 MIT (see `LICENSE`).

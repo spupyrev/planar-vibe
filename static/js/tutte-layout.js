@@ -1,95 +1,11 @@
 (function (global) {
   'use strict';
 
-  function buildAdjacency(cy) {
-    var adj = {};
-    cy.nodes().forEach(function (node) {
-      adj[node.id()] = [];
-    });
-    cy.edges().forEach(function (edge) {
-      var s = edge.source().id();
-      var t = edge.target().id();
-      if (adj[s]) {
-        adj[s].push(t);
-      }
-      if (adj[t]) {
-        adj[t].push(s);
-      }
-    });
-    return adj;
-  }
-
-  function detectCycle(cy, adj) {
-    var visited = {};
-    var inPath = {};
-    var parent = {};
-    var nodes = cy.nodes().toArray();
-
-    function buildCycle(fromId, toId) {
-      var cycle = [toId];
-      var cur = fromId;
-      while (cur !== undefined && cur !== toId) {
-        cycle.push(cur);
-        cur = parent[cur];
-      }
-      if (cur !== toId || cycle.length < 3) {
-        return null;
-      }
-      return cycle;
-    }
-
-    function dfs(u, p) {
-      visited[u] = true;
-      inPath[u] = true;
-      var ngh = adj[u] || [];
-
-      for (var i = 0; i < ngh.length; i += 1) {
-        var v = ngh[i];
-        if (v === p) {
-          continue;
-        }
-        if (!visited[v]) {
-          parent[v] = u;
-          var found = dfs(v, u);
-          if (found) {
-            return found;
-          }
-        } else if (inPath[v]) {
-          var cyc = buildCycle(u, v);
-          if (cyc) {
-            return cyc;
-          }
-        }
-      }
-
-      inPath[u] = false;
+  function asPlanarGraph(cy) {
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.graphFromCy) {
       return null;
     }
-
-    for (var i = 0; i < nodes.length; i += 1) {
-      var id = nodes[i].id();
-      if (!visited[id]) {
-        parent[id] = undefined;
-        var cycle = dfs(id, undefined);
-        if (cycle) {
-          return cycle;
-        }
-      }
-    }
-    return null;
-  }
-
-  function chooseOuterFace(cy, adj) {
-    var cycle = detectCycle(cy, adj);
-    if (cycle && cycle.length >= 3) {
-      return cycle;
-    }
-
-    var nodes = cy.nodes().toArray();
-    if (nodes.length >= 3) {
-      return [nodes[0].id(), nodes[1].id(), nodes[2].id()];
-    }
-    return null;
+    return global.PlanarGraphCore.graphFromCy(cy);
   }
 
   function applyTutteLayout(cy) {
@@ -101,8 +17,16 @@
       };
     }
 
-    var adj = buildAdjacency(cy);
-    var outerFace = chooseOuterFace(cy, adj);
+    var planarGraph = asPlanarGraph(cy);
+    if (!planarGraph) {
+      return {
+        ok: false,
+        message: 'PlanarGraphCore is missing. Check script load order.'
+      };
+    }
+
+    var adj = planarGraph.adjacency;
+    var outerFace = planarGraph.chooseOuterFace();
     if (!outerFace || outerFace.length < 3) {
       return {
         ok: false,

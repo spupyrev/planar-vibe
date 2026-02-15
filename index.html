@@ -37,9 +37,11 @@
                 <br>
                 <a class="small-link" onclick="pasteStaticGraph('sample1')">[Sample1]</a>
                 <a class="small-link" onclick="pasteStaticGraph('sample2')">[Sample2]</a>
+                <a class="small-link" onclick="pasteStaticGraph('sample3')">[Sample3]</a>
                 <a class="small-link" onclick="pasteStaticGraph('cycle20')">[Cycle20]</a>
                 <a class="small-link" onclick="pasteStaticGraph('ladder20')">[Ladder20]</a>
                 <a class="small-link" onclick="pasteStaticGraph('grid9x9')">[Grid 9x9]</a>
+                <a class="small-link" onclick="pasteStaticGraph('planar3tree30')">[Planar 3-Tree 30]</a>
               </div>
             </div>
 
@@ -51,6 +53,18 @@
                   </td>
                 </tr>
               </tbody></table>
+            </div>
+
+            <div class="stats-subpanel">
+              <div class="stats-title">Statistics</div>
+              <label class="form-check stats-check">
+                <input class="form-check-input" type="checkbox" id="stat-is-planar" disabled>
+                <span class="form-check-label">Is Planar</span>
+              </label>
+              <label class="form-check stats-check">
+                <input class="form-check-input" type="checkbox" id="stat-is-planar-3-tree" disabled>
+                <span class="form-check-label">Is Planar 3-Tree</span>
+              </label>
             </div>
           </form>
         </div>
@@ -85,8 +99,10 @@
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   <script src="https://unpkg.com/cytoscape@3.29.2/dist/cytoscape.min.js"></script>
-  <script src="static/js/graph-samples.js"></script>
+  <script src="static/js/graph-generator.js"></script>
   <script src="static/js/planarvibe-plugin.js"></script>
+  <script src="static/js/planar-graph-core.js"></script>
+  <script src="static/js/planarity-test.js"></script>
   <script src="static/js/tutte-layout.js"></script>
   <script>
     var LOGO_COLORS = {
@@ -134,14 +150,72 @@
       $('#status').text(message).css('color', isError ? '#ba1b1b' : LOGO_COLORS.ink);
     }
 
+    function setStatistics(stats) {
+      var s = stats || {};
+      $('#stat-is-planar').prop('checked', !!s.isPlanar).prop('disabled', true);
+      $('#stat-is-planar-3-tree').prop('checked', !!s.isPlanar3Tree).prop('disabled', true);
+    }
+
+    function setTutteEnabled(isEnabled) {
+      var $btn = $('.layout-btn[data-layout="tutte"]');
+      $btn.prop('disabled', !isEnabled);
+      if (!isEnabled) {
+        $btn.removeClass('is-active');
+      }
+    }
+
+    function edgePairsFromParsed(parsed) {
+      var pairs = [];
+      if (!parsed || !parsed.elements) {
+        return pairs;
+      }
+
+      for (var i = 0; i < parsed.elements.length; i += 1) {
+        var el = parsed.elements[i];
+        if (el && el.data && el.data.source !== undefined && el.data.target !== undefined) {
+          pairs.push([String(el.data.source), String(el.data.target)]);
+        }
+      }
+      return pairs;
+    }
+
+    function updateStatistics(parsed) {
+      if (!parsed || !parsed.elements) {
+        setStatistics({ isPlanar: false, isPlanar3Tree: false });
+        setTutteEnabled(false);
+        return;
+      }
+
+      if (!window.PlanarVibePlanarityTest || !window.PlanarVibePlanarityTest.computePlanarEmbedding) {
+        setStatistics({ isPlanar: false, isPlanar3Tree: false });
+        setTutteEnabled(false);
+        return;
+      }
+
+      var nodeIds = cy.nodes().map(function (node) {
+        return String(node.id());
+      });
+      var edgePairs = edgePairsFromParsed(parsed);
+      var embedding = PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
+      var isPlanar = !!(embedding && embedding.ok);
+      var isPlanar3Tree = false;
+      if (isPlanar && PlanarVibePlanarityTest.isPlanar3Tree) {
+        isPlanar3Tree = !!PlanarVibePlanarityTest.isPlanar3Tree(nodeIds, edgePairs);
+      }
+      setStatistics({ isPlanar: isPlanar, isPlanar3Tree: isPlanar3Tree });
+      setTutteEnabled(isPlanar);
+    }
+
     function drawGraph() {
       try {
         currentParsed = PlanarVibePlugin.parseEdgeList($('#dotfile').val());
         cy.elements().remove();
         cy.add(currentParsed.elements);
+        updateStatistics(currentParsed);
         applyLayout('random');
         setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges (random coordinates)', false);
       } catch (error) {
+        setStatistics({ isPlanar: false, isPlanar3Tree: false });
         setStatus(error.message, true);
       }
     }
@@ -157,7 +231,7 @@
     }
 
     function pasteStaticGraph(name) {
-      var sampleGraph = PlanarVibeSamples.getSample(name);
+      var sampleGraph = PlanarVibeGraphGenerator.getSample(name);
       if (!sampleGraph) {
         setStatus('Unknown sample: ' + name + '.', true);
         return;
@@ -180,6 +254,10 @@
       }
 
       if (layoutName === 'tutte') {
+        if ($('.layout-btn[data-layout="tutte"]').prop('disabled')) {
+          setStatus('Tutte layout requires a planar graph.', true);
+          return;
+        }
         var result = PlanarVibeTutte.applyTutteLayout(cy);
         setStatus(result.message, !result.ok);
         return;
@@ -208,7 +286,7 @@
     window.applyLayout = applyLayout;
     window.resetZoom = resetZoom;
 
-    pasteStaticGraph(PlanarVibeSamples.defaultSample);
+    pasteStaticGraph(PlanarVibeGraphGenerator.defaultSample);
   </script>
 </body>
 </html>
