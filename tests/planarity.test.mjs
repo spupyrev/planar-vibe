@@ -309,6 +309,54 @@ test('canonical ordering works on 10 random planar 3-trees (100 vertices)', () =
   }
 });
 
+test('canonical ordering works on sample planar3tree10', () => {
+  const text = Generator.getSample('planar3tree10');
+  const graph = parseEdgeListText(text);
+  const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+  assert.equal(prepared.ok, true);
+
+  const canonical = FPP.computeCanonicalOrdering(prepared);
+  assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on planar3tree10');
+  assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+  assert.equal(new Set(canonical.order).size, canonical.order.length);
+});
+
+test('canonical ordering works on 10 random small planar 3-trees', () => {
+  for (let seed = 1; seed <= 10; seed += 1) {
+    const text = Generator.maximalPlanar3Tree(10 + seed);
+    const graph = parseEdgeListText(text);
+    const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+    assert.equal(prepared.ok, true, `prepare failed for small seed=${seed}`);
+
+    const canonical = FPP.computeCanonicalOrdering(prepared);
+    assert.equal(canonical.ok, true, `canonical ordering failed for small seed=${seed}: ${canonical.reason || ''}`);
+    assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+    assert.equal(new Set(canonical.order).size, canonical.order.length);
+  }
+});
+
+test('canonical ordering works on small triangulated planar non-3-tree (octahedron)', () => {
+  // Octahedron graph: maximal planar on 6 vertices, not a planar 3-tree.
+  const text = [
+    '1 2', '1 3', '1 4', '1 5',
+    '6 2', '6 3', '6 4', '6 5',
+    '2 3', '3 4', '4 5', '5 2'
+  ].join('\n') + '\n';
+
+  const graph = parseEdgeListText(text);
+  assert.equal(Planarity.isPlanar3Tree(graph.nodeIds, graph.edgePairs), false);
+
+  const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+  assert.equal(prepared.ok, true);
+  assert.equal(prepared.embedding.edges.length, 12);
+  assert.equal(prepared.embedding.idByIndex.length, 6);
+
+  const canonical = FPP.computeCanonicalOrdering(prepared);
+  assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on octahedron');
+  assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+  assert.equal(new Set(canonical.order).size, canonical.order.length);
+});
+
 test('FPP layout applies on 10 random planar 3-trees', () => {
   for (let seed = 1; seed <= 10; seed += 1) {
     const text = Generator.maximalPlanar3Tree(60 + seed);

@@ -76,6 +76,18 @@
           <button type="button" class="btn btn-light btn-sm reset-zoom-btn" onclick="resetZoom()" title="Reset Zoom" aria-label="Reset Zoom">
             <img src="static/img/zoom-reset.svg" alt="">
           </button>
+          <div class="style-controls" aria-label="Style controls">
+            <div class="style-control-row">
+              <label for="vertex-size-slider" title="Vertex size">Vertex</label>
+              <input id="vertex-size-slider" type="range" min="8" max="30" step="1" title="Vertex size">
+              <span id="vertex-size-value" class="style-control-value"></span>
+            </div>
+            <div class="style-control-row">
+              <label for="edge-width-slider" title="Edge width">Edge</label>
+              <input id="edge-width-slider" type="range" min="1" max="8" step="0.5" title="Edge width">
+              <span id="edge-width-value" class="style-control-value"></span>
+            </div>
+          </div>
           <div id="cy"></div>
           <div class="layout-toolbar">
             <div class="layout-group">
@@ -129,10 +141,88 @@
     };
 
     var currentParsed = null;
+    var GRAPH_STYLE_COOKIE_DAYS = 365;
+    var DEFAULT_VERTEX_SIZE = 15;
+    var DEFAULT_EDGE_WIDTH = 1;
+    var PREF_VERTEX_SIZE_KEY = 'planarvibe_vertex_size';
+    var PREF_EDGE_WIDTH_KEY = 'planarvibe_edge_width';
+
+    function writeCookie(name, value, days) {
+      var d = new Date();
+      d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+      document.cookie = name + '=' + encodeURIComponent(String(value)) + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
+    }
+
+    function readCookie(name) {
+      var prefix = name + '=';
+      var parts = document.cookie ? document.cookie.split(';') : [];
+      for (var i = 0; i < parts.length; i += 1) {
+        var c = parts[i].trim();
+        if (c.indexOf(prefix) === 0) {
+          return decodeURIComponent(c.substring(prefix.length));
+        }
+      }
+      return null;
+    }
+
+    function readNumericCookie(name, fallback, min, max) {
+      var raw = readCookie(name);
+      var value = Number(raw);
+      if (!Number.isFinite(value)) {
+        return fallback;
+      }
+      if (value < min || value > max) {
+        return fallback;
+      }
+      return value;
+    }
+
+    function readStorage(name) {
+      try {
+        if (window.localStorage) {
+          var v = window.localStorage.getItem(name);
+          if (v !== null && v !== undefined) {
+            return v;
+          }
+        }
+      } catch (e) {}
+      return readCookie(name);
+    }
+
+    function writeStorage(name, value) {
+      try {
+        if (window.localStorage) {
+          window.localStorage.setItem(name, String(value));
+        }
+      } catch (e) {}
+      writeCookie(name, value, GRAPH_STYLE_COOKIE_DAYS);
+    }
+
+    function readNumericPreference(name, fallback, min, max) {
+      var raw = readStorage(name);
+      var value = Number(raw);
+      if (!Number.isFinite(value)) {
+        return fallback;
+      }
+      if (value < min || value > max) {
+        return fallback;
+      }
+      return value;
+    }
+
+    var graphStylePrefs = {
+      vertexSize: readNumericPreference(PREF_VERTEX_SIZE_KEY, DEFAULT_VERTEX_SIZE, 8, 30),
+      edgeWidth: readNumericPreference(PREF_EDGE_WIDTH_KEY, DEFAULT_EDGE_WIDTH, 1, 8)
+    };
+
+    function computeNodeFontSize(vertexSize) {
+      return Math.max(6, Math.round(vertexSize * 0.45));
+    }
 
     var cy = cytoscape({
       container: document.getElementById('cy'),
       elements: [],
+      wheelSensitivity: 0.15,
       style: [
         {
           selector: 'node',
@@ -142,18 +232,18 @@
             'border-width': 0.5,
             'label': 'data(label)',
             'color': '#ffffff',
-            'font-size': 7,
+            'font-size': computeNodeFontSize(graphStylePrefs.vertexSize),
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 15,
-            'height': 15
+            'width': graphStylePrefs.vertexSize,
+            'height': graphStylePrefs.vertexSize
           }
         },
         {
           selector: 'edge',
           style: {
             'line-color': LOGO_COLORS.black,
-            'width': 2,
+            'width': graphStylePrefs.edgeWidth,
             'curve-style': 'bezier'
           }
         }
@@ -163,6 +253,47 @@
 
     function setStatus(message, isError) {
       $('#status').text(message).css('color', isError ? '#ba1b1b' : LOGO_COLORS.ink);
+    }
+
+    function applyGraphAppearance() {
+      cy.style()
+        .selector('node')
+        .style({
+          'width': graphStylePrefs.vertexSize,
+          'height': graphStylePrefs.vertexSize,
+          'font-size': computeNodeFontSize(graphStylePrefs.vertexSize)
+        })
+        .selector('edge')
+        .style({
+          'width': graphStylePrefs.edgeWidth
+        })
+        .update();
+    }
+
+    function updateStyleControlsUI() {
+      $('#vertex-size-slider').val(String(graphStylePrefs.vertexSize));
+      $('#edge-width-slider').val(String(graphStylePrefs.edgeWidth));
+      $('#vertex-size-value').text(String(graphStylePrefs.vertexSize));
+      $('#edge-width-value').text(String(graphStylePrefs.edgeWidth));
+    }
+
+    function initStyleControls() {
+      updateStyleControlsUI();
+      applyGraphAppearance();
+
+      $('#vertex-size-slider').on('input change', function () {
+        graphStylePrefs.vertexSize = Number($(this).val()) || DEFAULT_VERTEX_SIZE;
+        updateStyleControlsUI();
+        applyGraphAppearance();
+        writeStorage(PREF_VERTEX_SIZE_KEY, graphStylePrefs.vertexSize);
+      });
+
+      $('#edge-width-slider').on('input change', function () {
+        graphStylePrefs.edgeWidth = Number($(this).val()) || DEFAULT_EDGE_WIDTH;
+        updateStyleControlsUI();
+        applyGraphAppearance();
+        writeStorage(PREF_EDGE_WIDTH_KEY, graphStylePrefs.edgeWidth);
+      });
     }
 
     function smallGraphCoordinatesSuffix() {
@@ -480,6 +611,7 @@
     window.applyLayout = applyLayout;
     window.resetZoom = resetZoom;
 
+    initStyleControls();
     pasteStaticGraph(PlanarVibeGraphGenerator.defaultSample);
   </script>
 </body>
