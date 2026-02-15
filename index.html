@@ -58,14 +58,20 @@
 
             <div class="stats-subpanel">
               <div class="stats-title">Statistics</div>
-              <label class="form-check stats-check">
-                <input class="form-check-input" type="checkbox" id="stat-is-planar" disabled>
-                <span class="form-check-label">Is Planar</span>
-              </label>
-              <label class="form-check stats-check">
-                <input class="form-check-input" type="checkbox" id="stat-is-planar-3-tree" disabled>
-                <span class="form-check-label">Is Planar 3-Tree</span>
-              </label>
+              <div class="stats-row-inline">
+                <label class="form-check stats-check">
+                  <input class="form-check-input" type="checkbox" id="stat-is-bipartite" disabled>
+                  <span class="form-check-label">Bipartite</span>
+                </label>
+                <label class="form-check stats-check">
+                  <input class="form-check-input" type="checkbox" id="stat-is-planar" disabled>
+                  <span class="form-check-label">Planar</span>
+                </label>
+                <label class="form-check stats-check">
+                  <input class="form-check-input" type="checkbox" id="stat-is-planar-3-tree" disabled>
+                  <span class="form-check-label">Planar 3-Tree</span>
+                </label>
+              </div>
             </div>
           </form>
         </div>
@@ -75,6 +81,9 @@
         <div class="panel drawing-panel">
           <button type="button" class="btn btn-light btn-sm reset-zoom-btn" onclick="resetZoom()" title="Reset Zoom" aria-label="Reset Zoom">
             <img src="static/img/zoom-reset.svg" alt="">
+          </button>
+          <button type="button" class="btn btn-light btn-sm save-svg-btn" onclick="exportSvg()" title="Save SVG" aria-label="Save SVG">
+            <img src="static/img/save_as.svg" alt="">
           </button>
           <div class="style-controls" aria-label="Style controls">
             <div class="style-control-row">
@@ -404,6 +413,7 @@
     function setStatistics(stats) {
       var s = stats || {};
       $('#stat-is-planar').prop('checked', !!s.isPlanar).prop('disabled', true);
+      $('#stat-is-bipartite').prop('checked', !!s.isBipartite).prop('disabled', true);
       $('#stat-is-planar-3-tree').prop('checked', !!s.isPlanar3Tree).prop('disabled', true);
     }
 
@@ -446,9 +456,57 @@
       return pairs;
     }
 
+    function isBipartiteGraph(nodeIds, edgePairs) {
+      var adjacency = {};
+      for (var i = 0; i < nodeIds.length; i += 1) {
+        adjacency[String(nodeIds[i])] = [];
+      }
+      for (i = 0; i < edgePairs.length; i += 1) {
+        var u = String(edgePairs[i][0]);
+        var v = String(edgePairs[i][1]);
+        if (u === v) {
+          return false;
+        }
+        if (!adjacency[u]) {
+          adjacency[u] = [];
+        }
+        if (!adjacency[v]) {
+          adjacency[v] = [];
+        }
+        adjacency[u].push(v);
+        adjacency[v].push(u);
+      }
+
+      var color = {};
+      for (i = 0; i < nodeIds.length; i += 1) {
+        var start = String(nodeIds[i]);
+        if (color[start] !== undefined) {
+          continue;
+        }
+        color[start] = 0;
+        var queue = [start];
+        var head = 0;
+        while (head < queue.length) {
+          var x = queue[head];
+          head += 1;
+          var neigh = adjacency[x] || [];
+          for (var j = 0; j < neigh.length; j += 1) {
+            var y = neigh[j];
+            if (color[y] === undefined) {
+              color[y] = 1 - color[x];
+              queue.push(y);
+            } else if (color[y] === color[x]) {
+              return false;
+            }
+          }
+        }
+      }
+      return true;
+    }
+
     function updateStatistics(parsed) {
       if (!parsed || !parsed.elements) {
-        setStatistics({ isPlanar: false, isPlanar3Tree: false });
+        setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         setTutteEnabled(false);
         setP3TEnabled(false);
         setFPPEnabled(false);
@@ -456,7 +514,7 @@
       }
 
       if (!window.PlanarVibePlanarityTest || !window.PlanarVibePlanarityTest.computePlanarEmbedding) {
-        setStatistics({ isPlanar: false, isPlanar3Tree: false });
+        setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         setTutteEnabled(false);
         setP3TEnabled(false);
         setFPPEnabled(false);
@@ -469,11 +527,12 @@
       var edgePairs = edgePairsFromParsed(parsed);
       var embedding = PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
       var isPlanar = !!(embedding && embedding.ok);
+      var isBipartite = isBipartiteGraph(nodeIds, edgePairs);
       var isPlanar3Tree = false;
       if (isPlanar && PlanarVibePlanarityTest.isPlanar3Tree) {
         isPlanar3Tree = !!PlanarVibePlanarityTest.isPlanar3Tree(nodeIds, edgePairs);
       }
-      setStatistics({ isPlanar: isPlanar, isPlanar3Tree: isPlanar3Tree });
+      setStatistics({ isPlanar: isPlanar, isBipartite: isBipartite, isPlanar3Tree: isPlanar3Tree });
       setTutteEnabled(isPlanar);
       setP3TEnabled(isPlanar3Tree);
       setFPPEnabled(isPlanar);
@@ -488,7 +547,7 @@
         applyLayout('random');
         setLayoutStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges (random coordinates)', false);
       } catch (error) {
-        setStatistics({ isPlanar: false, isPlanar3Tree: false });
+        setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         setTutteEnabled(false);
         setP3TEnabled(false);
         setFPPEnabled(false);
@@ -606,10 +665,106 @@
       setStatus('Zoom reset.', false);
     }
 
+    function escapeXml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+    }
+
+    function exportSvg() {
+      var nodes = cy.nodes();
+      if (!nodes || nodes.length === 0) {
+        setStatus('Nothing to export.', true);
+        return;
+      }
+
+      var vertexSize = graphStylePrefs.vertexSize;
+      var edgeWidth = graphStylePrefs.edgeWidth;
+      var radius = vertexSize / 2;
+      var fontSize = computeNodeFontSize(vertexSize);
+      var pad = Math.max(24, radius + 8);
+
+      var minX = Infinity;
+      var minY = Infinity;
+      var maxX = -Infinity;
+      var maxY = -Infinity;
+
+      nodes.forEach(function (node) {
+        var p = node.position();
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          return;
+        }
+        minX = Math.min(minX, p.x - radius);
+        minY = Math.min(minY, p.y - radius);
+        maxX = Math.max(maxX, p.x + radius);
+        maxY = Math.max(maxY, p.y + radius);
+      });
+
+      if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+        setStatus('Cannot export: invalid node positions.', true);
+        return;
+      }
+
+      var width = Math.max(1, Math.ceil(maxX - minX + 2 * pad));
+      var height = Math.max(1, Math.ceil(maxY - minY + 2 * pad));
+      var offsetX = -minX + pad;
+      var offsetY = -minY + pad;
+
+      var svg = [];
+      svg.push('<?xml version="1.0" encoding="UTF-8"?>');
+      svg.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">');
+      svg.push('<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="#ffffff"/>');
+
+      svg.push('<g id="edges" stroke="' + LOGO_COLORS.black + '" stroke-width="' + edgeWidth + '" fill="none" stroke-linecap="round">');
+      cy.edges().forEach(function (edge) {
+        var s = edge.source().position();
+        var t = edge.target().position();
+        if (!s || !t || !Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(t.x) || !Number.isFinite(t.y)) {
+          return;
+        }
+        var x1 = s.x + offsetX;
+        var y1 = s.y + offsetY;
+        var x2 = t.x + offsetX;
+        var y2 = t.y + offsetY;
+        svg.push('<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>');
+      });
+      svg.push('</g>');
+
+      svg.push('<g id="nodes">');
+      nodes.forEach(function (node) {
+        var p = node.position();
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          return;
+        }
+        var x = p.x + offsetX;
+        var y = p.y + offsetY;
+        var label = escapeXml(node.data('label') !== undefined ? node.data('label') : node.id());
+        svg.push('<circle cx="' + x + '" cy="' + y + '" r="' + radius + '" fill="' + LOGO_COLORS.blue + '" stroke="' + LOGO_COLORS.black + '" stroke-width="0.5"/>');
+        svg.push('<text x="' + x + '" y="' + y + '" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="' + fontSize + '" font-family="Segoe UI, Arial, sans-serif">' + label + '</text>');
+      });
+      svg.push('</g>');
+      svg.push('</svg>');
+
+      var blob = new Blob([svg.join('')], { type: 'image/svg+xml;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'planarvibe-drawing.svg';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      setStatus('Saved SVG.', false);
+    }
+
     window.checkTextArea = checkTextArea;
     window.pasteStaticGraph = pasteStaticGraph;
     window.applyLayout = applyLayout;
     window.resetZoom = resetZoom;
+    window.exportSvg = exportSvg;
 
     initStyleControls();
     pasteStaticGraph(PlanarVibeGraphGenerator.defaultSample);

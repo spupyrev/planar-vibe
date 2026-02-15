@@ -114,6 +114,13 @@ body {
   color: var(--pv-ink);
 }
 
+.stats-row-inline {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .stats-check .form-check-input[disabled] {
   opacity: 1;
 }
@@ -197,6 +204,31 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.save-svg-btn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 5;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #9fb4cf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+}
+
+.save-svg-btn img {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  display: block;
+  object-fit: contain;
 }
 
 .style-controls {
