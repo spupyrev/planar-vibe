@@ -3,6 +3,8 @@
 PlanarVibe is a lightweight browser playground for drawing and experimenting with planar graph layouts.
 It runs as a static web app (HTML/CSS/JS only) and uses Cytoscape.js for rendering.
 
+See it in action: https://spupyrev.github.io/planar-vibe/
+
 ## Supported Layout Algorithms
 
 - `Random`: deterministic coordinates based on node IDs
