@@ -126,6 +126,11 @@ test('maximal planar 3-tree generator returns planar 3-tree', () => {
 
   const is3Tree = Planarity.isPlanar3Tree(graph.nodeIds, graph.edgePairs);
   assert.equal(is3Tree, true);
+
+  const analysis = Planarity.analyzePlanar3Tree(graph.nodeIds, graph.edgePairs);
+  assert.equal(analysis.ok, true);
+  assert.equal(analysis.outerFace.length, 3);
+  assert.equal(analysis.elimination.length, 27);
 });
 
 test('cycle graph is planar but not planar 3-tree', () => {

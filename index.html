@@ -81,6 +81,7 @@
             <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" onclick="applyLayout('circle')">Circular</button>
             <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" onclick="applyLayout('cose')">Force-Dir</button>
             <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" onclick="applyLayout('tutte')">Tutte</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" onclick="applyLayout('p3t')">P3T</button>
           </div>
         </div>
       </section>
@@ -104,6 +105,7 @@
   <script src="static/js/planar-graph-core.js"></script>
   <script src="static/js/planarity-test.js"></script>
   <script src="static/js/tutte-layout.js"></script>
+  <script src="static/js/p3t-layout.js"></script>
   <script>
     var LOGO_COLORS = {
       blue: '#1060A8',
@@ -164,6 +166,14 @@
       }
     }
 
+    function setP3TEnabled(isEnabled) {
+      var $btn = $('.layout-btn[data-layout="p3t"]');
+      $btn.prop('disabled', !isEnabled);
+      if (!isEnabled) {
+        $btn.removeClass('is-active');
+      }
+    }
+
     function edgePairsFromParsed(parsed) {
       var pairs = [];
       if (!parsed || !parsed.elements) {
@@ -183,12 +193,14 @@
       if (!parsed || !parsed.elements) {
         setStatistics({ isPlanar: false, isPlanar3Tree: false });
         setTutteEnabled(false);
+        setP3TEnabled(false);
         return;
       }
 
       if (!window.PlanarVibePlanarityTest || !window.PlanarVibePlanarityTest.computePlanarEmbedding) {
         setStatistics({ isPlanar: false, isPlanar3Tree: false });
         setTutteEnabled(false);
+        setP3TEnabled(false);
         return;
       }
 
@@ -204,6 +216,7 @@
       }
       setStatistics({ isPlanar: isPlanar, isPlanar3Tree: isPlanar3Tree });
       setTutteEnabled(isPlanar);
+      setP3TEnabled(isPlanar3Tree);
     }
 
     function drawGraph() {
@@ -216,6 +229,8 @@
         setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges (random coordinates)', false);
       } catch (error) {
         setStatistics({ isPlanar: false, isPlanar3Tree: false });
+        setTutteEnabled(false);
+        setP3TEnabled(false);
         setStatus(error.message, true);
       }
     }
@@ -259,6 +274,20 @@
           return;
         }
         var result = PlanarVibeTutte.applyTutteLayout(cy);
+        setStatus(result.message, !result.ok);
+        return;
+      }
+
+      if (layoutName === 'p3t') {
+        if ($('.layout-btn[data-layout="p3t"]').prop('disabled')) {
+          setStatus('P3T layout requires a planar 3-tree.', true);
+          return;
+        }
+        if (!window.PlanarVibeP3T || !window.PlanarVibeP3T.applyP3TLayout) {
+          setStatus('P3T layout module is missing.', true);
+          return;
+        }
+        var result = PlanarVibeP3T.applyP3TLayout(cy);
         setStatus(result.message, !result.ok);
         return;
       }

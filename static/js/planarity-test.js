@@ -748,25 +748,25 @@
     };
   }
 
-  function isPlanar3Tree(nodeIds, edgePairs) {
+  function analyzePlanar3Tree(nodeIds, edgePairs) {
     var emb = computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb.ok) {
-      return false;
+      return { ok: false, reason: 'Graph is not planar' };
     }
 
     var n = emb.idByIndex.length;
     if (n < 3) {
-      return false;
+      return { ok: false, reason: 'Need at least 3 vertices' };
     }
 
     var outer = emb.outerFace;
     if (!outer || outer.length !== 3) {
-      return false;
+      return { ok: false, reason: 'Outer face is not a triangle' };
     }
 
     var m = emb.edges.length;
     if (m !== 3 * n - 6) {
-      return false;
+      return { ok: false, reason: 'Edge count does not match maximal planar graph' };
     }
 
     var adjacency = {};
@@ -791,7 +791,7 @@
       }
     }
     if (uniqueOuterApexCount !== 1) {
-      return false;
+      return { ok: false, reason: 'Outer face does not have a unique adjacent internal vertex' };
     }
 
     function triangleNeighbors(list) {
@@ -802,6 +802,7 @@
 
     var remaining = new Set(emb.idByIndex);
     var changed = true;
+    var elimination = [];
 
     while (changed && remaining.size > 3) {
       changed = false;
@@ -824,6 +825,11 @@
           continue;
         }
 
+        elimination.push({
+          vertex: v,
+          parents: remNeighbors.slice()
+        });
+
         for (var k = 0; k < remNeighbors.length; k += 1) {
           adjacency[remNeighbors[k]].delete(v);
         }
@@ -834,15 +840,30 @@
     }
 
     if (remaining.size !== 3) {
-      return false;
+      return { ok: false, reason: 'Could not eliminate to outer triangle' };
     }
 
     var finalThree = Array.from(remaining);
     if (!outerSet.has(finalThree[0]) || !outerSet.has(finalThree[1]) || !outerSet.has(finalThree[2])) {
-      return false;
+      return { ok: false, reason: 'Remaining triangle does not match outer face' };
     }
 
-    return triangleNeighbors(finalThree);
+    if (!triangleNeighbors(finalThree)) {
+      return { ok: false, reason: 'Final three vertices do not form a triangle' };
+    }
+
+    return {
+      ok: true,
+      embedding: emb,
+      outerFace: outer.slice(),
+      elimination: elimination,
+      nodeIds: emb.idByIndex.slice(),
+      edges: emb.edges.map(function (e) { return e.slice(); })
+    };
+  }
+
+  function isPlanar3Tree(nodeIds, edgePairs) {
+    return analyzePlanar3Tree(nodeIds, edgePairs).ok;
   }
 
   global.PlanarVibePlanarityTest = {
@@ -850,6 +871,7 @@
     computePlanarEmbeddingFromCy: computePlanarEmbeddingFromCy,
     computePlanarEmbeddingFromEdgeListText: computePlanarEmbeddingFromEdgeListText,
     buildFppInput: buildFppInput,
+    analyzePlanar3Tree: analyzePlanar3Tree,
     isPlanar3Tree: isPlanar3Tree
   };
 })(window);

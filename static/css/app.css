@@ -90,19 +90,26 @@ body {
   margin-top: 10px;
   border: 1px solid #c9d7ea;
   border-radius: 8px;
-  padding: 8px 10px;
+  padding: 14px 10px 8px;
   background: #fbfdff;
+  position: relative;
 }
 
 .stats-title {
+  position: absolute;
+  top: -10px;
+  left: 10px;
+  margin: 0;
+  padding: 0 6px;
+  line-height: 1.1;
+  background: var(--pv-bg);
+  color: var(--pv-ink);
   font-size: 0.84rem;
   font-weight: 600;
-  color: var(--pv-ink);
-  margin-bottom: 6px;
 }
 
 .stats-check {
-  margin: 0;
+  margin: 4px 0 0;
   font-size: 0.9rem;
   color: var(--pv-ink);
 }
@@ -214,6 +221,23 @@ body {
   color: #fff;
   background-color: var(--pv-green);
   border-color: var(--pv-green);
+}
+
+.layout-toolbar .btn-outline-secondary:disabled,
+.layout-toolbar .btn-outline-secondary.disabled {
+  color: #8a97ab;
+  background-color: #eef2f7;
+  border-color: #c8d2e0;
+  border-style: dashed;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.layout-toolbar .btn-outline-secondary:disabled:hover,
+.layout-toolbar .btn-outline-secondary.disabled:hover {
+  color: #8a97ab;
+  background-color: #eef2f7;
+  border-color: #c8d2e0;
 }
 
 .layout-toolbar .layout-btn.is-active,
