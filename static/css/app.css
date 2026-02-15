@@ -1,0 +1,244 @@
+:root {
+  --pv-blue: #1060a8;
+  --pv-orange: #ea9624;
+  --pv-green: #609818;
+  --pv-ink: #103870;
+  --pv-bg: #f4f7fb;
+}
+
+body {
+  margin: 0;
+  background: var(--pv-bg);
+  color: var(--pv-ink);
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  overflow: hidden;
+}
+
+.app-shell {
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 0 12px 8px;
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.logo-block {
+  height: 86px;
+  margin-top: 0;
+  margin-bottom: -4px;
+  text-align: center;
+}
+
+.logo-block img {
+  height: 82px;
+  width: auto;
+  padding-top: 0;
+  object-fit: contain;
+}
+
+.panel {
+  background: #fff;
+  border: 1px solid #c9d7ea;
+  border-radius: 10px;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.03);
+  padding: 12px;
+  height: 100%;
+  min-height: 0;
+}
+
+.wide {
+  width: 100%;
+}
+
+.center {
+  margin: 0 auto;
+}
+
+#dotfile {
+  width: 100%;
+  height: 320px;
+  border: 1px solid #c9d7ea;
+  border-radius: 8px;
+  resize: vertical;
+  padding: 10px;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.small-link {
+  font-size: 0.85rem;
+  color: var(--pv-blue);
+  text-decoration: none;
+  cursor: pointer;
+  margin-right: 3px;
+}
+
+.small-link:hover {
+  text-decoration: underline;
+}
+
+.muted {
+  color: #6b7d96;
+  font-size: 0.88rem;
+}
+
+#cy {
+  width: 100%;
+  height: calc(100% - 28px);
+  border: 1px solid #c9d7ea;
+  border-radius: 8px;
+  background-color: #fbfdff;
+  background-image:
+    linear-gradient(to right, #e9edf3 1px, transparent 1px),
+    linear-gradient(to bottom, #e9edf3 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.drawing-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.drawing-panel #cy {
+  flex: 1;
+  min-height: 280px;
+  height: auto;
+}
+
+.layout-toolbar {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reset-zoom-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #9fb4cf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reset-zoom-btn img {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+#status {
+  margin-top: 4px;
+  min-height: 20px;
+  color: #5f6c80;
+  font-size: 0.85rem;
+}
+
+.status-panel {
+  position: relative;
+  height: auto;
+  min-height: 0;
+}
+
+.status-title {
+  position: absolute;
+  top: -10px;
+  left: 14px;
+  margin: 0;
+  padding: 0 6px;
+  line-height: 1.1;
+  background: var(--pv-bg);
+  color: var(--pv-ink);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+#submit.btn-primary {
+  background-color: var(--pv-blue);
+  border-color: var(--pv-blue);
+}
+
+#submit.btn-primary:hover,
+#submit.btn-primary:focus {
+  background-color: #0d5391;
+  border-color: #0d5391;
+}
+
+.layout-toolbar .btn-outline-secondary {
+  color: var(--pv-ink);
+  border-color: #9fb4cf;
+}
+
+.layout-toolbar .layout-btn {
+  width: 96px;
+}
+
+.layout-toolbar .btn-outline-secondary:hover {
+  color: #fff;
+  background-color: var(--pv-green);
+  border-color: var(--pv-green);
+}
+
+.layout-toolbar .layout-btn.is-active,
+.layout-toolbar .layout-btn.is-active:hover,
+.layout-toolbar .layout-btn.is-active:focus {
+  color: #fff;
+  background-color: var(--pv-green);
+  border-color: var(--pv-green);
+}
+
+@media (max-width: 991px) {
+  .app-shell {
+    padding: 0 8px 8px;
+    gap: 8px;
+  }
+}
+
+.main-row {
+  flex: 1 1 auto;
+  min-height: 0;
+  --bs-gutter-y: 0.35rem;
+}
+
+.main-row > section {
+  display: flex;
+  min-height: 0;
+}
+
+.main-row > section > .panel {
+  flex: 1 1 auto;
+  width: 100%;
+}
+
+.main-row .input-col,
+.main-row .draw-col {
+  min-width: 0;
+}
+
+.status-row {
+  flex: 0 0 auto;
+}
+
+@media (min-width: 992px) {
+  .main-row .input-col {
+    flex: 0 0 360px;
+    width: 360px;
+  }
+
+  .main-row .draw-col {
+    flex: 1 1 auto;
+    width: auto;
+  }
+}
