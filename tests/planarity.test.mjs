@@ -470,12 +470,14 @@ test('FPP layout applies on 5 random planar non-3-tree graphs', () => {
   }
 });
 
-test('canonical ordering rejects random planar non-3-tree graph', () => {
+test('canonical ordering works on random planar non-3-tree graph', () => {
   const text = Generator.planarStellationGraph(80, 10, 42);
   const graph = parseEdgeListText(text);
   const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
   assert.equal(prepared.ok, true);
 
   const canonical = FPP.computeCanonicalOrdering(prepared);
-  assert.equal(canonical.ok, false);
+  assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on random non-3-tree');
+  assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+  assert.equal(new Set(canonical.order).size, canonical.order.length);
 });

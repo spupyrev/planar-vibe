@@ -233,6 +233,43 @@
       return walk.concat(interior);
     }
 
+    function undirectedKey(u, v) {
+      return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
+    }
+
+    function computeChordCounts(outerCycle, remaining) {
+      var outerSet = new Set(outerCycle);
+      var boundaryEdgeSet = new Set();
+      var i;
+      for (i = 0; i < outerCycle.length; i += 1) {
+        var a = outerCycle[i];
+        var b = outerCycle[(i + 1) % outerCycle.length];
+        boundaryEdgeSet.add(undirectedKey(a, b));
+      }
+
+      var chords = {};
+      for (i = 0; i < outerCycle.length; i += 1) {
+        var v = outerCycle[i];
+        var count = 0;
+        var seen = new Set();
+        var neigh = adjacency[v] ? Array.from(adjacency[v]) : [];
+        for (var j = 0; j < neigh.length; j += 1) {
+          var u = neigh[j];
+          if (!remaining.has(u) || !outerSet.has(u) || u === v) {
+            continue;
+          }
+          var ek = undirectedKey(v, u);
+          if (boundaryEdgeSet.has(ek) || seen.has(u)) {
+            continue;
+          }
+          seen.add(u);
+          count += 1;
+        }
+        chords[v] = count;
+      }
+      return chords;
+    }
+
     var v1 = outerFace[0];
     var v2 = outerFace[1];
     var vn = outerFace[2];
@@ -241,9 +278,18 @@
     var outerCycle = [v1, vn, v2];
     var removed = [];
     var contourNeighborsByVertex = {};
+    var mark = {};
+    var out = {};
+
+    mark[v1] = true;
+    mark[v2] = true;
+    out[v1] = true;
+    out[v2] = true;
+    out[vn] = true;
 
     while (remaining.size > 3) {
       var outerSet = new Set(outerCycle);
+      var chords = computeChordCounts(outerCycle, remaining);
       var chosen = null;
       var chosenIdx = -1;
 
@@ -253,32 +299,10 @@
       } else {
         for (var c = 0; c < outerCycle.length; c += 1) {
           var cand = outerCycle[c];
-          if (cand === v1 || cand === v2) {
+          if (mark[cand] || !out[cand] || cand === v1 || cand === v2) {
             continue;
           }
-
-          var prev = outerCycle[(c - 1 + outerCycle.length) % outerCycle.length];
-          var next = outerCycle[(c + 1) % outerCycle.length];
-          if (!hasEdge(prev, next)) {
-            continue;
-          }
-          var hasChord = false;
-          var outerNeighborCount = 0;
-          var neighbors = adjacency[cand] ? Array.from(adjacency[cand]) : [];
-
-          for (var ni = 0; ni < neighbors.length; ni += 1) {
-            var nb = neighbors[ni];
-            if (!remaining.has(nb) || !outerSet.has(nb)) {
-              continue;
-            }
-            outerNeighborCount += 1;
-            if (nb !== prev && nb !== next) {
-              hasChord = true;
-              break;
-            }
-          }
-
-          if (!hasChord && outerNeighborCount === 2) {
+          if ((chords[cand] || 0) === 0) {
             chosen = cand;
             chosenIdx = c;
             break;
@@ -306,6 +330,11 @@
           ok: false,
           reason: 'Failed to update outer cycle during canonical ordering.'
         };
+      }
+
+      mark[chosen] = true;
+      for (var rp = 1; rp + 1 < replacementPath.length; rp += 1) {
+        out[replacementPath[rp]] = true;
       }
 
       if (adjacency[chosen]) {
@@ -403,28 +432,34 @@
       return null;
     }
 
-    function matchesAt(start, path) {
-      for (var i = 0; i < path.length; i += 1) {
-        if (contour[(start + i) % n] !== path[i]) {
-          return false;
+    function matchesPath(path) {
+      var m = path.length;
+      if (m > n) {
+        return null;
+      }
+      for (var start = 0; start + m <= n; start += 1) {
+        var ok = true;
+        for (var i = 0; i < m; i += 1) {
+          if (contour[start + i] !== path[i]) {
+            ok = false;
+            break;
+          }
+        }
+        if (ok) {
+          return { start: start, end: start + m - 1 };
         }
       }
-      return true;
+      return null;
     }
 
-    for (var s = 0; s < n; s += 1) {
-      if (matchesAt(s, neighborPath)) {
-        return { start: s, end: s + neighborPath.length - 1 };
-      }
+    var seg = matchesPath(neighborPath);
+    if (seg) {
+      return seg;
     }
-
-    var reversed = neighborPath.slice().reverse();
-    for (s = 0; s < n; s += 1) {
-      if (matchesAt(s, reversed)) {
-        return { start: s, end: s + reversed.length - 1 };
-      }
+    seg = matchesPath(neighborPath.slice().reverse());
+    if (seg) {
+      return seg;
     }
-
     return null;
   }
 
@@ -439,17 +474,49 @@
 
     var contourNeighborsByVertex = canonical.contourNeighborsByVertex || {};
     var coords = {};
+    var layers = {};
 
     var v1 = order[0];
     var v2 = order[1];
     var v3 = order[2];
 
-    // Standard FPP initialization (bottom-to-top orientation).
-    coords[v1] = { x: 0, y: 2 };
-    coords[v2] = { x: 2, y: 2 };
-    coords[v3] = { x: 1, y: 0 };
+    // Standard FPP initialization.
+    coords[v1] = { x: 0, y: 0 };
+    coords[v2] = { x: 2, y: 0 };
+    coords[v3] = { x: 1, y: 1 };
+    var baseY = coords[v1].y;
+    layers[v1] = new Set([v1]);
+    layers[v2] = new Set([v2]);
+    layers[v3] = new Set([v3]);
 
-    var contour = [v1, v2, v3];
+    // Boundary path: w1 = v1, ..., wt = v2.
+    var contour = [v1, v3, v2];
+
+    function collectLayerVertices(contourList, fromIdx, toIdxInclusive) {
+      var set = new Set();
+      if (fromIdx > toIdxInclusive) {
+        return set;
+      }
+      for (var a = fromIdx; a <= toIdxInclusive; a += 1) {
+        var w = contourList[a];
+        var layer = layers[w];
+        if (!layer) {
+          continue;
+        }
+        layer.forEach(function (x) {
+          set.add(x);
+        });
+      }
+      return set;
+    }
+
+    function shiftX(vertexSet, delta) {
+      vertexSet.forEach(function (v) {
+        if (coords[v]) {
+          coords[v].x += delta;
+        }
+      });
+    }
 
     for (var i = 3; i < order.length; i += 1) {
       var vk = order[i];
@@ -471,14 +538,6 @@
 
       var p = segment.start;
       var q = segment.end;
-      var n = contour.length;
-
-      if (q >= n) {
-        var shift = p;
-        contour = contour.slice(shift).concat(contour.slice(0, shift));
-        q -= shift;
-        p = 0;
-      }
 
       var wp = contour[p];
       var wq = contour[q];
@@ -489,30 +548,51 @@
         };
       }
 
-      var t;
-      for (t = q; t < contour.length; t += 1) {
-        coords[contour[t]].x += 2;
-      }
-      for (t = p + 1; t < q; t += 1) {
-        coords[contour[t]].x += 1;
-      }
+      // Shift method (de Fraysseix-Pach-Pollack).
+      var innerLayerVertices = collectLayerVertices(contour, p + 1, q - 1);
+      var rightLayerVertices = collectLayerVertices(contour, q, contour.length - 1);
+      shiftX(innerLayerVertices, 1);
+      shiftX(rightLayerVertices, 2);
 
-      var x = (coords[wp].x + coords[wp].y + coords[wq].x - coords[wq].y) / 2.0;
-      var y = (coords[wp].x + coords[wp].y - coords[wq].x + coords[wq].y) / 2.0;
+      // Intersection of +1 diagonal through wp and -1 diagonal through wq.
+      var x = (coords[wq].x + coords[wq].y + coords[wp].x - coords[wp].y) / 2.0;
+      var y = (coords[wq].x + coords[wq].y - coords[wp].x + coords[wp].y) / 2.0;
+      if (y < baseY) {
+        return {
+          ok: false,
+          message: 'FPP invariant violated: vertex ' + vk + ' placed below base edge (v1,v2).'
+        };
+      }
       coords[vk] = { x: x, y: y };
+      layers[vk] = new Set(innerLayerVertices);
+      layers[vk].add(vk);
+      // Transfer ownership: vertices moved into L(vk) should no longer remain
+      // in intermediate boundary layer lists.
+      for (var clearIdx = p + 1; clearIdx < q; clearIdx += 1) {
+        layers[contour[clearIdx]] = new Set();
+      }
 
+      // Replace wp+1..wq-1 by vk in the boundary path.
       contour = contour.slice(0, p + 1).concat([vk]).concat(contour.slice(q));
     }
 
     normalizeCoordinates(coords, order);
 
     var SCALE = 30;
+    var maxY = 0;
+    for (var yi = 0; yi < order.length; yi += 1) {
+      var yv = order[yi];
+      if (coords[yv] && coords[yv].y > maxY) {
+        maxY = coords[yv].y;
+      }
+    }
     cy.nodes().forEach(function (node) {
       var id = String(node.id());
       if (coords[id]) {
         node.position({
           x: coords[id].x * SCALE + 20,
-          y: coords[id].y * SCALE + 20
+          // Flip Y for screen coordinates (y-down) so v1-v2 is the lowest pair.
+          y: (maxY - coords[id].y) * SCALE + 20
         });
       }
     });
@@ -522,6 +602,14 @@
       ok: true,
       message: 'Applied FPP layout (' + order.length + ' vertices)'
     };
+  }
+
+  /*
+   * Legacy placement kept for reference during migration.
+   * This block is intentionally removed from execution.
+   */
+  function _unused_old_applyFPPPlacement() {
+    return null;
   }
 
   function applyFPPLayout(cy) {
