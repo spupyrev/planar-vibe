@@ -174,18 +174,6 @@
       return null;
     }
 
-    function readNumericCookie(name, fallback, min, max) {
-      var raw = readCookie(name);
-      var value = Number(raw);
-      if (!Number.isFinite(value)) {
-        return fallback;
-      }
-      if (value < min || value > max) {
-        return fallback;
-      }
-      return value;
-    }
-
     function readStorage(name) {
       try {
         if (window.localStorage) {

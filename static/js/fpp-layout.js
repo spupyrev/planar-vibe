@@ -121,10 +121,6 @@
       adjacency[b].add(a);
     }
 
-    function hasEdge(u, v) {
-      return !!(adjacency[u] && adjacency[u].has(v));
-    }
-
     function rotationPathInclusive(v, start, end) {
       var nbrs = rotationById[v] || [];
       if (nbrs.length === 0) {
@@ -602,14 +598,6 @@
       ok: true,
       message: 'Applied FPP layout (' + order.length + ' vertices)'
     };
-  }
-
-  /*
-   * Legacy placement kept for reference during migration.
-   * This block is intentionally removed from execution.
-   */
-  function _unused_old_applyFPPPlacement() {
-    return null;
   }
 
   function applyFPPLayout(cy) {
