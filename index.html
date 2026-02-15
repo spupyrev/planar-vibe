@@ -77,11 +77,22 @@
           </button>
           <div id="cy"></div>
           <div class="layout-toolbar">
-            <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="random" onclick="applyLayout('random')">Random</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" onclick="applyLayout('circle')">Circular</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" onclick="applyLayout('cose')">Force-Dir</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" onclick="applyLayout('tutte')">Tutte</button>
-            <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" onclick="applyLayout('p3t')">P3T</button>
+            <div class="layout-group">
+              <div class="layout-group-title">Generic</div>
+              <div class="layout-group-buttons">
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="random" onclick="applyLayout('random')" title="Deterministic random coordinates by node id">Random</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" onclick="applyLayout('circle')" title="Place vertices evenly on a circle">Circular</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" onclick="applyLayout('cose')" title="Force-directed COSE layout">Force-Dir</button>
+              </div>
+            </div>
+            <div class="layout-group">
+              <div class="layout-group-title">Planar</div>
+              <div class="layout-group-buttons">
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" onclick="applyLayout('tutte')" title="Tutte barycentric layout for planar graphs">Tutte</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" onclick="applyLayout('p3t')" title="Equal-face-area style layout for planar 3-trees">P3T</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fpp" onclick="applyLayout('fpp')" title="FPP prototype layout (currently planar 3-tree path)">FPP</button>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -106,6 +117,7 @@
   <script src="static/js/planarity-test.js"></script>
   <script src="static/js/tutte-layout.js"></script>
   <script src="static/js/p3t-layout.js"></script>
+  <script src="static/js/fpp-layout.js"></script>
   <script>
     var LOGO_COLORS = {
       blue: '#1060A8',
@@ -174,6 +186,14 @@
       }
     }
 
+    function setFPPEnabled(isEnabled) {
+      var $btn = $('.layout-btn[data-layout="fpp"]');
+      $btn.prop('disabled', !isEnabled);
+      if (!isEnabled) {
+        $btn.removeClass('is-active');
+      }
+    }
+
     function edgePairsFromParsed(parsed) {
       var pairs = [];
       if (!parsed || !parsed.elements) {
@@ -194,6 +214,7 @@
         setStatistics({ isPlanar: false, isPlanar3Tree: false });
         setTutteEnabled(false);
         setP3TEnabled(false);
+        setFPPEnabled(false);
         return;
       }
 
@@ -201,6 +222,7 @@
         setStatistics({ isPlanar: false, isPlanar3Tree: false });
         setTutteEnabled(false);
         setP3TEnabled(false);
+        setFPPEnabled(false);
         return;
       }
 
@@ -217,6 +239,7 @@
       setStatistics({ isPlanar: isPlanar, isPlanar3Tree: isPlanar3Tree });
       setTutteEnabled(isPlanar);
       setP3TEnabled(isPlanar3Tree);
+      setFPPEnabled(isPlanar);
     }
 
     function drawGraph() {
@@ -231,6 +254,7 @@
         setStatistics({ isPlanar: false, isPlanar3Tree: false });
         setTutteEnabled(false);
         setP3TEnabled(false);
+        setFPPEnabled(false);
         setStatus(error.message, true);
       }
     }
@@ -289,6 +313,20 @@
         }
         var result = PlanarVibeP3T.applyP3TLayout(cy);
         setStatus(result.message, !result.ok);
+        return;
+      }
+
+      if (layoutName === 'fpp') {
+        if ($('.layout-btn[data-layout="fpp"]').prop('disabled')) {
+          setStatus('FPP layout requires a planar graph.', true);
+          return;
+        }
+        if (!window.PlanarVibeFPP || !window.PlanarVibeFPP.applyFPPLayout) {
+          setStatus('FPP layout module is missing.', true);
+          return;
+        }
+        var fppResult = PlanarVibeFPP.applyFPPLayout(cy);
+        setStatus(fppResult.message, !fppResult.ok);
         return;
       }
 

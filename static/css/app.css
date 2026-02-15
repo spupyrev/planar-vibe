@@ -151,6 +151,40 @@ body {
   flex-wrap: wrap;
 }
 
+.layout-group {
+  position: relative;
+  border: 1px solid #c9d7ea;
+  border-radius: 8px;
+  padding: 14px 6px 6px;
+  background: #fbfdff;
+}
+
+.layout-group + .layout-group {
+  margin-left: 10px;
+}
+
+.layout-group-title {
+  position: absolute;
+  top: -10px;
+  left: 10px;
+  margin: 0;
+  padding: 0 6px;
+  line-height: 1.1;
+  background: var(--pv-bg);
+  color: var(--pv-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.layout-group-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
 .reset-zoom-btn {
   position: absolute;
   top: 10px;

@@ -130,6 +130,79 @@
     return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
   }
 
+  function isTriangulatedEmbedding(embedding) {
+    if (!embedding || !embedding.ok) {
+      return false;
+    }
+    var n = embedding.idByIndex.length;
+    var m = embedding.edges.length;
+    if (n < 3) {
+      return false;
+    }
+    if (m !== 3 * n - 6) {
+      return false;
+    }
+    for (var i = 0; i < embedding.faces.length; i += 1) {
+      if (embedding.faces[i].length !== 3) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function cloneEdgePairs(edgePairs) {
+    return edgePairs.map(function (e) {
+      return [String(e[0]), String(e[1])];
+    });
+  }
+
+  function augmentByFaceStellation(nodeIds, edgePairs, embedding) {
+    var nodes = nodeIds.map(String);
+    var edges = cloneEdgePairs(edgePairs);
+    var edgeSet = new Set();
+    var idSet = new Set(nodes);
+    var dummyCount = 0;
+
+    for (var i = 0; i < edges.length; i += 1) {
+      edgeSet.add(canonicalUndirectedEdgeKey(edges[i][0], edges[i][1]));
+    }
+
+    function nextDummyId() {
+      var id;
+      do {
+        id = '@dummy' + dummyCount;
+        dummyCount += 1;
+      } while (idSet.has(id));
+      idSet.add(id);
+      return id;
+    }
+
+    for (i = 0; i < embedding.faces.length; i += 1) {
+      var face = embedding.faces[i];
+      if (!face || face.length <= 3) {
+        continue;
+      }
+
+      var dummy = nextDummyId();
+      nodes.push(dummy);
+      for (var j = 0; j < face.length; j += 1) {
+        var u = String(face[j]);
+        var key = canonicalUndirectedEdgeKey(dummy, u);
+        if (edgeSet.has(key)) {
+          continue;
+        }
+        edgeSet.add(key);
+        edges.push([dummy, u]);
+      }
+    }
+
+    return {
+      nodeIds: nodes,
+      edgePairs: edges,
+      dummyCount: dummyCount
+    };
+  }
+
   function PlanarVertex(id, label) {
     this.id = String(id);
     this.label = label === undefined ? String(id) : String(label);
@@ -298,6 +371,9 @@
     PlanarFace: PlanarFace,
     PlanarGraph: PlanarGraph,
     graphFromCy: graphFromCy,
+    cloneEdgePairs: cloneEdgePairs,
+    isTriangulatedEmbedding: isTriangulatedEmbedding,
+    augmentByFaceStellation: augmentByFaceStellation,
     detectCycleFromAdjacency: detectCycleFromAdjacency,
     chooseOuterFace: chooseOuterFace
   };
