@@ -58,6 +58,7 @@ function loadBrowserModules() {
     'static/js/graph-generator.js',
     'static/js/planarity-test.js',
     'static/js/planar-graph-core.js',
+    'static/js/tutte-layout.js',
     'static/js/fpp-layout.js'
   ];
 
@@ -85,6 +86,12 @@ function buildMockCy(nodeIds, edgePairs) {
       id() {
         return this._id;
       },
+      data(key) {
+        if (key === 'label') {
+          return this._id;
+        }
+        return undefined;
+      },
       position(pos) {
         this._pos = { x: pos.x, y: pos.y };
       }
@@ -94,6 +101,10 @@ function buildMockCy(nodeIds, edgePairs) {
   });
 
   const edgeObjs = edgePairs.map(([u, v]) => ({
+    _id: `${u}--${v}`,
+    id() {
+      return this._id;
+    },
     source() {
       return { id: () => String(u) };
     },
@@ -107,7 +118,11 @@ function buildMockCy(nodeIds, edgePairs) {
     _edgeObjs: edgeObjs,
     _fitCalls: 0,
     nodes() {
-      return this._nodeObjs;
+      const arr = this._nodeObjs;
+      arr.toArray = function toArray() {
+        return arr.slice();
+      };
+      return arr;
     },
     edges() {
       return this._edgeObjs;
@@ -337,6 +352,73 @@ test('FPP layout produces non-crossing drawings on 10 small planar 3-trees', () 
 
     const crossing = hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById);
     assert.equal(crossing, false, `FPP produced crossings for small seed=${seed}`);
+  }
+});
+
+test('FPP layout produces non-crossing drawing on sample planar3tree10', () => {
+  const text = Generator.getSample('planar3tree10');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = FPP.applyFPPLayout(cy);
+  assert.equal(result.ok, true, `applyFPPLayout failed on planar3tree10: ${result.message}`);
+  assert.equal(cy._fitCalls > 0, true);
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing position for node ${node.id()} in planar3tree10`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    positionsById[node.id()] = node._pos;
+  }
+
+  const crossing = hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById);
+  assert.equal(crossing, false, 'FPP produced crossings for planar3tree10');
+});
+
+test('FPP layout produces non-crossing drawings on 5 large planar 3-trees', () => {
+  for (let seed = 1; seed <= 5; seed += 1) {
+    const text = Generator.maximalPlanar3Tree(250 + seed);
+    const graph = parseEdgeListText(text);
+    const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+    const result = FPP.applyFPPLayout(cy);
+    assert.equal(result.ok, true, `applyFPPLayout failed for large seed=${seed}: ${result.message}`);
+    assert.equal(cy._fitCalls > 0, true);
+
+    const positionsById = {};
+    for (const node of cy.nodes()) {
+      assert.equal(node._pos !== null, true, `missing position for large node ${node.id()} seed=${seed}`);
+      assert.equal(Number.isFinite(node._pos.x), true);
+      assert.equal(Number.isFinite(node._pos.y), true);
+      positionsById[node.id()] = node._pos;
+    }
+
+    const crossing = hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById);
+    assert.equal(crossing, false, `FPP produced crossings for large seed=${seed}`);
+  }
+});
+
+test('FPP layout applies on 5 random planar non-3-tree graphs', () => {
+  for (let seed = 1; seed <= 5; seed += 1) {
+    const text = Generator.planarStellationGraph(80 + seed, 10, seed);
+    const graph = parseEdgeListText(text);
+    const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+    const result = FPP.applyFPPLayout(cy);
+    assert.equal(result.ok, true, `applyFPPLayout failed for planar non-3-tree seed=${seed}: ${result.message}`);
+    assert.equal(cy._fitCalls > 0, true);
+
+    const positionsById = {};
+    for (const node of cy.nodes()) {
+      assert.equal(node._pos !== null, true, `missing position for non-3-tree node ${node.id()} seed=${seed}`);
+      assert.equal(Number.isFinite(node._pos.x), true);
+      assert.equal(Number.isFinite(node._pos.y), true);
+      positionsById[node.id()] = node._pos;
+    }
+
+    const crossing = hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById);
+    assert.equal(crossing, false, `FPP produced crossings for planar non-3-tree seed=${seed}`);
   }
 });
 

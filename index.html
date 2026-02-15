@@ -41,6 +41,7 @@
                 <a class="small-link" onclick="pasteStaticGraph('cycle20')">[Cycle20]</a>
                 <a class="small-link" onclick="pasteStaticGraph('ladder20')">[Ladder20]</a>
                 <a class="small-link" onclick="pasteStaticGraph('grid9x9')">[Grid 9x9]</a>
+                <a class="small-link" onclick="pasteStaticGraph('planar3tree10')">[Planar 3-Tree 10]</a>
                 <a class="small-link" onclick="pasteStaticGraph('planar3tree30')">[Planar 3-Tree 30]</a>
               </div>
             </div>
@@ -141,11 +142,11 @@
             'border-width': 0.5,
             'label': 'data(label)',
             'color': '#ffffff',
-            'font-size': 11,
+            'font-size': 7,
             'text-valign': 'center',
             'text-halign': 'center',
-            'width': 28,
-            'height': 28
+            'width': 15,
+            'height': 15
           }
         },
         {
@@ -162,6 +163,111 @@
 
     function setStatus(message, isError) {
       $('#status').text(message).css('color', isError ? '#ba1b1b' : LOGO_COLORS.ink);
+    }
+
+    function smallGraphCoordinatesSuffix() {
+      if (cy.nodes().length === 0 || cy.nodes().length > 10) {
+        return '';
+      }
+
+      var nodes = cy.nodes().toArray().slice();
+      nodes.sort(function (a, b) {
+        var ai = String(a.id());
+        var bi = String(b.id());
+        var an = Number(ai);
+        var bn = Number(bi);
+        var aNum = Number.isFinite(an);
+        var bNum = Number.isFinite(bn);
+        if (aNum && bNum) {
+          return an - bn;
+        }
+        return ai.localeCompare(bi);
+      });
+
+      var parts = [];
+      for (var i = 0; i < nodes.length; i += 1) {
+        var node = nodes[i];
+        var p = node.position();
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          continue;
+        }
+        parts.push(node.id() + '=(' + Math.round(p.x) + ',' + Math.round(p.y) + ')');
+      }
+      if (parts.length === 0) {
+        return '';
+      }
+      return ' | coords: ' + parts.join(' ');
+    }
+
+    function setLayoutStatus(message, isError) {
+      if (isError) {
+        setStatus(message, true);
+        return;
+      }
+      setStatus(message + smallGraphCoordinatesSuffix(), false);
+    }
+
+    function normalizeLayoutScale() {
+      var nodes = cy.nodes();
+      if (!nodes || nodes.length === 0) {
+        return;
+      }
+
+      var minX = Infinity;
+      var minY = Infinity;
+      var maxX = -Infinity;
+      var maxY = -Infinity;
+
+      nodes.forEach(function (node) {
+        var p = node.position();
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          return;
+        }
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      });
+
+      if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+        return;
+      }
+
+      var width = maxX - minX;
+      var height = maxY - minY;
+      var pad = 24;
+      var targetWidth = 900;
+      var targetHeight = 620;
+      var safeW = Math.max(1e-9, width);
+      var safeH = Math.max(1e-9, height);
+      var scale = Math.min((targetWidth - 2 * pad) / safeW, (targetHeight - 2 * pad) / safeH);
+
+      if (!Number.isFinite(scale) || scale <= 0) {
+        return;
+      }
+
+      // Keep tiny/degenerate drawings readable.
+      if (width < 1e-9 && height < 1e-9) {
+        var single = nodes[0];
+        if (single) {
+          single.position({ x: targetWidth / 2, y: targetHeight / 2 });
+        }
+        cy.fit(undefined, 24);
+        return;
+      }
+
+      nodes.forEach(function (node) {
+        var p = node.position();
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          return;
+        }
+        node.position({
+          x: (p.x - minX) * scale + pad,
+          y: (p.y - minY) * scale + pad
+        });
+      });
+
+      cy.fit(undefined, 24);
     }
 
     function setStatistics(stats) {
@@ -249,7 +355,7 @@
         cy.add(currentParsed.elements);
         updateStatistics(currentParsed);
         applyLayout('random');
-        setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges (random coordinates)', false);
+        setLayoutStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges (random coordinates)', false);
       } catch (error) {
         setStatistics({ isPlanar: false, isPlanar3Tree: false });
         setTutteEnabled(false);
@@ -288,7 +394,8 @@
 
       if (layoutName === 'random') {
         PlanarVibePlugin.applyDeterministicRandomPositions(cy);
-        setStatus('Applied random coordinates', false);
+        normalizeLayoutScale();
+        setLayoutStatus('Applied random coordinates', false);
         return;
       }
 
@@ -298,7 +405,10 @@
           return;
         }
         var result = PlanarVibeTutte.applyTutteLayout(cy);
-        setStatus(result.message, !result.ok);
+        if (result.ok) {
+          normalizeLayoutScale();
+        }
+        setLayoutStatus(result.message, !result.ok);
         return;
       }
 
@@ -312,7 +422,10 @@
           return;
         }
         var result = PlanarVibeP3T.applyP3TLayout(cy);
-        setStatus(result.message, !result.ok);
+        if (result.ok) {
+          normalizeLayoutScale();
+        }
+        setLayoutStatus(result.message, !result.ok);
         return;
       }
 
@@ -326,12 +439,26 @@
           return;
         }
         var fppResult = PlanarVibeFPP.applyFPPLayout(cy);
-        setStatus(fppResult.message, !fppResult.ok);
+        if (fppResult.ok) {
+          normalizeLayoutScale();
+        }
+        setLayoutStatus(fppResult.message, !fppResult.ok);
         return;
       }
 
-      cy.layout(PlanarVibePlugin.layoutOptionsByName(layoutName, currentParsed)).run();
-      setStatus('Applied ' + layoutName + ' layout', false);
+      var layout = cy.layout(PlanarVibePlugin.layoutOptionsByName(layoutName, currentParsed));
+      if (layout && layout.one) {
+        layout.one('layoutstop', function () {
+          normalizeLayoutScale();
+          setLayoutStatus('Applied ' + layoutName + ' layout', false);
+        });
+      } else {
+        setTimeout(function () {
+          normalizeLayoutScale();
+          setLayoutStatus('Applied ' + layoutName + ' layout', false);
+        }, 0);
+      }
+      layout.run();
     }
 
     function setSelectedLayoutButton(layoutName) {

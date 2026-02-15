@@ -221,6 +221,7 @@
     ladder20: ladderGraph(20),
     grid9x9: gridGraph(9, 9),
     wheel7: wheelGraph(7),
+    planar3tree10: maximalPlanar3Tree(10),
     planar3tree30: maximalPlanar3Tree(30),
     nonplanar30: nonPlanarK33PlusPath(30),
     planarstellation30: planarStellationGraph(30, 8)
