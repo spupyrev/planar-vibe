@@ -22,7 +22,7 @@
     <div class="row g-3 main-row">
       <section class="col-12 col-lg-auto input-col">
         <div class="panel">
-          <form id="graph-form" method="post" action="#" accept-charset="UTF-8" onsubmit="return checkTextArea(this)">
+          <form id="graph-form" method="post" action="#" accept-charset="UTF-8">
             <div class="wide center">
               <textarea
                 name="dotfile"
@@ -35,14 +35,14 @@
               <div>
                 <span class="muted">...or try an example:</span>
                 <br>
-                <a class="small-link" onclick="pasteStaticGraph('sample1')">[Sample1]</a>
-                <a class="small-link" onclick="pasteStaticGraph('sample2')">[Sample2]</a>
-                <a class="small-link" onclick="pasteStaticGraph('sample3')">[Sample3]</a>
-                <a class="small-link" onclick="pasteStaticGraph('cycle20')">[Cycle20]</a>
-                <a class="small-link" onclick="pasteStaticGraph('ladder20')">[Ladder20]</a>
-                <a class="small-link" onclick="pasteStaticGraph('grid9x9')">[Grid 9x9]</a>
-                <a class="small-link" onclick="pasteStaticGraph('planar3tree10')">[Planar 3-Tree 10]</a>
-                <a class="small-link" onclick="pasteStaticGraph('planar3tree30')">[Planar 3-Tree 30]</a>
+                <a class="small-link sample-link" data-sample="sample1" href="#">[Sample1]</a>
+                <a class="small-link sample-link" data-sample="sample2" href="#">[Sample2]</a>
+                <a class="small-link sample-link" data-sample="sample3" href="#">[Sample3]</a>
+                <a class="small-link sample-link" data-sample="cycle20" href="#">[Cycle20]</a>
+                <a class="small-link sample-link" data-sample="ladder20" href="#">[Ladder20]</a>
+                <a class="small-link sample-link" data-sample="grid9x9" href="#">[Grid 9x9]</a>
+                <a class="small-link sample-link" data-sample="planar3tree10" href="#">[Planar 3-Tree 10]</a>
+                <a class="small-link sample-link" data-sample="planar3tree30" href="#">[Planar 3-Tree 30]</a>
               </div>
             </div>
 
@@ -72,6 +72,10 @@
                   <span class="form-check-label">Planar 3-Tree</span>
                 </label>
               </div>
+              <div class="stats-plot-wrap">
+                <div class="stats-plot-label">Face Area Distribution</div>
+                <svg id="stats-face-plot" role="img" aria-label="Face area distribution plot"></svg>
+              </div>
             </div>
           </form>
         </div>
@@ -79,10 +83,10 @@
 
       <section class="col-12 col-lg draw-col">
         <div class="panel drawing-panel">
-          <button type="button" class="btn btn-light btn-sm reset-zoom-btn" onclick="resetZoom()" title="Reset Zoom" aria-label="Reset Zoom">
+          <button id="reset-zoom-btn" type="button" class="btn btn-light btn-sm reset-zoom-btn" title="Reset Zoom" aria-label="Reset Zoom">
             <img src="static/img/zoom-reset.svg" alt="">
           </button>
-          <button type="button" class="btn btn-light btn-sm save-svg-btn" onclick="exportSvg()" title="Save SVG" aria-label="Save SVG">
+          <button id="save-svg-btn" type="button" class="btn btn-light btn-sm save-svg-btn" title="Save SVG" aria-label="Save SVG">
             <img src="static/img/save_as.svg" alt="">
           </button>
           <div class="style-controls" aria-label="Style controls">
@@ -102,17 +106,17 @@
             <div class="layout-group">
               <div class="layout-group-title">Generic</div>
               <div class="layout-group-buttons">
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="random" onclick="applyLayout('random')" title="Deterministic random coordinates by node id">Random</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" onclick="applyLayout('circle')" title="Place vertices evenly on a circle">Circular</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" onclick="applyLayout('cose')" title="Force-directed COSE layout">Force-Dir</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="random" title="Deterministic random coordinates by node id">Random</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" title="Place vertices evenly on a circle">Circular</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" title="Force-directed COSE layout">Force-Dir</button>
               </div>
             </div>
             <div class="layout-group">
               <div class="layout-group-title">Planar</div>
               <div class="layout-group-buttons">
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" onclick="applyLayout('tutte')" title="Tutte barycentric layout for planar graphs">Tutte</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" onclick="applyLayout('p3t')" title="Equal-face-area style layout for planar 3-trees">P3T</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fpp" onclick="applyLayout('fpp')" title="FPP prototype layout (currently planar 3-tree path)">FPP</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" title="Tutte barycentric layout for planar graphs">Tutte</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" title="Equal-face-area style layout for planar 3-trees">P3T</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fpp" title="FPP prototype layout (currently planar 3-tree path)">FPP</button>
               </div>
             </div>
           </div>
@@ -137,625 +141,9 @@
   <script src="static/js/planarvibe-plugin.js"></script>
   <script src="static/js/planar-graph-core.js"></script>
   <script src="static/js/planarity-test.js"></script>
+  <script src="static/js/metrics.js"></script>
   <script src="static/js/tutte-layout.js"></script>
   <script src="static/js/p3t-layout.js"></script>
   <script src="static/js/fpp-layout.js"></script>
-  <script>
-    var LOGO_COLORS = {
-      blue: '#1060A8',
-      orange: '#EA9624',
-      green: '#609818',
-      ink: '#103870',
-      black: '#111111'
-    };
-
-    var currentParsed = null;
-    var GRAPH_STYLE_COOKIE_DAYS = 365;
-    var DEFAULT_VERTEX_SIZE = 15;
-    var DEFAULT_EDGE_WIDTH = 1;
-    var PREF_VERTEX_SIZE_KEY = 'planarvibe_vertex_size';
-    var PREF_EDGE_WIDTH_KEY = 'planarvibe_edge_width';
-
-    function writeCookie(name, value, days) {
-      var d = new Date();
-      d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
-      document.cookie = name + '=' + encodeURIComponent(String(value)) + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
-    }
-
-    function readCookie(name) {
-      var prefix = name + '=';
-      var parts = document.cookie ? document.cookie.split(';') : [];
-      for (var i = 0; i < parts.length; i += 1) {
-        var c = parts[i].trim();
-        if (c.indexOf(prefix) === 0) {
-          return decodeURIComponent(c.substring(prefix.length));
-        }
-      }
-      return null;
-    }
-
-    function readStorage(name) {
-      try {
-        if (window.localStorage) {
-          var v = window.localStorage.getItem(name);
-          if (v !== null && v !== undefined) {
-            return v;
-          }
-        }
-      } catch (e) {}
-      return readCookie(name);
-    }
-
-    function writeStorage(name, value) {
-      try {
-        if (window.localStorage) {
-          window.localStorage.setItem(name, String(value));
-        }
-      } catch (e) {}
-      writeCookie(name, value, GRAPH_STYLE_COOKIE_DAYS);
-    }
-
-    function readNumericPreference(name, fallback, min, max) {
-      var raw = readStorage(name);
-      var value = Number(raw);
-      if (!Number.isFinite(value)) {
-        return fallback;
-      }
-      if (value < min || value > max) {
-        return fallback;
-      }
-      return value;
-    }
-
-    var graphStylePrefs = {
-      vertexSize: readNumericPreference(PREF_VERTEX_SIZE_KEY, DEFAULT_VERTEX_SIZE, 4, 20),
-      edgeWidth: readNumericPreference(PREF_EDGE_WIDTH_KEY, DEFAULT_EDGE_WIDTH, 0.25, 5)
-    };
-
-    function computeNodeFontSize(vertexSize) {
-      return Math.max(6, Math.round(vertexSize * 0.45));
-    }
-
-    var cy = cytoscape({
-      container: document.getElementById('cy'),
-      elements: [],
-      wheelSensitivity: 0.15,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            'background-color': LOGO_COLORS.blue,
-            'border-color': LOGO_COLORS.black,
-            'border-width': 0.5,
-            'label': 'data(label)',
-            'color': '#ffffff',
-            'font-size': computeNodeFontSize(graphStylePrefs.vertexSize),
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'width': graphStylePrefs.vertexSize,
-            'height': graphStylePrefs.vertexSize
-          }
-        },
-        {
-          selector: 'edge',
-          style: {
-            'line-color': LOGO_COLORS.black,
-            'width': graphStylePrefs.edgeWidth,
-            'curve-style': 'bezier'
-          }
-        }
-      ],
-      layout: { name: 'grid' }
-    });
-
-    function setStatus(message, isError) {
-      $('#status').text(message).css('color', isError ? '#ba1b1b' : LOGO_COLORS.ink);
-    }
-
-    function applyGraphAppearance() {
-      cy.style()
-        .selector('node')
-        .style({
-          'width': graphStylePrefs.vertexSize,
-          'height': graphStylePrefs.vertexSize,
-          'font-size': computeNodeFontSize(graphStylePrefs.vertexSize)
-        })
-        .selector('edge')
-        .style({
-          'width': graphStylePrefs.edgeWidth
-        })
-        .update();
-    }
-
-    function updateStyleControlsUI() {
-      $('#vertex-size-slider').val(String(graphStylePrefs.vertexSize));
-      $('#edge-width-slider').val(String(graphStylePrefs.edgeWidth));
-      $('#vertex-size-value').text(String(graphStylePrefs.vertexSize));
-      $('#edge-width-value').text(String(graphStylePrefs.edgeWidth));
-    }
-
-    function initStyleControls() {
-      updateStyleControlsUI();
-      applyGraphAppearance();
-
-      $('#vertex-size-slider').on('input change', function () {
-        graphStylePrefs.vertexSize = Number($(this).val()) || DEFAULT_VERTEX_SIZE;
-        updateStyleControlsUI();
-        applyGraphAppearance();
-        writeStorage(PREF_VERTEX_SIZE_KEY, graphStylePrefs.vertexSize);
-      });
-
-      $('#edge-width-slider').on('input change', function () {
-        graphStylePrefs.edgeWidth = Number($(this).val()) || DEFAULT_EDGE_WIDTH;
-        updateStyleControlsUI();
-        applyGraphAppearance();
-        writeStorage(PREF_EDGE_WIDTH_KEY, graphStylePrefs.edgeWidth);
-      });
-    }
-
-    function smallGraphCoordinatesSuffix() {
-      if (cy.nodes().length === 0 || cy.nodes().length > 10) {
-        return '';
-      }
-
-      var nodes = cy.nodes().toArray().slice();
-      nodes.sort(function (a, b) {
-        var ai = String(a.id());
-        var bi = String(b.id());
-        var an = Number(ai);
-        var bn = Number(bi);
-        var aNum = Number.isFinite(an);
-        var bNum = Number.isFinite(bn);
-        if (aNum && bNum) {
-          return an - bn;
-        }
-        return ai.localeCompare(bi);
-      });
-
-      var parts = [];
-      for (var i = 0; i < nodes.length; i += 1) {
-        var node = nodes[i];
-        var p = node.position();
-        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-          continue;
-        }
-        parts.push(node.id() + '=(' + Math.round(p.x) + ',' + Math.round(p.y) + ')');
-      }
-      if (parts.length === 0) {
-        return '';
-      }
-      return ' | coords: ' + parts.join(' ');
-    }
-
-    function setLayoutStatus(message, isError) {
-      if (isError) {
-        setStatus(message, true);
-        return;
-      }
-      setStatus(message + smallGraphCoordinatesSuffix(), false);
-    }
-
-    function normalizeLayoutScale() {
-      var nodes = cy.nodes();
-      if (!nodes || nodes.length === 0) {
-        return;
-      }
-
-      var minX = Infinity;
-      var minY = Infinity;
-      var maxX = -Infinity;
-      var maxY = -Infinity;
-
-      nodes.forEach(function (node) {
-        var p = node.position();
-        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-          return;
-        }
-        if (p.x < minX) minX = p.x;
-        if (p.y < minY) minY = p.y;
-        if (p.x > maxX) maxX = p.x;
-        if (p.y > maxY) maxY = p.y;
-      });
-
-      if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
-        return;
-      }
-
-      var width = maxX - minX;
-      var height = maxY - minY;
-      var pad = 24;
-      var targetWidth = 900;
-      var targetHeight = 620;
-      var safeW = Math.max(1e-9, width);
-      var safeH = Math.max(1e-9, height);
-      var scale = Math.min((targetWidth - 2 * pad) / safeW, (targetHeight - 2 * pad) / safeH);
-
-      if (!Number.isFinite(scale) || scale <= 0) {
-        return;
-      }
-
-      // Keep tiny/degenerate drawings readable.
-      if (width < 1e-9 && height < 1e-9) {
-        var single = nodes[0];
-        if (single) {
-          single.position({ x: targetWidth / 2, y: targetHeight / 2 });
-        }
-        cy.fit(undefined, 24);
-        return;
-      }
-
-      nodes.forEach(function (node) {
-        var p = node.position();
-        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-          return;
-        }
-        node.position({
-          x: (p.x - minX) * scale + pad,
-          y: (p.y - minY) * scale + pad
-        });
-      });
-
-      cy.fit(undefined, 24);
-    }
-
-    function setStatistics(stats) {
-      var s = stats || {};
-      $('#stat-is-planar').prop('checked', !!s.isPlanar).prop('disabled', true);
-      $('#stat-is-bipartite').prop('checked', !!s.isBipartite).prop('disabled', true);
-      $('#stat-is-planar-3-tree').prop('checked', !!s.isPlanar3Tree).prop('disabled', true);
-    }
-
-    function setTutteEnabled(isEnabled) {
-      var $btn = $('.layout-btn[data-layout="tutte"]');
-      $btn.prop('disabled', !isEnabled);
-      if (!isEnabled) {
-        $btn.removeClass('is-active');
-      }
-    }
-
-    function setP3TEnabled(isEnabled) {
-      var $btn = $('.layout-btn[data-layout="p3t"]');
-      $btn.prop('disabled', !isEnabled);
-      if (!isEnabled) {
-        $btn.removeClass('is-active');
-      }
-    }
-
-    function setFPPEnabled(isEnabled) {
-      var $btn = $('.layout-btn[data-layout="fpp"]');
-      $btn.prop('disabled', !isEnabled);
-      if (!isEnabled) {
-        $btn.removeClass('is-active');
-      }
-    }
-
-    function edgePairsFromParsed(parsed) {
-      var pairs = [];
-      if (!parsed || !parsed.elements) {
-        return pairs;
-      }
-
-      for (var i = 0; i < parsed.elements.length; i += 1) {
-        var el = parsed.elements[i];
-        if (el && el.data && el.data.source !== undefined && el.data.target !== undefined) {
-          pairs.push([String(el.data.source), String(el.data.target)]);
-        }
-      }
-      return pairs;
-    }
-
-    function isBipartiteGraph(nodeIds, edgePairs) {
-      var adjacency = {};
-      for (var i = 0; i < nodeIds.length; i += 1) {
-        adjacency[String(nodeIds[i])] = [];
-      }
-      for (i = 0; i < edgePairs.length; i += 1) {
-        var u = String(edgePairs[i][0]);
-        var v = String(edgePairs[i][1]);
-        if (u === v) {
-          return false;
-        }
-        if (!adjacency[u]) {
-          adjacency[u] = [];
-        }
-        if (!adjacency[v]) {
-          adjacency[v] = [];
-        }
-        adjacency[u].push(v);
-        adjacency[v].push(u);
-      }
-
-      var color = {};
-      for (i = 0; i < nodeIds.length; i += 1) {
-        var start = String(nodeIds[i]);
-        if (color[start] !== undefined) {
-          continue;
-        }
-        color[start] = 0;
-        var queue = [start];
-        var head = 0;
-        while (head < queue.length) {
-          var x = queue[head];
-          head += 1;
-          var neigh = adjacency[x] || [];
-          for (var j = 0; j < neigh.length; j += 1) {
-            var y = neigh[j];
-            if (color[y] === undefined) {
-              color[y] = 1 - color[x];
-              queue.push(y);
-            } else if (color[y] === color[x]) {
-              return false;
-            }
-          }
-        }
-      }
-      return true;
-    }
-
-    function updateStatistics(parsed) {
-      if (!parsed || !parsed.elements) {
-        setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        setTutteEnabled(false);
-        setP3TEnabled(false);
-        setFPPEnabled(false);
-        return;
-      }
-
-      if (!window.PlanarVibePlanarityTest || !window.PlanarVibePlanarityTest.computePlanarEmbedding) {
-        setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        setTutteEnabled(false);
-        setP3TEnabled(false);
-        setFPPEnabled(false);
-        return;
-      }
-
-      var nodeIds = cy.nodes().map(function (node) {
-        return String(node.id());
-      });
-      var edgePairs = edgePairsFromParsed(parsed);
-      var embedding = PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
-      var isPlanar = !!(embedding && embedding.ok);
-      var isBipartite = isBipartiteGraph(nodeIds, edgePairs);
-      var isPlanar3Tree = false;
-      if (isPlanar && PlanarVibePlanarityTest.isPlanar3Tree) {
-        isPlanar3Tree = !!PlanarVibePlanarityTest.isPlanar3Tree(nodeIds, edgePairs);
-      }
-      setStatistics({ isPlanar: isPlanar, isBipartite: isBipartite, isPlanar3Tree: isPlanar3Tree });
-      setTutteEnabled(isPlanar);
-      setP3TEnabled(isPlanar3Tree);
-      setFPPEnabled(isPlanar);
-    }
-
-    function drawGraph() {
-      try {
-        currentParsed = PlanarVibePlugin.parseEdgeList($('#dotfile').val());
-        cy.elements().remove();
-        cy.add(currentParsed.elements);
-        updateStatistics(currentParsed);
-        applyLayout('random');
-        setLayoutStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges (random coordinates)', false);
-      } catch (error) {
-        setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        setTutteEnabled(false);
-        setP3TEnabled(false);
-        setFPPEnabled(false);
-        setStatus(error.message, true);
-      }
-    }
-
-    function checkTextArea() {
-      var value = $('#dotfile').val().trim();
-      if (!value) {
-        setStatus('Please paste a graph first', true);
-        return false;
-      }
-      drawGraph();
-      return false;
-    }
-
-    function pasteStaticGraph(name) {
-      var sampleGraph = PlanarVibeGraphGenerator.getSample(name);
-      if (!sampleGraph) {
-        setStatus('Unknown sample: ' + name + '.', true);
-        return;
-      }
-
-      $('#dotfile').val(sampleGraph);
-      drawGraph();
-    }
-
-    function applyLayout(layoutName) {
-      if (cy.nodes().length === 0) {
-        return;
-      }
-      setSelectedLayoutButton(layoutName);
-
-      if (layoutName === 'random') {
-        PlanarVibePlugin.applyDeterministicRandomPositions(cy);
-        normalizeLayoutScale();
-        setLayoutStatus('Applied random coordinates', false);
-        return;
-      }
-
-      if (layoutName === 'tutte') {
-        if ($('.layout-btn[data-layout="tutte"]').prop('disabled')) {
-          setStatus('Tutte layout requires a planar graph.', true);
-          return;
-        }
-        var result = PlanarVibeTutte.applyTutteLayout(cy);
-        if (result.ok) {
-          normalizeLayoutScale();
-        }
-        setLayoutStatus(result.message, !result.ok);
-        return;
-      }
-
-      if (layoutName === 'p3t') {
-        if ($('.layout-btn[data-layout="p3t"]').prop('disabled')) {
-          setStatus('P3T layout requires a planar 3-tree.', true);
-          return;
-        }
-        if (!window.PlanarVibeP3T || !window.PlanarVibeP3T.applyP3TLayout) {
-          setStatus('P3T layout module is missing.', true);
-          return;
-        }
-        var result = PlanarVibeP3T.applyP3TLayout(cy);
-        if (result.ok) {
-          normalizeLayoutScale();
-        }
-        setLayoutStatus(result.message, !result.ok);
-        return;
-      }
-
-      if (layoutName === 'fpp') {
-        if ($('.layout-btn[data-layout="fpp"]').prop('disabled')) {
-          setStatus('FPP layout requires a planar graph.', true);
-          return;
-        }
-        if (!window.PlanarVibeFPP || !window.PlanarVibeFPP.applyFPPLayout) {
-          setStatus('FPP layout module is missing.', true);
-          return;
-        }
-        var fppResult = PlanarVibeFPP.applyFPPLayout(cy);
-        if (fppResult.ok) {
-          normalizeLayoutScale();
-        }
-        setLayoutStatus(fppResult.message, !fppResult.ok);
-        return;
-      }
-
-      var layout = cy.layout(PlanarVibePlugin.layoutOptionsByName(layoutName, currentParsed));
-      if (layout && layout.one) {
-        layout.one('layoutstop', function () {
-          normalizeLayoutScale();
-          setLayoutStatus('Applied ' + layoutName + ' layout', false);
-        });
-      } else {
-        setTimeout(function () {
-          normalizeLayoutScale();
-          setLayoutStatus('Applied ' + layoutName + ' layout', false);
-        }, 0);
-      }
-      layout.run();
-    }
-
-    function setSelectedLayoutButton(layoutName) {
-      $('.layout-btn').removeClass('is-active');
-      $('.layout-btn[data-layout="' + layoutName + '"]').addClass('is-active');
-    }
-
-    function resetZoom() {
-      if (cy.nodes().length === 0) {
-        return;
-      }
-      cy.fit(undefined, 20);
-      cy.center();
-      setStatus('Zoom reset.', false);
-    }
-
-    function escapeXml(value) {
-      return String(value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&apos;');
-    }
-
-    function exportSvg() {
-      var nodes = cy.nodes();
-      if (!nodes || nodes.length === 0) {
-        setStatus('Nothing to export.', true);
-        return;
-      }
-
-      var vertexSize = graphStylePrefs.vertexSize;
-      var edgeWidth = graphStylePrefs.edgeWidth;
-      var radius = vertexSize / 2;
-      var fontSize = computeNodeFontSize(vertexSize);
-      var pad = Math.max(24, radius + 8);
-
-      var minX = Infinity;
-      var minY = Infinity;
-      var maxX = -Infinity;
-      var maxY = -Infinity;
-
-      nodes.forEach(function (node) {
-        var p = node.position();
-        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-          return;
-        }
-        minX = Math.min(minX, p.x - radius);
-        minY = Math.min(minY, p.y - radius);
-        maxX = Math.max(maxX, p.x + radius);
-        maxY = Math.max(maxY, p.y + radius);
-      });
-
-      if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
-        setStatus('Cannot export: invalid node positions.', true);
-        return;
-      }
-
-      var width = Math.max(1, Math.ceil(maxX - minX + 2 * pad));
-      var height = Math.max(1, Math.ceil(maxY - minY + 2 * pad));
-      var offsetX = -minX + pad;
-      var offsetY = -minY + pad;
-
-      var svg = [];
-      svg.push('<?xml version="1.0" encoding="UTF-8"?>');
-      svg.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="0 0 ' + width + ' ' + height + '">');
-      svg.push('<rect x="0" y="0" width="' + width + '" height="' + height + '" fill="#ffffff"/>');
-
-      svg.push('<g id="edges" stroke="' + LOGO_COLORS.black + '" stroke-width="' + edgeWidth + '" fill="none" stroke-linecap="round">');
-      cy.edges().forEach(function (edge) {
-        var s = edge.source().position();
-        var t = edge.target().position();
-        if (!s || !t || !Number.isFinite(s.x) || !Number.isFinite(s.y) || !Number.isFinite(t.x) || !Number.isFinite(t.y)) {
-          return;
-        }
-        var x1 = s.x + offsetX;
-        var y1 = s.y + offsetY;
-        var x2 = t.x + offsetX;
-        var y2 = t.y + offsetY;
-        svg.push('<line x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '"/>');
-      });
-      svg.push('</g>');
-
-      svg.push('<g id="nodes">');
-      nodes.forEach(function (node) {
-        var p = node.position();
-        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-          return;
-        }
-        var x = p.x + offsetX;
-        var y = p.y + offsetY;
-        var label = escapeXml(node.data('label') !== undefined ? node.data('label') : node.id());
-        svg.push('<circle cx="' + x + '" cy="' + y + '" r="' + radius + '" fill="' + LOGO_COLORS.blue + '" stroke="' + LOGO_COLORS.black + '" stroke-width="0.5"/>');
-        svg.push('<text x="' + x + '" y="' + y + '" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="' + fontSize + '" font-family="Segoe UI, Arial, sans-serif">' + label + '</text>');
-      });
-      svg.push('</g>');
-      svg.push('</svg>');
-
-      var blob = new Blob([svg.join('')], { type: 'image/svg+xml;charset=utf-8' });
-      var url = URL.createObjectURL(blob);
-      var link = document.createElement('a');
-      link.href = url;
-      link.download = 'planarvibe-drawing.svg';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      setStatus('Saved SVG.', false);
-    }
-
-    window.checkTextArea = checkTextArea;
-    window.pasteStaticGraph = pasteStaticGraph;
-    window.applyLayout = applyLayout;
-    window.resetZoom = resetZoom;
-    window.exportSvg = exportSvg;
-
-    initStyleControls();
-    pasteStaticGraph(PlanarVibeGraphGenerator.defaultSample);
-  </script>
 </body>
 </html>
