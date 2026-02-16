@@ -603,13 +603,14 @@
       var size = getFacePlotSize();
       var W = size.width;
       var H = size.height;
-      var L = 46;
+      var L = 36;
       var R = 8;
       var T = 8;
       var B = 20;
       var PW = W - L - R;
       var PH = H - T - B;
-      var maxY = Math.max(5 * ideal, 1e-9);
+      var maxY = 5;
+      var safeIdeal = Math.max(ideal, 1e-12);
       var i;
 
       function sx(idx) {
@@ -624,27 +625,28 @@
 
       var pts = '';
       for (i = 0; i < values.length; i += 1) {
-        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(values[i], maxY));
+        var normalizedY = values[i] / safeIdeal;
+        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(normalizedY, maxY));
       }
 
-      var yIdeal = sy(ideal);
-      var yMaxLabel = maxY.toFixed(3);
-      var yIdealLabel = ideal.toFixed(3);
+      var yIdeal = sy(1);
+      var yMaxLabel = '5';
 
       var svg = '';
       svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
       svg += '<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
       svg += '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + (L - 4) + '" y1="' + T + '" x2="' + (L + 4) + '" y2="' + T + '" stroke="#a8b7cc" stroke-width="1" />';
       svg += '<line x1="' + L + '" y1="' + yIdeal + '" x2="' + (L + PW) + '" y2="' + yIdeal + '" stroke="#ea9624" stroke-width="1" stroke-dasharray="3 3" />';
       if (showLine && values.length >= 1) {
         svg += '<polyline fill="none" stroke="#1060A8" stroke-width="1.5" points="' + pts + '" />';
       }
       var yTickX = L - 4;
-      svg += '<text x="' + yTickX + '" y="' + (T + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
+      svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
       svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
+      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">area</text>';
       svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">faces sorted</text>';
-      svg += '<text x="' + yTickX + '" y="' + (yIdeal - 11) + '" text-anchor="end" fill="#ea9624" font-size="10">ideal</text>';
-      svg += '<text x="' + yTickX + '" y="' + (yIdeal - 1) + '" text-anchor="end" fill="#ea9624" font-size="10">' + yIdealLabel + '</text>';
+      svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
       global.$('#stats-face-plot')
         .attr('viewBox', '0 0 ' + W + ' ' + H)
         .attr('preserveAspectRatio', 'none')
@@ -807,9 +809,12 @@
       global.$('#reset-zoom-btn').prop('disabled', !isInteractive);
     }
 
-    function setInteractiveMode(nextInteractive, persistPreference) {
+    function setInteractiveMode(nextInteractive, persistPreference, suppressStatus) {
       if (persistPreference === undefined) {
         persistPreference = true;
+      }
+      if (suppressStatus === undefined) {
+        suppressStatus = false;
       }
       if (nextInteractive === isInteractive) {
         return;
@@ -828,7 +833,9 @@
         }
         setModeUi();
         renderStaticSnapshot();
-        setStatus('Static mode enabled. Turn Interactive back on to edit and run layouts.', false);
+        if (!suppressStatus) {
+          setStatus('Static mode enabled.', false);
+        }
         return;
       }
 
@@ -848,7 +855,9 @@
       }
       updateStatistics(currentParsed);
       updateFaceAreaPlot();
-      setStatus('Interactive mode enabled.', false);
+      if (!suppressStatus) {
+        setStatus('Interactive mode enabled.', false);
+      }
     }
 
     function normalizeLayoutScale() {
@@ -1021,14 +1030,14 @@
       try {
         currentParsed = global.PlanarVibePlugin.parseEdgeList(global.$('#dotfile').val());
         if (!cy) {
-          setInteractiveMode(true, false);
+          setInteractiveMode(true, false, true);
           cy.elements().remove();
           cy.add(currentParsed.elements);
           savedPositions = {};
           saveViewportState(null);
           updateStatistics(currentParsed);
           applyLayout('random');
-          setInteractiveMode(false, false);
+          setInteractiveMode(false, false, true);
           setStatus('Graph rendered in static mode.', false);
           return;
         }
@@ -1067,9 +1076,16 @@
       drawGraph();
     }
 
-    function applyLayout(layoutName) {
+    function applyLayout(layoutName, options) {
+      var opts = options || {};
+      var temporaryStaticRun = !!opts.temporaryStaticRun;
       if (!cy) {
-        setStatus('Enable Interactive mode to run layouts.', true);
+        if (!currentParsed || !currentParsed.elements) {
+          setStatus('Load a graph first.', true);
+          return;
+        }
+        setInteractiveMode(true, false, true);
+        applyLayout(layoutName, { temporaryStaticRun: true });
         return;
       }
       if (cy.nodes().length === 0) {
@@ -1081,37 +1097,52 @@
         global.PlanarVibePlugin.applyDeterministicRandomPositions(cy);
         normalizeLayoutScale();
         setLayoutStatus('Applied random coordinates', false);
+        if (temporaryStaticRun) {
+          setInteractiveMode(false, false, true);
+        }
         return;
       }
 
       if (layoutName === 'tutte') {
-        return runSpecialLayout({
+        runSpecialLayout({
           layoutName: 'tutte',
           disabledMessage: 'Tutte layout requires a planar graph.',
           missingMessage: 'Tutte layout module is missing.',
           module: global.PlanarVibeTutte,
           methodName: 'applyTutteLayout'
         });
+        if (temporaryStaticRun) {
+          setInteractiveMode(false, false, true);
+        }
+        return;
       }
 
       if (layoutName === 'p3t') {
-        return runSpecialLayout({
+        runSpecialLayout({
           layoutName: 'p3t',
           disabledMessage: 'P3T layout requires a planar 3-tree.',
           missingMessage: 'P3T layout module is missing.',
           module: global.PlanarVibeP3T,
           methodName: 'applyP3TLayout'
         });
+        if (temporaryStaticRun) {
+          setInteractiveMode(false, false, true);
+        }
+        return;
       }
 
       if (layoutName === 'fpp') {
-        return runSpecialLayout({
+        runSpecialLayout({
           layoutName: 'fpp',
           disabledMessage: 'FPP layout requires a planar graph.',
           missingMessage: 'FPP layout module is missing.',
           module: global.PlanarVibeFPP,
           methodName: 'applyFPPLayout'
         });
+        if (temporaryStaticRun) {
+          setInteractiveMode(false, false, true);
+        }
+        return;
       }
 
       var layout = cy.layout(global.PlanarVibePlugin.layoutOptionsByName(layoutName, currentParsed));
@@ -1119,11 +1150,17 @@
         layout.one('layoutstop', function () {
           normalizeLayoutScale();
           setLayoutStatus('Applied ' + layoutName + ' layout', false);
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
         });
       } else {
         setTimeout(function () {
           normalizeLayoutScale();
           setLayoutStatus('Applied ' + layoutName + ' layout', false);
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
         }, 0);
       }
       layout.run();
@@ -1297,7 +1334,7 @@
       cy.destroy();
       cy = null;
       renderStaticSnapshot();
-      setStatus('Static mode enabled. Turn Interactive on to run layouts.', false);
+      setStatus('Static mode enabled.', false);
     }
 
     setModeUi();
