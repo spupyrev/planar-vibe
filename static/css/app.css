@@ -95,6 +95,10 @@ body {
   position: relative;
 }
 
+.stats-subpanel + .stats-subpanel {
+  margin-top: 14px;
+}
+
 .stats-title {
   position: absolute;
   top: -10px;
@@ -121,16 +125,44 @@ body {
   flex-wrap: wrap;
 }
 
+.stats-value-item {
+  font-size: 0.88rem;
+  color: var(--pv-ink);
+  font-weight: 400;
+}
+
+.stats-value-item span {
+  font-weight: 400;
+}
+
+.stats-value-item-right {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
 .stats-plot-wrap {
   margin-top: 8px;
   border-top: 1px solid #d6e2f2;
   padding-top: 6px;
 }
 
+.stats-plot-wrap-standalone {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
+
 .stats-plot-label {
-  font-size: 0.78rem;
-  color: #5f6c80;
+  font-size: 0.88rem;
+  color: var(--pv-ink);
+  font-weight: 400;
   margin-bottom: 4px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
 }
 
 #stats-face-plot {
@@ -143,6 +175,12 @@ body {
 }
 
 .stats-check .form-check-input[disabled] {
+  opacity: 1;
+}
+
+.stats-check .form-check-input:disabled ~ .form-check-label,
+.stats-check .form-check-input[disabled] ~ .form-check-label {
+  color: var(--pv-ink);
   opacity: 1;
 }
 

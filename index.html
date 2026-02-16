@@ -31,6 +31,9 @@
                 spellcheck="false"
                 maxlength="10000000"
                 placeholder="Paste a graph edge list..."></textarea>
+              <div style="margin:5px 0 0px; text-align:center;">
+                <input id="submit" value="Create Graph" type="submit" class="btn btn-primary btn-sm"/>
+              </div>
               <div>
                 <span class="muted">...or try an example:</span>
                 <br>
@@ -45,18 +48,12 @@
               </div>
             </div>
 
-            <div style="margin:10px 0 0">
-              <table class="wide center"><tbody>
-                <tr>
-                  <td style="width:100%; text-align:center">
-                    <input id="submit" value="Create Graph" type="submit" class="btn btn-primary btn-sm"/>
-                  </td>
-                </tr>
-              </tbody></table>
-            </div>
-
             <div class="stats-subpanel">
-              <div class="stats-title">Statistics</div>
+              <div class="stats-title">Graph Stats</div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item">Vertices: <span id="stat-vertices">0</span></div>
+                <div class="stats-value-item">Edges: <span id="stat-edges">0</span></div>
+              </div>
               <div class="stats-row-inline">
                 <label class="form-check stats-check">
                   <input class="form-check-input" type="checkbox" id="stat-is-bipartite" disabled>
@@ -71,8 +68,20 @@
                   <span class="form-check-label">Planar 3-Tree</span>
                 </label>
               </div>
-              <div class="stats-plot-wrap">
-                <div class="stats-plot-label">Face Area Distribution</div>
+            </div>
+            <div class="stats-subpanel">
+              <div class="stats-title">Drawing Stats</div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
+                  <span title="Whether the current drawing is plane (no edge crossings)">Plane:</span>
+                  <span id="stat-is-plane" title="Yes if no edge crossings are present in the current drawing; otherwise no">--</span>
+                </div>
+              </div>
+              <div class="stats-plot-wrap stats-plot-wrap-standalone">
+                <div class="stats-plot-label">
+                  <span title="Distribution of bounded face areas, normalized to total bounded area">Face Area Distribution:</span>
+                  <span id="stats-face-quality" title="Overall face-area quality score. 1 means perfectly uniform face areas; lower means less uniform">--</span>
+                </div>
                 <svg id="stats-face-plot" role="img" aria-label="Face area distribution plot"></svg>
               </div>
             </div>

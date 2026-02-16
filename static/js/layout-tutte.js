@@ -13,7 +13,7 @@
     if (nodes.length < 3) {
       return {
         ok: false,
-        message: 'Tutte requires at least 3 vertices.'
+        message: 'Tutte requires at least 3 vertices'
       };
     }
 
@@ -21,7 +21,7 @@
     if (!planarGraph) {
       return {
         ok: false,
-        message: 'PlanarGraphCore is missing. Check script load order.'
+        message: 'PlanarGraphCore is missing. Check script load order'
       };
     }
 
@@ -30,7 +30,7 @@
     if (!outerFace || outerFace.length < 3) {
       return {
         ok: false,
-        message: 'Could not find/build outer face for Tutte.'
+        message: 'Could not find/build outer face for Tutte'
       };
     }
 

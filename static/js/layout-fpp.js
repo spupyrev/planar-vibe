@@ -18,13 +18,13 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return {
         ok: false,
-        reason: 'Planarity utilities are missing.'
+        reason: 'Planarity utilities are missing'
       };
     }
     if (!global.PlanarGraphCore || !global.PlanarGraphCore.isTriangulatedEmbedding || !global.PlanarGraphCore.augmentByFaceStellation || !global.PlanarGraphCore.cloneEdgePairs) {
       return {
         ok: false,
-        reason: 'Planar graph utilities are missing.'
+        reason: 'Planar graph utilities are missing'
       };
     }
 
@@ -32,7 +32,7 @@
     if (!embedding.ok) {
       return {
         ok: false,
-        reason: 'Graph is not planar.'
+        reason: 'Graph is not planar'
       };
     }
 
@@ -47,13 +47,13 @@
       if (!embedding.ok) {
         return {
           ok: false,
-          reason: 'Augmentation failed: resulting graph is not planar.'
+          reason: 'Augmentation failed: resulting graph is not planar'
         };
       }
       if (!global.PlanarGraphCore.isTriangulatedEmbedding(embedding)) {
         return {
           ok: false,
-          reason: 'Augmentation failed to triangulate all faces.'
+          reason: 'Augmentation failed to triangulate all faces'
         };
       }
     }
@@ -71,13 +71,13 @@
     if (!prepared || !prepared.ok) {
       return {
         ok: false,
-        reason: 'Missing prepared embedding.'
+        reason: 'Missing prepared embedding'
       };
     }
     if (!prepared.embedding || !prepared.embedding.ok) {
       return {
         ok: false,
-        reason: 'Missing embedding.'
+        reason: 'Missing embedding'
       };
     }
 
@@ -86,7 +86,7 @@
     if (nodeIds.length < 3) {
       return {
         ok: false,
-        reason: 'Need at least 3 vertices.'
+        reason: 'Need at least 3 vertices'
       };
     }
 
@@ -94,7 +94,7 @@
     if (!outerFace || outerFace.length !== 3) {
       return {
         ok: false,
-        reason: 'Triangulated embedding must have triangular outer face.'
+        reason: 'Triangulated embedding must have triangular outer face'
       };
     }
 
@@ -309,7 +309,7 @@
       if (!chosen || chosenIdx === -1) {
         return {
           ok: false,
-          reason: 'Could not find shelling vertex for canonical ordering.'
+          reason: 'Could not find shelling vertex for canonical ordering'
         };
       }
 
@@ -324,7 +324,7 @@
       if (!nextCycle || nextCycle.length < 2) {
         return {
           ok: false,
-          reason: 'Failed to update outer cycle during canonical ordering.'
+          reason: 'Failed to update outer cycle during canonical ordering'
         };
       }
 
@@ -350,13 +350,13 @@
     if (base.length !== 3) {
       return {
         ok: false,
-        reason: 'Canonical reduction did not end with 3 vertices.'
+        reason: 'Canonical reduction did not end with 3 vertices'
       };
     }
     if (!base.includes(v1) || !base.includes(v2)) {
       return {
         ok: false,
-        reason: 'Canonical base does not contain fixed outer edge.'
+        reason: 'Canonical base does not contain fixed outer edge'
       };
     }
 
@@ -370,7 +370,7 @@
     if (v3 === null) {
       return {
         ok: false,
-        reason: 'Canonical base triangle is invalid.'
+        reason: 'Canonical base triangle is invalid'
       };
     }
 
@@ -382,7 +382,7 @@
     if (order.length !== nodeIds.length || new Set(order).size !== nodeIds.length) {
       return {
         ok: false,
-        reason: 'Canonical ordering has duplicate or missing vertices.'
+        reason: 'Canonical ordering has duplicate or missing vertices'
       };
     }
 
@@ -464,7 +464,7 @@
     if (!order || order.length < 3) {
       return {
         ok: false,
-        message: 'Canonical ordering is too short for FPP.'
+        message: 'Canonical ordering is too short for FPP'
       };
     }
 
@@ -520,7 +520,7 @@
       if (!neigh || neigh.length < 2) {
         return {
           ok: false,
-          message: 'Missing contour neighbors for vertex ' + vk + '.'
+          message: 'Missing contour neighbors for vertex ' + vk
         };
       }
 
@@ -528,7 +528,7 @@
       if (!segment) {
         return {
           ok: false,
-          message: 'Could not find consecutive contour segment for vertex ' + vk + '.'
+          message: 'Could not find consecutive contour segment for vertex ' + vk
         };
       }
 
@@ -540,7 +540,7 @@
       if (!coords[wp] || !coords[wq]) {
         return {
           ok: false,
-          message: 'Missing endpoint coordinates for vertex ' + vk + '.'
+          message: 'Missing endpoint coordinates for vertex ' + vk
         };
       }
 
@@ -556,7 +556,7 @@
       if (y < baseY) {
         return {
           ok: false,
-          message: 'FPP invariant violated: vertex ' + vk + ' placed below base edge (v1,v2).'
+          message: 'FPP invariant violated: vertex ' + vk + ' placed below base edge (v1,v2)'
         };
       }
       coords[vk] = { x: x, y: y };

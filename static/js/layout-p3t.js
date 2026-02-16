@@ -13,7 +13,7 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.analyzePlanar3Tree) {
       return {
         ok: false,
-        message: 'Planarity utilities are missing.'
+        message: 'Planarity utilities are missing'
       };
     }
 
@@ -28,7 +28,7 @@
     if (!info.ok) {
       return {
         ok: false,
-        message: 'P3T requires a planar 3-tree: ' + info.reason + '.'
+        message: 'P3T requires a planar 3-tree: ' + info.reason
       };
     }
 

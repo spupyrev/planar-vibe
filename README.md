@@ -1,46 +1,53 @@
 # PlanarVibe
 
-PlanarVibe is a lightweight browser playground for drawing and experimenting with planar graph layouts.
-It runs as a static web app (HTML/CSS/JS only) and uses Cytoscape.js for rendering.
+PlanarVibe is a browser app for experimenting with planar graph drawings.
 
-See it in action: https://spupyrev.github.io/planar-vibe/
+Live app: https://spupyrev.github.io/planar-vibe/
 
-## Supported Layout Algorithms
+## Features
 
-- `Random`: deterministic coordinates based on node IDs
-- `Circular`: Cytoscape circle layout
-- `Force-Dir`: Cytoscape COSE layout
-- `Tutte`: fixes an outer cycle (or fallback triangle), then relaxes interior vertices by neighbor averaging
+- Paste an edge list or load built-in samples
+- Run layouts:
+  - `Random`
+  - `Circular`
+  - `Force-Dir`
+  - `Tutte`
+  - `P3T`
+  - `FPP`
+- Graph stats:
+  - vertices, edges
+  - planar, bipartite, planar 3-tree
+- Drawing stats:
+  - plane (`yes/no`, based on crossings in the current drawing)
+  - face-area distribution plot
+  - face-area quality score
+- Interactive/static mode switch (static mode is lower CPU)
+- SVG export
 
-## Usage
+## Input format
 
-1. Open the app.
-2. Paste an edge list (or click a sample link).
-3. Click `Create Graph`.
-4. Switch layouts using:
-   - `Random`
-   - `Circular`
-   - `Force-Dir`
-   - `Tutte`
-5. Use the top-right reset icon to refit the view.
+Edge list, one undirected edge per line:
 
-On startup, the app auto-loads the default sample (`sample1`) and draws it.
+```text
+u v
+```
 
-## Unit Tests
+- Blank lines are ignored
+- Lines starting with `#` are ignored
+- Duplicate edges are ignored
 
-Unit tests are in `tests/planarity.test.mjs` and use Node's built-in test runner
-(`node:test`).
+## Local run
 
-Run:
+This is a static frontend app. Open `index.html` in a browser, or serve the folder with any static server.
+
+## Tests
 
 ```bash
 npm test
 ```
 
-Requirements:
-
-- Node.js 18+ (for `node --test`)
+Requires Node.js 18+.
 
 ## License
 
-MIT (see `LICENSE`).
+MIT (see `LICENSE`)
