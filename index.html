@@ -29,7 +29,6 @@
                 id="dotfile"
                 class="wide"
                 spellcheck="false"
-                autofocus="autofocus"
                 maxlength="10000000"
                 placeholder="Paste a graph edge list..."></textarea>
               <div>
@@ -89,19 +88,26 @@
           <button id="save-svg-btn" type="button" class="btn btn-light btn-sm save-svg-btn" title="Save SVG" aria-label="Save SVG">
             <img src="static/img/save_as.svg" alt="">
           </button>
+          <label class="interactive-toggle" title="Toggle Cytoscape interactivity">
+            <input id="interactive-toggle" type="checkbox" checked>
+            <span>Interactive</span>
+          </label>
           <div class="style-controls" aria-label="Style controls">
-            <div class="style-control-row">
+            <div id="vertex-size-control-row" class="style-control-row">
               <label for="vertex-size-slider" title="Vertex size">Vertex</label>
               <input id="vertex-size-slider" type="range" min="4" max="20" step="1" title="Vertex size">
               <span id="vertex-size-value" class="style-control-value"></span>
             </div>
-            <div class="style-control-row">
+            <div id="edge-width-control-row" class="style-control-row">
               <label for="edge-width-slider" title="Edge width">Edge</label>
               <input id="edge-width-slider" type="range" min="0.25" max="5" step="0.25" title="Edge width">
               <span id="edge-width-value" class="style-control-value"></span>
             </div>
           </div>
           <div id="cy"></div>
+          <div id="cy-static-wrap" aria-label="Static graph view">
+            <svg id="cy-static-svg" role="img" aria-label="Static graph snapshot"></svg>
+          </div>
           <div class="layout-toolbar">
             <div class="layout-group">
               <div class="layout-group-title">Generic</div>
@@ -142,8 +148,8 @@
   <script src="static/js/planar-graph-core.js"></script>
   <script src="static/js/planarity-test.js"></script>
   <script src="static/js/metrics.js"></script>
-  <script src="static/js/tutte-layout.js"></script>
-  <script src="static/js/p3t-layout.js"></script>
-  <script src="static/js/fpp-layout.js"></script>
+  <script src="static/js/layout-tutte.js"></script>
+  <script src="static/js/layout-p3t.js"></script>
+  <script src="static/js/layout-fpp.js"></script>
 </body>
 </html>

@@ -58,8 +58,8 @@ function loadBrowserModules() {
     'static/js/graph-generator.js',
     'static/js/planarity-test.js',
     'static/js/planar-graph-core.js',
-    'static/js/tutte-layout.js',
-    'static/js/fpp-layout.js'
+    'static/js/layout-tutte.js',
+    'static/js/layout-fpp.js'
   ];
 
   for (const rel of files) {

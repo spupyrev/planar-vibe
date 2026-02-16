@@ -67,7 +67,7 @@
 
     return {
       name: 'cose',
-      animate: true,
+      animate: false,
       randomize: false,
       idealEdgeLength: 80,
       nodeRepulsion: 5000,
@@ -107,10 +107,10 @@
 
   function layoutOptionsByName(name, parsedGraph) {
     if (name === 'circle') {
-      return { name: 'circle', fit: true, padding: 24, animate: true };
+      return { name: 'circle', fit: true, padding: 24, animate: false };
     }
     if (name === 'grid') {
-      return { name: 'grid', fit: true, padding: 24, animate: true };
+      return { name: 'grid', fit: true, padding: 24, animate: false };
     }
     return layoutOptions(parsedGraph);
   }
@@ -150,8 +150,11 @@
     var GRAPH_STYLE_COOKIE_DAYS = 365;
     var DEFAULT_VERTEX_SIZE = 15;
     var DEFAULT_EDGE_WIDTH = 1;
+    var DEFAULT_WORLD_WIDTH = 900;
+    var DEFAULT_WORLD_HEIGHT = 620;
     var PREF_VERTEX_SIZE_KEY = 'planarvibe_vertex_size';
     var PREF_EDGE_WIDTH_KEY = 'planarvibe_edge_width';
+    var PREF_INTERACTIVE_KEY = 'planarvibe_interactive_mode';
 
     function writeCookie(name, value, days) {
       var d = new Date();
@@ -208,48 +211,82 @@
       vertexSize: readNumericPreference(PREF_VERTEX_SIZE_KEY, DEFAULT_VERTEX_SIZE, 4, 20),
       edgeWidth: readNumericPreference(PREF_EDGE_WIDTH_KEY, DEFAULT_EDGE_WIDTH, 0.25, 5)
     };
+    var isInteractive = readStorage(PREF_INTERACTIVE_KEY) !== '0';
+    var savedPositions = {};
+    var savedViewport = null;
+
+    function hashStringLocal(value, seed) {
+      var hash = seed >>> 0;
+      var text = String(value);
+      for (var i = 0; i < text.length; i += 1) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return hash >>> 0;
+    }
+
+    function normalizedHashLocal(value, seed) {
+      return hashStringLocal(value, seed) / 4294967295;
+    }
 
     function computeNodeFontSize(vertexSize) {
       return Math.max(6, Math.round(vertexSize * 0.45));
     }
 
-    var cy = global.cytoscape({
-      container: global.document.getElementById('cy'),
-      elements: [],
-      wheelSensitivity: 0.15,
-      style: [
-        {
-          selector: 'node',
-          style: {
-            'background-color': LOGO_COLORS.blue,
-            'border-color': LOGO_COLORS.black,
-            'border-width': 0.5,
-            'label': 'data(label)',
-            'color': '#ffffff',
-            'font-size': computeNodeFontSize(graphStylePrefs.vertexSize),
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'width': graphStylePrefs.vertexSize,
-            'height': graphStylePrefs.vertexSize
+    var cy = null;
+
+    function createCyInstance() {
+      return global.cytoscape({
+        container: global.document.getElementById('cy'),
+        elements: [],
+        wheelSensitivity: 0.15,
+        pixelRatio: 1,
+        motionBlur: false,
+        textureOnViewport: false,
+        hideEdgesOnViewport: true,
+        hideLabelsOnViewport: true,
+        boxSelectionEnabled: false,
+        autoungrabify: true,
+        autounselectify: true,
+        style: [
+          {
+            selector: 'node',
+            style: {
+              'background-color': LOGO_COLORS.blue,
+              'border-color': LOGO_COLORS.black,
+              'border-width': 0.5,
+              'label': 'data(label)',
+              'color': '#ffffff',
+              'font-size': computeNodeFontSize(graphStylePrefs.vertexSize),
+              'text-valign': 'center',
+              'text-halign': 'center',
+              'width': graphStylePrefs.vertexSize,
+              'height': graphStylePrefs.vertexSize
+            }
+          },
+          {
+            selector: 'edge',
+            style: {
+              'line-color': LOGO_COLORS.black,
+              'width': graphStylePrefs.edgeWidth,
+              'curve-style': 'straight'
+            }
           }
-        },
-        {
-          selector: 'edge',
-          style: {
-            'line-color': LOGO_COLORS.black,
-            'width': graphStylePrefs.edgeWidth,
-            'curve-style': 'bezier'
-          }
-        }
-      ],
-      layout: { name: 'grid' }
-    });
+        ],
+        layout: { name: 'grid' }
+      });
+    }
+
+    cy = createCyInstance();
 
     function setStatus(message, isError) {
       global.$('#status').text(message).css('color', isError ? '#ba1b1b' : LOGO_COLORS.ink);
     }
 
     function applyGraphAppearance() {
+      if (!cy) {
+        return;
+      }
       cy.style()
         .selector('node')
         .style({
@@ -262,6 +299,86 @@
           'width': graphStylePrefs.edgeWidth
         })
         .update();
+    }
+
+    function capturePositionsFromCy() {
+      if (!cy) {
+        return {};
+      }
+      var byId = {};
+      cy.nodes().forEach(function (node) {
+        var p = node.position();
+        byId[String(node.id())] = { x: p.x, y: p.y };
+      });
+      return byId;
+    }
+
+    function captureViewportFromCy() {
+      if (!cy) {
+        return null;
+      }
+      return {
+        zoom: cy.zoom(),
+        pan: cy.pan(),
+        width: cy.width(),
+        height: cy.height()
+      };
+    }
+
+    function saveViewportState(vp) {
+      savedViewport = vp || null;
+    }
+
+    function applySavedViewportToCy() {
+      if (!cy || !savedViewport) {
+        return false;
+      }
+      if (!Number.isFinite(savedViewport.zoom) || !savedViewport.pan) {
+        return false;
+      }
+      cy.zoom(savedViewport.zoom);
+      cy.pan(savedViewport.pan);
+      return true;
+    }
+
+    function applySavedPositionsToCy() {
+      if (!cy || !savedPositions) {
+        return false;
+      }
+      var changed = false;
+      cy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        var p = savedPositions[id];
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+          node.position({ x: p.x, y: p.y });
+          changed = true;
+        }
+      });
+      return changed;
+    }
+
+    function assignDeterministicPositionsForParsed(parsed) {
+      var byId = {};
+      if (!parsed || !parsed.elements) {
+        return byId;
+      }
+      var width = DEFAULT_WORLD_WIDTH;
+      var height = DEFAULT_WORLD_HEIGHT;
+      var margin = 26;
+      var xSpan = Math.max(width - margin * 2, 1);
+      var ySpan = Math.max(height - margin * 2, 1);
+      for (var i = 0; i < parsed.elements.length; i += 1) {
+        var el = parsed.elements[i];
+        if (!el || !el.data || el.data.source !== undefined || el.data.target !== undefined) {
+          continue;
+        }
+        var id = String(el.data.id);
+        byId[id] = {
+          x: margin + normalizedHashLocal(id + ':x', 2166136261) * xSpan,
+          y: margin + normalizedHashLocal(id + ':y', 33554467) * ySpan
+        };
+      }
+      return byId;
     }
 
     function updateStyleControlsUI() {
@@ -279,6 +396,9 @@
         graphStylePrefs.vertexSize = Number(global.$(this).val()) || DEFAULT_VERTEX_SIZE;
         updateStyleControlsUI();
         applyGraphAppearance();
+        if (!cy) {
+          renderStaticSnapshot();
+        }
         writeStorage(PREF_VERTEX_SIZE_KEY, graphStylePrefs.vertexSize);
       });
 
@@ -286,11 +406,17 @@
         graphStylePrefs.edgeWidth = Number(global.$(this).val()) || DEFAULT_EDGE_WIDTH;
         updateStyleControlsUI();
         applyGraphAppearance();
+        if (!cy) {
+          renderStaticSnapshot();
+        }
         writeStorage(PREF_EDGE_WIDTH_KEY, graphStylePrefs.edgeWidth);
       });
     }
 
     function smallGraphCoordinatesSuffix() {
+      if (!cy) {
+        return '';
+      }
       if (cy.nodes().length === 0 || cy.nodes().length > 10) {
         return '';
       }
@@ -331,7 +457,11 @@
         return;
       }
       setStatus(message + smallGraphCoordinatesSuffix(), false);
-      updateFaceAreaPlot();
+      if (cy) {
+        savedPositions = capturePositionsFromCy();
+        saveViewportState(captureViewportFromCy());
+        updateFaceAreaPlot();
+      }
     }
 
     function escapeXml(value) {
@@ -341,6 +471,112 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&apos;');
+    }
+
+    function edgePairsFromParsed(parsed) {
+      var pairs = [];
+      if (!parsed || !parsed.elements) {
+        return pairs;
+      }
+      for (var i = 0; i < parsed.elements.length; i += 1) {
+        var el = parsed.elements[i];
+        if (el && el.data && el.data.source !== undefined && el.data.target !== undefined) {
+          pairs.push([String(el.data.source), String(el.data.target)]);
+        }
+      }
+      return pairs;
+    }
+
+    function buildSvgMarkup(nodePosById, edgePairs, opts) {
+      var radius = opts.radius;
+      var edgeWidth = opts.edgeWidth;
+      var fontSize = opts.fontSize;
+      var includeBackground = opts.includeBackground !== false;
+      var forcedViewBox = opts.viewBox || null;
+      var pad = Math.max(24, radius + 8);
+      var nodeIds = Object.keys(nodePosById || {});
+      var minX = Infinity;
+      var minY = Infinity;
+      var maxX = -Infinity;
+      var maxY = -Infinity;
+      var width = 0;
+      var height = 0;
+      var offsetX = 0;
+      var offsetY = 0;
+      var viewBox = '0 0 1 1';
+
+      if (forcedViewBox) {
+        minX = Number(forcedViewBox.minX);
+        minY = Number(forcedViewBox.minY);
+        width = Number(forcedViewBox.width);
+        height = Number(forcedViewBox.height);
+        if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(width) || !Number.isFinite(height) ||
+            width <= 1e-9 || height <= 1e-9) {
+          return null;
+        }
+        viewBox = minX + ' ' + minY + ' ' + width + ' ' + height;
+      } else {
+        for (var i = 0; i < nodeIds.length; i += 1) {
+          var p = nodePosById[nodeIds[i]];
+          if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+            continue;
+          }
+          minX = Math.min(minX, p.x - radius);
+          minY = Math.min(minY, p.y - radius);
+          maxX = Math.max(maxX, p.x + radius);
+          maxY = Math.max(maxY, p.y + radius);
+        }
+
+        if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+          return null;
+        }
+
+        width = Math.max(1, Math.ceil(maxX - minX + 2 * pad));
+        height = Math.max(1, Math.ceil(maxY - minY + 2 * pad));
+        offsetX = -minX + pad;
+        offsetY = -minY + pad;
+        viewBox = '0 0 ' + width + ' ' + height;
+      }
+
+      var svg = [];
+      svg.push('<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height + '" viewBox="' + viewBox + '">');
+      if (includeBackground) {
+        svg.push('<rect x="' + minX + '" y="' + minY + '" width="' + width + '" height="' + height + '" fill="#ffffff"/>');
+      }
+      svg.push('<g id="edges" stroke="' + LOGO_COLORS.black + '" stroke-width="' + edgeWidth + '" fill="none" stroke-linecap="round">');
+      for (var j = 0; j < edgePairs.length; j += 1) {
+        var u = String(edgePairs[j][0]);
+        var v = String(edgePairs[j][1]);
+        var pu = nodePosById[u];
+        var pv = nodePosById[v];
+        if (!pu || !pv) {
+          continue;
+        }
+        svg.push('<line x1="' + (pu.x + offsetX) + '" y1="' + (pu.y + offsetY) + '" x2="' + (pv.x + offsetX) + '" y2="' + (pv.y + offsetY) + '"/>');
+      }
+      svg.push('</g>');
+      svg.push('<g id="nodes">');
+      for (var k = 0; k < nodeIds.length; k += 1) {
+        var id = nodeIds[k];
+        var pn = nodePosById[id];
+        if (!pn) {
+          continue;
+        }
+        var x = pn.x + offsetX;
+        var y = pn.y + offsetY;
+        var label = escapeXml(id);
+        svg.push('<circle cx="' + x + '" cy="' + y + '" r="' + radius + '" fill="' + LOGO_COLORS.blue + '" stroke="' + LOGO_COLORS.black + '" stroke-width="0.5"/>');
+        svg.push('<text x="' + x + '" y="' + y + '" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="' + fontSize + '" font-family="Segoe UI, Arial, sans-serif">' + label + '</text>');
+      }
+      svg.push('</g>');
+      svg.push('</svg>');
+
+      return {
+        markup: svg.join(''),
+        width: width,
+        height: height,
+        viewBox: viewBox
+      };
     }
 
     function getFacePlotSize() {
@@ -415,21 +651,10 @@
         .html(svg);
     }
 
-    function edgePairsFromParsed(parsed) {
-      var pairs = [];
-      if (!parsed || !parsed.elements) {
-        return pairs;
-      }
-      for (var i = 0; i < parsed.elements.length; i += 1) {
-        var el = parsed.elements[i];
-        if (el && el.data && el.data.source !== undefined && el.data.target !== undefined) {
-          pairs.push([String(el.data.source), String(el.data.target)]);
-        }
-      }
-      return pairs;
-    }
-
     function hasDrawingCrossings() {
+      if (!cy) {
+        return false;
+      }
       var edges = cy.edges().toArray();
       var EPS = 1e-9;
 
@@ -498,6 +723,10 @@
     }
 
     function updateFaceAreaPlot() {
+      if (!cy) {
+        clearFaceAreaPlot('Static mode');
+        return;
+      }
       if (!currentParsed || !currentParsed.elements || cy.nodes().length === 0) {
         clearFaceAreaPlot('No graph');
         return;
@@ -515,7 +744,117 @@
       renderFaceAreaPlot(result.values, result.ideal, !hasDrawingCrossings());
     }
 
+    function renderStaticSnapshot() {
+      if (!currentParsed || !currentParsed.elements) {
+        global.$('#cy-static-svg').empty();
+        return;
+      }
+      var edgePairs = edgePairsFromParsed(currentParsed);
+      var forcedViewBox = null;
+      var wrapEl = global.document.getElementById('cy-static-wrap');
+      if (savedViewport && wrapEl) {
+        var zoom = Number(savedViewport.zoom);
+        var pan = savedViewport.pan || {};
+        var w = Math.max(1, Number(savedViewport.width) || wrapEl.clientWidth || 0);
+        var h = Math.max(1, Number(savedViewport.height) || wrapEl.clientHeight || 0);
+        if (Number.isFinite(zoom) && zoom > 1e-9 && Number.isFinite(pan.x) && Number.isFinite(pan.y) && w > 0 && h > 0) {
+          forcedViewBox = {
+            minX: (-pan.x) / zoom,
+            minY: (-pan.y) / zoom,
+            width: w / zoom,
+            height: h / zoom
+          };
+        }
+      }
+      if (!forcedViewBox) {
+        forcedViewBox = {
+          minX: 0,
+          minY: 0,
+          width: DEFAULT_WORLD_WIDTH,
+          height: DEFAULT_WORLD_HEIGHT
+        };
+      }
+      var snapshot = buildSvgMarkup(savedPositions, edgePairs, {
+        radius: graphStylePrefs.vertexSize / 2,
+        edgeWidth: graphStylePrefs.edgeWidth,
+        fontSize: computeNodeFontSize(graphStylePrefs.vertexSize),
+        includeBackground: false,
+        viewBox: forcedViewBox
+      });
+      if (!snapshot) {
+        global.$('#cy-static-svg').empty();
+        return;
+      }
+      var inner = snapshot.markup
+        .replace(/^<svg[^>]*>/, '')
+        .replace(/<\/svg>\s*$/, '');
+      global.$('#cy-static-svg')
+        .attr('viewBox', snapshot.viewBox)
+        .attr('preserveAspectRatio', 'xMidYMid meet')
+        .html(inner);
+    }
+
+    function setModeUi() {
+      global.$('#interactive-toggle').prop('checked', isInteractive);
+      global.$('#cy').toggle(isInteractive);
+      global.$('#cy-static-wrap').toggle(!isInteractive);
+      global.$('.layout-toolbar').show();
+      global.$('.style-controls').show();
+      global.$('#vertex-size-slider').prop('disabled', false);
+      global.$('#vertex-size-control-row').css('opacity', '1');
+      global.$('#edge-width-slider').prop('disabled', false);
+      global.$('#edge-width-control-row').css('opacity', '1');
+      global.$('#reset-zoom-btn').prop('disabled', !isInteractive);
+    }
+
+    function setInteractiveMode(nextInteractive, persistPreference) {
+      if (persistPreference === undefined) {
+        persistPreference = true;
+      }
+      if (nextInteractive === isInteractive) {
+        return;
+      }
+      isInteractive = !!nextInteractive;
+      if (persistPreference) {
+        writeStorage(PREF_INTERACTIVE_KEY, isInteractive ? '1' : '0');
+      }
+
+      if (!isInteractive) {
+        if (cy) {
+          savedPositions = capturePositionsFromCy();
+          saveViewportState(captureViewportFromCy());
+          cy.destroy();
+          cy = null;
+        }
+        setModeUi();
+        renderStaticSnapshot();
+        setStatus('Static mode enabled. Turn Interactive back on to edit and run layouts.', false);
+        return;
+      }
+
+      setModeUi();
+      cy = createCyInstance();
+      applyGraphAppearance();
+      if (currentParsed && currentParsed.elements) {
+        cy.add(currentParsed.elements);
+        if (!applySavedPositionsToCy()) {
+          global.PlanarVibePlugin.applyDeterministicRandomPositions(cy);
+          normalizeLayoutScale();
+          saveViewportState(captureViewportFromCy());
+        } else if (!applySavedViewportToCy()) {
+          cy.fit(undefined, 24);
+          saveViewportState(captureViewportFromCy());
+        }
+      }
+      updateStatistics(currentParsed);
+      updateFaceAreaPlot();
+      setStatus('Interactive mode enabled.', false);
+    }
+
     function normalizeLayoutScale() {
+      if (!cy) {
+        return;
+      }
       var nodes = cy.nodes();
       if (!nodes || nodes.length === 0) {
         return;
@@ -576,28 +915,30 @@
       global.$('#stat-is-planar-3-tree').prop('checked', !!s.isPlanar3Tree).prop('disabled', true);
     }
 
-    function setTutteEnabled(isEnabled) {
-      var $btn = global.$('.layout-btn[data-layout="tutte"]');
+    function setLayoutEnabled(layoutName, isEnabled) {
+      var $btn = global.$('.layout-btn[data-layout="' + layoutName + '"]');
       $btn.prop('disabled', !isEnabled);
       if (!isEnabled) {
         $btn.removeClass('is-active');
       }
+    }
+
+    function setTutteEnabled(isEnabled) {
+      setLayoutEnabled('tutte', isEnabled);
     }
 
     function setP3TEnabled(isEnabled) {
-      var $btn = global.$('.layout-btn[data-layout="p3t"]');
-      $btn.prop('disabled', !isEnabled);
-      if (!isEnabled) {
-        $btn.removeClass('is-active');
-      }
+      setLayoutEnabled('p3t', isEnabled);
     }
 
     function setFPPEnabled(isEnabled) {
-      var $btn = global.$('.layout-btn[data-layout="fpp"]');
-      $btn.prop('disabled', !isEnabled);
-      if (!isEnabled) {
-        $btn.removeClass('is-active');
-      }
+      setLayoutEnabled('fpp', isEnabled);
+    }
+
+    function setPlanarButtonsDisabled() {
+      setTutteEnabled(false);
+      setP3TEnabled(false);
+      setFPPEnabled(false);
     }
 
     function isBipartiteGraph(nodeIds, edgePairs) {
@@ -643,20 +984,22 @@
     }
 
     function updateStatistics(parsed) {
+      if (!cy) {
+        setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
+        clearFaceAreaPlot('Graph hidden');
+        setPlanarButtonsDisabled();
+        return;
+      }
       if (!parsed || !parsed.elements) {
         setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No graph');
-        setTutteEnabled(false);
-        setP3TEnabled(false);
-        setFPPEnabled(false);
+        setPlanarButtonsDisabled();
         return;
       }
       if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
         setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No plot');
-        setTutteEnabled(false);
-        setP3TEnabled(false);
-        setFPPEnabled(false);
+        setPlanarButtonsDisabled();
         return;
       }
       var nodeIds = cy.nodes().map(function (node) { return String(node.id()); });
@@ -677,17 +1020,29 @@
     function drawGraph() {
       try {
         currentParsed = global.PlanarVibePlugin.parseEdgeList(global.$('#dotfile').val());
+        if (!cy) {
+          setInteractiveMode(true, false);
+          cy.elements().remove();
+          cy.add(currentParsed.elements);
+          savedPositions = {};
+          saveViewportState(null);
+          updateStatistics(currentParsed);
+          applyLayout('random');
+          setInteractiveMode(false, false);
+          setStatus('Graph rendered in static mode.', false);
+          return;
+        }
         cy.elements().remove();
         cy.add(currentParsed.elements);
+        savedPositions = {};
+        saveViewportState(null);
         updateStatistics(currentParsed);
         applyLayout('random');
-        setLayoutStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges (random coordinates)', false);
+        setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges.', false);
       } catch (error) {
         setStatistics({ isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Parse error');
-        setTutteEnabled(false);
-        setP3TEnabled(false);
-        setFPPEnabled(false);
+        setPlanarButtonsDisabled();
         setStatus(error.message, true);
       }
     }
@@ -713,6 +1068,10 @@
     }
 
     function applyLayout(layoutName) {
+      if (!cy) {
+        setStatus('Enable Interactive mode to run layouts.', true);
+        return;
+      }
       if (cy.nodes().length === 0) {
         return;
       }
@@ -726,44 +1085,33 @@
       }
 
       if (layoutName === 'tutte') {
-        if (global.$('.layout-btn[data-layout="tutte"]').prop('disabled')) {
-          setStatus('Tutte layout requires a planar graph.', true);
-          return;
-        }
-        var result = global.PlanarVibeTutte.applyTutteLayout(cy);
-        if (result.ok) normalizeLayoutScale();
-        setLayoutStatus(result.message, !result.ok);
-        return;
+        return runSpecialLayout({
+          layoutName: 'tutte',
+          disabledMessage: 'Tutte layout requires a planar graph.',
+          missingMessage: 'Tutte layout module is missing.',
+          module: global.PlanarVibeTutte,
+          methodName: 'applyTutteLayout'
+        });
       }
 
       if (layoutName === 'p3t') {
-        if (global.$('.layout-btn[data-layout="p3t"]').prop('disabled')) {
-          setStatus('P3T layout requires a planar 3-tree.', true);
-          return;
-        }
-        if (!global.PlanarVibeP3T || !global.PlanarVibeP3T.applyP3TLayout) {
-          setStatus('P3T layout module is missing.', true);
-          return;
-        }
-        result = global.PlanarVibeP3T.applyP3TLayout(cy);
-        if (result.ok) normalizeLayoutScale();
-        setLayoutStatus(result.message, !result.ok);
-        return;
+        return runSpecialLayout({
+          layoutName: 'p3t',
+          disabledMessage: 'P3T layout requires a planar 3-tree.',
+          missingMessage: 'P3T layout module is missing.',
+          module: global.PlanarVibeP3T,
+          methodName: 'applyP3TLayout'
+        });
       }
 
       if (layoutName === 'fpp') {
-        if (global.$('.layout-btn[data-layout="fpp"]').prop('disabled')) {
-          setStatus('FPP layout requires a planar graph.', true);
-          return;
-        }
-        if (!global.PlanarVibeFPP || !global.PlanarVibeFPP.applyFPPLayout) {
-          setStatus('FPP layout module is missing.', true);
-          return;
-        }
-        var fppResult = global.PlanarVibeFPP.applyFPPLayout(cy);
-        if (fppResult.ok) normalizeLayoutScale();
-        setLayoutStatus(fppResult.message, !fppResult.ok);
-        return;
+        return runSpecialLayout({
+          layoutName: 'fpp',
+          disabledMessage: 'FPP layout requires a planar graph.',
+          missingMessage: 'FPP layout module is missing.',
+          module: global.PlanarVibeFPP,
+          methodName: 'applyFPPLayout'
+        });
       }
 
       var layout = cy.layout(global.PlanarVibePlugin.layoutOptionsByName(layoutName, currentParsed));
@@ -781,21 +1129,62 @@
       layout.run();
     }
 
+    function runSpecialLayout(config) {
+      var name = config.layoutName;
+      if (global.$('.layout-btn[data-layout="' + name + '"]').prop('disabled')) {
+        setStatus(config.disabledMessage, true);
+        return;
+      }
+      if (!config.module || typeof config.module[config.methodName] !== 'function') {
+        setStatus(config.missingMessage, true);
+        return;
+      }
+      var result = config.module[config.methodName](cy);
+      if (result && result.ok) {
+        normalizeLayoutScale();
+      }
+      setLayoutStatus(result && result.message ? result.message : ('Applied ' + name + ' layout'), !(result && result.ok));
+    }
+
     function setSelectedLayoutButton(layoutName) {
       global.$('.layout-btn').removeClass('is-active');
       global.$('.layout-btn[data-layout="' + layoutName + '"]').addClass('is-active');
     }
 
     function resetZoom() {
+      if (!cy) {
+        return;
+      }
       if (cy.nodes().length === 0) {
         return;
       }
       cy.fit(undefined, 20);
       cy.center();
+      saveViewportState(captureViewportFromCy());
       setStatus('Zoom reset.', false);
     }
 
     function exportSvg() {
+      if (!cy) {
+        var staticMarkup = String(global.$('#cy-static-svg').html() || '').trim();
+        if (!staticMarkup) {
+          setStatus('Nothing to export.', true);
+          return;
+        }
+        var staticViewBox = global.$('#cy-static-svg').attr('viewBox') || '0 0 1000 700';
+        var staticSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="' + staticViewBox + '">' + staticMarkup + '</svg>';
+        var staticBlob = new Blob([staticSvg], { type: 'image/svg+xml;charset=utf-8' });
+        var staticUrl = URL.createObjectURL(staticBlob);
+        var staticLink = global.document.createElement('a');
+        staticLink.href = staticUrl;
+        staticLink.download = 'planarvibe-drawing.svg';
+        global.document.body.appendChild(staticLink);
+        staticLink.click();
+        global.document.body.removeChild(staticLink);
+        URL.revokeObjectURL(staticUrl);
+        setStatus('Saved SVG.', false);
+        return;
+      }
       var nodes = cy.nodes();
       if (!nodes || nodes.length === 0) {
         setStatus('Nothing to export.', true);
@@ -890,18 +1279,29 @@
       global.$('#save-svg-btn').on('click', function () {
         exportSvg();
       });
-    }
 
-    global.checkTextArea = checkTextArea;
-    global.pasteStaticGraph = pasteStaticGraph;
-    global.applyLayout = applyLayout;
-    global.resetZoom = resetZoom;
-    global.exportSvg = exportSvg;
+      global.$('#interactive-toggle').on('change', function () {
+        setInteractiveMode(global.$(this).is(':checked'));
+      });
+    }
 
     bindUiEvents();
     initStyleControls();
-    clearFaceAreaPlot('No graph');
+
+    clearFaceAreaPlot(isInteractive ? 'No graph' : 'Static mode');
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);
+
+    if (!isInteractive && cy) {
+      savedPositions = capturePositionsFromCy();
+      saveViewportState(captureViewportFromCy());
+      cy.destroy();
+      cy = null;
+      renderStaticSnapshot();
+      setStatus('Static mode enabled. Turn Interactive on to run layouts.', false);
+    }
+
+    setModeUi();
+
     return true;
   }
 
@@ -917,5 +1317,4 @@
     }
   }
 
-  global.PlanarVibePlugin.initBrowserApp = initBrowserApp;
 })(window);
