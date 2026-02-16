@@ -214,6 +214,7 @@
     var isInteractive = readStorage(PREF_INTERACTIVE_KEY) !== '0';
     var savedPositions = {};
     var savedViewport = null;
+    var currentVisualizedInput = null;
 
     function hashStringLocal(value, seed) {
       var hash = seed >>> 0;
@@ -281,6 +282,17 @@
 
     function setStatus(message, isError) {
       global.$('#status').text(message).css('color', isError ? '#ba1b1b' : LOGO_COLORS.ink);
+    }
+
+    function updateCreateGraphButtonState() {
+      var value = global.$('#dotfile').val();
+      var isSameAsVisualized = currentVisualizedInput !== null && value === currentVisualizedInput;
+      global.$('#submit').prop('disabled', isSameAsVisualized);
+    }
+
+    function markCurrentInputAsVisualized() {
+      currentVisualizedInput = global.$('#dotfile').val();
+      updateCreateGraphButtonState();
     }
 
     function applyGraphAppearance() {
@@ -771,7 +783,9 @@
       var hasCrossings = hasCrossingsFromPositions(posById, edgePairs);
       setPlaneStat(!hasCrossings);
       if (hasCrossings) {
-        global.$('#stats-face-quality').text('');
+        clearFaceAreaPlot('Drawing is not plane');
+        setPlaneStat(false);
+        return;
       }
 
       if (!global.PlanarVibeMetrics) {
@@ -793,11 +807,7 @@
         return;
       }
       renderFaceAreaPlot(result.values, result.ideal, !hasCrossings);
-      if (!hasCrossings) {
-        updateFaceAreaQuality(result.values);
-      } else {
-        global.$('#stats-face-quality').text('');
-      }
+      updateFaceAreaQuality(result.values);
     }
 
     function updateFaceAreaQuality(values) {
@@ -1123,6 +1133,7 @@
           updateStatistics(currentParsed);
           applyLayout('random');
           setInteractiveMode(false, false, true);
+          markCurrentInputAsVisualized();
           setStatus('Graph rendered in static mode', false);
           return;
         }
@@ -1132,11 +1143,13 @@
         saveViewportState(null);
         updateStatistics(currentParsed);
         applyLayout('random');
+        markCurrentInputAsVisualized();
         setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges', false);
       } catch (error) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Parse error');
         setPlanarButtonsDisabled();
+        updateCreateGraphButtonState();
         setStatus(error.message, true);
       }
     }
@@ -1379,6 +1392,10 @@
         checkTextArea();
       });
 
+      global.$('#dotfile').on('input change', function () {
+        updateCreateGraphButtonState();
+      });
+
       global.$('.sample-link').on('click', function (event) {
         event.preventDefault();
         var sampleName = global.$(this).data('sample');
@@ -1421,6 +1438,8 @@
       renderStaticSnapshot();
       setStatus('Static mode enabled', false);
     }
+
+    updateCreateGraphButtonState();
 
     setModeUi();
 

@@ -46,10 +46,10 @@
     }
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb || !emb.ok) {
-      return { ok: false, reason: 'Graph is not planar.' };
+      return { ok: false, reason: 'Graph is not planar' };
     }
     if (!emb.faces || emb.faces.length === 0) {
-      return { ok: false, reason: 'No faces available.' };
+      return { ok: false, reason: 'No faces available' };
     }
 
     var outerKey = emb.outerFace ? faceCanonicalKey(emb.outerFace) : null;
@@ -66,7 +66,7 @@
     }
 
     if (areas.length === 0) {
-      return { ok: false, reason: 'No bounded face areas available.' };
+      return { ok: false, reason: 'No bounded face areas available' };
     }
 
     var total = 0;

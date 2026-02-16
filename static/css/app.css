@@ -81,6 +81,17 @@ body {
   text-decoration: underline;
 }
 
+#submit:disabled,
+#submit.btn:disabled,
+#submit.btn-primary:disabled {
+  background: #d9e1ee;
+  border-color: #bcc9db;
+  color: #7c8ba3;
+  opacity: 1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .muted {
   color: #6b7d96;
   font-size: 0.88rem;
