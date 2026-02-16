@@ -88,12 +88,12 @@
           <div class="style-controls" aria-label="Style controls">
             <div class="style-control-row">
               <label for="vertex-size-slider" title="Vertex size">Vertex</label>
-              <input id="vertex-size-slider" type="range" min="8" max="30" step="1" title="Vertex size">
+              <input id="vertex-size-slider" type="range" min="4" max="20" step="1" title="Vertex size">
               <span id="vertex-size-value" class="style-control-value"></span>
             </div>
             <div class="style-control-row">
               <label for="edge-width-slider" title="Edge width">Edge</label>
-              <input id="edge-width-slider" type="range" min="0.5" max="8" step="0.5" title="Edge width">
+              <input id="edge-width-slider" type="range" min="0.25" max="5" step="0.25" title="Edge width">
               <span id="edge-width-value" class="style-control-value"></span>
             </div>
           </div>
@@ -208,8 +208,8 @@
     }
 
     var graphStylePrefs = {
-      vertexSize: readNumericPreference(PREF_VERTEX_SIZE_KEY, DEFAULT_VERTEX_SIZE, 8, 30),
-      edgeWidth: readNumericPreference(PREF_EDGE_WIDTH_KEY, DEFAULT_EDGE_WIDTH, 0.5, 8)
+      vertexSize: readNumericPreference(PREF_VERTEX_SIZE_KEY, DEFAULT_VERTEX_SIZE, 4, 20),
+      edgeWidth: readNumericPreference(PREF_EDGE_WIDTH_KEY, DEFAULT_EDGE_WIDTH, 0.25, 5)
     };
 
     function computeNodeFontSize(vertexSize) {
