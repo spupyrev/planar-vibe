@@ -59,6 +59,7 @@ function loadBrowserModules() {
     'static/js/planarity-test.js',
     'static/js/planar-graph-core.js',
     'static/js/layout-tutte.js',
+    'static/js/layout-reweight.js',
     'static/js/layout-fpp.js'
   ];
 
@@ -76,6 +77,7 @@ const modules = loadBrowserModules();
 const Generator = modules.PlanarVibeGraphGenerator;
 const Planarity = modules.PlanarVibePlanarityTest;
 const FPP = modules.PlanarVibeFPP;
+const Reweight = modules.PlanarVibeReweightTutte;
 
 function buildMockCy(nodeIds, edgePairs) {
   const nodeMap = new Map();
@@ -93,6 +95,12 @@ function buildMockCy(nodeIds, edgePairs) {
         return undefined;
       },
       position(pos) {
+        if (pos === undefined) {
+          if (this._pos === null) {
+            return { x: 0, y: 0 };
+          }
+          return { x: this._pos.x, y: this._pos.y };
+        }
         this._pos = { x: pos.x, y: pos.y };
       }
     };
@@ -480,4 +488,52 @@ test('canonical ordering works on random planar non-3-tree graph', () => {
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on random non-3-tree');
   assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
+});
+
+test('ReweightTutte keeps outer-face coordinates fixed across iterations', async () => {
+  const text = Generator.planarStellationGraph(40, 8, 7);
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  // Seed an initial position set so Reweight has a viewport-relative frame.
+  for (let i = 0; i < graph.nodeIds.length; i += 1) {
+    const id = graph.nodeIds[i];
+    const node = cy.nodes().find((n) => n.id() === id);
+    node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
+  }
+
+  const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  assert.equal(emb && emb.ok, true);
+  let outer = emb.faces[0];
+  for (let i = 1; i < emb.faces.length; i += 1) {
+    if (emb.faces[i].length > outer.length) {
+      outer = emb.faces[i];
+    }
+  }
+  outer = outer.map(String);
+
+  const snapshots = [];
+  const result = await Reweight.applyReweightTutteLayout(cy, {
+    onIteration(step) {
+      const snap = {};
+      for (const v of outer) {
+        const p = step.positions[v];
+        snap[v] = { x: p.x, y: p.y };
+      }
+      snapshots.push(snap);
+    }
+  });
+
+  assert.equal(result.ok, true, result.message || 'Reweight failed');
+  assert.ok(snapshots.length >= 2, 'expected multiple iterations');
+
+  const first = snapshots[0];
+  for (let i = 1; i < snapshots.length; i += 1) {
+    for (const v of outer) {
+      const a = first[v];
+      const b = snapshots[i][v];
+      assert.ok(Math.abs(a.x - b.x) < 1e-9, `outer x moved for vertex ${v}`);
+      assert.ok(Math.abs(a.y - b.y) < 1e-9, `outer y moved for vertex ${v}`);
+    }
+  }
 });

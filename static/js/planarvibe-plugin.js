@@ -1302,10 +1302,11 @@
           missingMessage: 'Tutte layout module is missing',
           module: global.PlanarVibeTutte,
           methodName: 'applyTutteLayout'
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
         });
-        if (temporaryStaticRun) {
-          setInteractiveMode(false, false, true);
-        }
         return;
       }
 
@@ -1316,10 +1317,11 @@
           missingMessage: 'P3T layout module is missing',
           module: global.PlanarVibeP3T,
           methodName: 'applyP3TLayout'
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
         });
-        if (temporaryStaticRun) {
-          setInteractiveMode(false, false, true);
-        }
         return;
       }
 
@@ -1330,24 +1332,28 @@
           missingMessage: 'FPP layout module is missing',
           module: global.PlanarVibeFPP,
           methodName: 'applyFPPLayout'
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
         });
-        if (temporaryStaticRun) {
-          setInteractiveMode(false, false, true);
-        }
         return;
       }
 
       if (layoutName === 'reweighttutte') {
+        normalizeLayoutScale();
         runSpecialLayout({
           layoutName: 'reweighttutte',
           disabledMessage: 'ReweightTutte layout requires a planar graph',
           missingMessage: 'ReweightTutte layout module is missing',
           module: global.PlanarVibeReweightTutte,
-          methodName: 'applyReweightTutteLayout'
+          methodName: 'applyReweightTutteLayout',
+          normalizeOnSuccess: false
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
         });
-        if (temporaryStaticRun) {
-          setInteractiveMode(false, false, true);
-        }
         return;
       }
 
@@ -1372,21 +1378,38 @@
       layout.run();
     }
 
-    function runSpecialLayout(config) {
+    function runSpecialLayout(config, onDone) {
       var name = config.layoutName;
+      var shouldNormalizeOnSuccess = config.normalizeOnSuccess !== false;
       if (global.$('.layout-btn[data-layout="' + name + '"]').prop('disabled')) {
         setStatus(config.disabledMessage, true);
+        if (typeof onDone === 'function') onDone();
         return;
       }
       if (!config.module || typeof config.module[config.methodName] !== 'function') {
         setStatus(config.missingMessage, true);
+        if (typeof onDone === 'function') onDone();
         return;
       }
       var result = config.module[config.methodName](cy);
-      if (result && result.ok) {
+      if (result && typeof result.then === 'function') {
+        result.then(function (resolved) {
+          if (resolved && resolved.ok && shouldNormalizeOnSuccess) {
+            normalizeLayoutScale();
+          }
+          setLayoutStatus(resolved && resolved.message ? resolved.message : ('Applied ' + name + ' layout'), !(resolved && resolved.ok));
+          if (typeof onDone === 'function') onDone();
+        }).catch(function (err) {
+          setLayoutStatus((err && err.message) ? err.message : ('Failed ' + name + ' layout'), true);
+          if (typeof onDone === 'function') onDone();
+        });
+        return;
+      }
+      if (result && result.ok && shouldNormalizeOnSuccess) {
         normalizeLayoutScale();
       }
       setLayoutStatus(result && result.message ? result.message : ('Applied ' + name + ' layout'), !(result && result.ok));
+      if (typeof onDone === 'function') onDone();
     }
 
     function setSelectedLayoutButton(layoutName) {

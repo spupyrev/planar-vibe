@@ -107,23 +107,72 @@
     return adj;
   }
 
-  function initOuterCoords(nodeIds, outerFace) {
+  function currentPositionsFromCy(cy) {
     var pos = {};
-    for (var i = 0; i < nodeIds.length; i += 1) pos[String(nodeIds[i])] = { x: 0, y: 0 };
-    var R = 1000;
+    var nodes = cy.nodes().toArray();
+    for (var i = 0; i < nodes.length; i += 1) {
+      var id = String(nodes[i].id());
+      var p = nodes[i].position();
+      if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+        pos[id] = { x: p.x, y: p.y };
+      }
+    }
+    return pos;
+  }
+
+  function initOuterCoords(nodeIds, outerFace, seedPos, fixedOuterPos) {
+    var pos = {};
+    var i;
+    for (i = 0; i < nodeIds.length; i += 1) {
+      pos[String(nodeIds[i])] = { x: 0, y: 0 };
+    }
+
+    if (fixedOuterPos) {
+      for (i = 0; i < outerFace.length; i += 1) {
+        var fv = String(outerFace[i]);
+        if (fixedOuterPos[fv] && Number.isFinite(fixedOuterPos[fv].x) && Number.isFinite(fixedOuterPos[fv].y)) {
+          pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
+        }
+      }
+      return pos;
+    }
+
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    var haveSeed = false;
+    if (seedPos) {
+      for (i = 0; i < nodeIds.length; i += 1) {
+        var nid = String(nodeIds[i]);
+        var sp = seedPos[nid];
+        if (!sp || !Number.isFinite(sp.x) || !Number.isFinite(sp.y)) continue;
+        haveSeed = true;
+        if (sp.x < minX) minX = sp.x;
+        if (sp.y < minY) minY = sp.y;
+        if (sp.x > maxX) maxX = sp.x;
+        if (sp.y > maxY) maxY = sp.y;
+      }
+    }
+
+    var cx = haveSeed ? (minX + maxX) / 2 : 2000;
+    var cy = haveSeed ? (minY + maxY) / 2 : 2000;
+    var spanX = haveSeed ? (maxX - minX) : 1200;
+    var spanY = haveSeed ? (maxY - minY) : 900;
+    var spanMin = Math.max(1, Math.min(spanX, spanY));
+    var R = Math.max(80, spanMin * 0.42);
     var gamma = 2 * Math.PI / outerFace.length;
+
+    // Keep Tutte prerequisites: outer boundary must be convex.
     for (i = 0; i < outerFace.length; i += 1) {
       var v = String(outerFace[outerFace.length - i - 1]);
       pos[v] = {
-        x: R * Math.cos(gamma * (0.25 + i)) + 2 * R,
-        y: R * Math.sin(gamma * (0.25 + i)) + 2 * R
+        x: cx + R * Math.cos(gamma * (0.25 + i)),
+        y: cy + R * Math.sin(gamma * (0.25 + i))
       };
     }
     return pos;
   }
 
-  function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters) {
-    var pos = initOuterCoords(nodeIds, outerFace);
+  function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, seedPos, fixedOuterPos) {
+    var pos = initOuterCoords(nodeIds, outerFace, seedPos, fixedOuterPos);
     var outerSet = new Set(outerFace.map(String));
     var iters = 0;
     var converged = false;
@@ -150,7 +199,7 @@
         if (!(sw > 0)) continue;
         var nx = sx / sw;
         var ny = sy / sw;
-        if (Math.abs(pos[v].x - nx) > 1e-6 || Math.abs(pos[v].y - ny) > 1e-6) {
+        if (Math.abs(pos[v].x - nx) > 1e-8 || Math.abs(pos[v].y - ny) > 1e-8) {
           pos[v] = { x: nx, y: ny };
           converged = false;
         }
@@ -234,7 +283,41 @@
     return newWeights;
   }
 
-  function applyReweightTutteLayout(cy) {
+  function applyPositionsToCy(cy, posById) {
+    var nodes = cy.nodes().toArray();
+    for (var i = 0; i < nodes.length; i += 1) {
+      var id = String(nodes[i].id());
+      if (posById[id]) {
+        nodes[i].position(posById[id]);
+      }
+    }
+  }
+
+  function waitForNextFrame(delayMs) {
+    var delay = Math.max(0, Number(delayMs) || 0);
+    return new Promise(function (resolve) {
+      var schedule = (typeof global.setTimeout === 'function')
+        ? global.setTimeout.bind(global)
+        : (typeof setTimeout === 'function' ? setTimeout : null);
+      if (!schedule) {
+        resolve();
+        return;
+      }
+      schedule(function () {
+        var raf = (typeof global.requestAnimationFrame === 'function')
+          ? global.requestAnimationFrame.bind(global)
+          : (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+        if (raf) {
+          raf(function () { resolve(); });
+        } else {
+          resolve();
+        }
+      }, delay);
+    });
+  }
+
+  async function applyReweightTutteLayout(cy, options) {
+    var opts = options || {};
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing' };
     }
@@ -280,12 +363,38 @@
     var inner = null;
     var desired = 1 / boundedFaceIdx.length;
     var totalInnerIters = 0;
+    var seedPos = currentPositionsFromCy(cy);
+    var fixedOuterPos = null;
 
+    var initPos = initOuterCoords(augmented.nodeIds, outer, seedPos, null);
+    fixedOuterPos = {};
+    for (var oi = 0; oi < outer.length; oi += 1) {
+      var ov = String(outer[oi]);
+      fixedOuterPos[ov] = { x: initPos[ov].x, y: initPos[ov].y };
+    }
+
+    var didFit = false;
     for (var iter = 0; iter < MAX_OUTER_ITERS; iter += 1) {
-      inner = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, 1000);
+      inner = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, 3000, seedPos, fixedOuterPos);
       totalInnerIters += inner.iters;
 
       var pos = inner.pos;
+      applyPositionsToCy(cy, pos);
+      if (!didFit) {
+        cy.fit(undefined, 24);
+        didFit = true;
+      }
+      seedPos = pos;
+      if (typeof opts.onIteration === 'function') {
+        opts.onIteration({
+          iter: iter + 1,
+          maxIters: MAX_OUTER_ITERS,
+          outerFace: outer.slice(),
+          positions: pos
+        });
+      }
+      await waitForNextFrame(90);
+
       var outerArea = polygonAreaAbs(outer, pos);
       if (!(outerArea > 1e-12)) outerArea = 1;
       var faceAreas = [];
@@ -296,22 +405,15 @@
       weights = adjustWeights(augmented.edgePairs, outer, faces, faceAreas, desired, weights);
     }
 
-    var finalLayout = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, 1000);
+    var finalLayout = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, 3000, seedPos, fixedOuterPos);
     totalInnerIters += finalLayout.iters;
     var finalPos = finalLayout.pos;
 
-    var nodes = cy.nodes().toArray();
-    for (i = 0; i < nodes.length; i += 1) {
-      var id = String(nodes[i].id());
-      if (finalPos[id]) {
-        nodes[i].position(finalPos[id]);
-      }
-    }
-    cy.fit(undefined, 24);
+    applyPositionsToCy(cy, finalPos);
 
     return {
       ok: true,
-      message: 'Applied ReweightTutte (' + outer.length + '-vertex outer face, +' + augmented.dummyCount + ' dummy, ' + totalInnerIters + ' iters)'
+      message: 'Applied ReweightTutte (' + outer.length + '-vertex outer face, +' + augmented.dummyCount + ' dummy, ' + totalInnerIters + ' iters, ' + MAX_OUTER_ITERS + ' steps)'
     };
   }
 
