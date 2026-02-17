@@ -176,6 +176,10 @@ body {
   padding-top: 0;
 }
 
+.stats-plot-wrap.is-hidden {
+  display: none;
+}
+
 .stats-plot-label {
   font-size: 0.88rem;
   color: var(--pv-ink);
@@ -185,6 +189,16 @@ body {
   justify-content: space-between;
   align-items: baseline;
   gap: 8px;
+}
+
+.drawing-metric-link {
+  color: var(--pv-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.drawing-metric-link:hover {
+  text-decoration-thickness: 2px;
 }
 
 #stats-face-plot,

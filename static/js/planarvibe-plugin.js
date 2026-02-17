@@ -1474,6 +1474,28 @@
       setStatus('Saved SVG', false);
     }
 
+    function showDrawingMetricPlot(targetId) {
+      var ids = ['stats-angle-plot-wrap', 'stats-face-plot-wrap', 'stats-edge-plot-wrap'];
+      var $target = global.$('#' + targetId);
+      var targetIsVisible = $target.length && !$target.hasClass('is-hidden');
+
+      if (targetIsVisible) {
+        for (var j = 0; j < ids.length; j += 1) {
+          global.$('#' + ids[j]).addClass('is-hidden');
+        }
+        return;
+      }
+
+      for (var i = 0; i < ids.length; i += 1) {
+        var id = ids[i];
+        var $el = global.$('#' + id);
+        if (!$el.length) {
+          continue;
+        }
+        $el.toggleClass('is-hidden', id !== targetId);
+      }
+    }
+
     function bindUiEvents() {
       global.$('#graph-form').on('submit', function (event) {
         event.preventDefault();
@@ -1509,6 +1531,14 @@
 
       global.$('#interactive-toggle').on('change', function () {
         setInteractiveMode(global.$(this).is(':checked'));
+      });
+
+      global.$('.drawing-metric-link').on('click', function (event) {
+        event.preventDefault();
+        var target = global.$(this).data('target');
+        if (target) {
+          showDrawingMetricPlot(String(target));
+        }
       });
     }
 
