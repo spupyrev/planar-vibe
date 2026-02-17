@@ -69,7 +69,7 @@
                 </label>
               </div>
             </div>
-            <div class="stats-subpanel">
+            <div id="drawing-stats-panel" class="stats-subpanel">
               <div class="stats-title">Drawing Stats</div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
@@ -79,10 +79,17 @@
               </div>
               <div class="stats-plot-wrap stats-plot-wrap-standalone">
                 <div class="stats-plot-label">
-                  <span title="Distribution of bounded face areas, normalized to total bounded area">Face Area Distribution:</span>
-                  <span id="stats-face-quality" title="Overall face-area quality score. 1 means perfectly uniform face areas; lower means less uniform">--</span>
+                  <span title="Distribution of bounded face areas, normalized to total bounded area. Quality score is from 0 to 1, where 0 is worst and 1 is best">Face Area Distribution:</span>
+                  <span id="stats-face-quality" title="Distribution of bounded face areas, normalized to total bounded area. Quality score is from 0 to 1, where 0 is worst and 1 is best">--</span>
                 </div>
                 <svg id="stats-face-plot" role="img" aria-label="Face area distribution plot"></svg>
+              </div>
+              <div class="stats-plot-wrap stats-plot-wrap-standalone">
+                <div class="stats-plot-label">
+                  <span title="Distribution of edge lengths, normalized so all edge lengths sum to one. Quality score is from 0 to 1, where 0 is worst and 1 is best">Edge Length Distribution:</span>
+                  <span id="stats-edge-quality" title="Distribution of edge lengths, normalized so all edge lengths sum to one. Quality score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                </div>
+                <svg id="stats-edge-plot" role="img" aria-label="Edge length distribution plot"></svg>
               </div>
             </div>
           </form>

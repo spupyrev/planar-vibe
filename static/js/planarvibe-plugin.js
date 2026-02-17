@@ -466,6 +466,7 @@
       if (isError) {
         setStatus(message, true);
         clearFaceAreaPlot('No plot');
+        clearEdgeLengthPlot('No plot');
         return;
       }
       setStatus(message + smallGraphCoordinatesSuffix(), false);
@@ -473,6 +474,7 @@
         savedPositions = capturePositionsFromCy();
         saveViewportState(captureViewportFromCy());
         updateFaceAreaPlot();
+        updateEdgeLengthPlot();
       }
     }
 
@@ -598,12 +600,33 @@
       return { width: w, height: h };
     }
 
+    function getEdgePlotSize() {
+      var el = global.document.getElementById('stats-edge-plot');
+      var w = el ? Math.max(220, Math.floor(el.clientWidth || el.getBoundingClientRect().width || 220)) : 220;
+      var h = 120;
+      return { width: w, height: h };
+    }
+
     function clearFaceAreaPlot(text) {
       var label = text || 'No data';
       var size = getFacePlotSize();
       global.$('#stats-face-quality').text('--');
       global.$('#stat-is-plane').text('--');
       global.$('#stats-face-plot')
+        .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
+        .attr('preserveAspectRatio', 'none')
+        .html(
+        '<rect x="0" y="0" width="' + size.width + '" height="' + size.height + '" fill="#fbfdff" />' +
+        '<text x="' + (size.width / 2) + '" y="' + Math.floor(size.height / 2 + 4) + '" text-anchor="middle" fill="#7b8797" font-size="11">' + escapeXml(label) + '</text>' +
+        ''
+      );
+    }
+
+    function clearEdgeLengthPlot(text) {
+      var label = text || 'No data';
+      var size = getEdgePlotSize();
+      global.$('#stats-edge-quality').text('--');
+      global.$('#stats-edge-plot')
         .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
         .attr('preserveAspectRatio', 'none')
         .html(
@@ -665,6 +688,95 @@
         .attr('viewBox', '0 0 ' + W + ' ' + H)
         .attr('preserveAspectRatio', 'none')
         .html(svg);
+    }
+
+    function renderEdgeLengthPlot(values, ideal) {
+      var size = getEdgePlotSize();
+      var W = size.width;
+      var H = size.height;
+      var L = 36;
+      var R = 8;
+      var T = 8;
+      var B = 20;
+      var PW = W - L - R;
+      var PH = H - T - B;
+      var maxY = 5;
+      var safeIdeal = Math.max(ideal, 1e-12);
+      var i;
+
+      function sx(idx) {
+        if (values.length <= 1) {
+          return L + PW / 2;
+        }
+        return L + (idx / (values.length - 1)) * PW;
+      }
+      function sy(v) {
+        return T + PH - (v / maxY) * PH;
+      }
+
+      var pts = '';
+      for (i = 0; i < values.length; i += 1) {
+        var normalizedY = values[i] / safeIdeal;
+        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(normalizedY, maxY));
+      }
+
+      var yIdeal = sy(1);
+      var yMaxLabel = '5';
+
+      var svg = '';
+      svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
+      svg += '<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + (L - 4) + '" y1="' + T + '" x2="' + (L + 4) + '" y2="' + T + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + L + '" y1="' + yIdeal + '" x2="' + (L + PW) + '" y2="' + yIdeal + '" stroke="#ea9624" stroke-width="1" stroke-dasharray="3 3" />';
+      if (values.length >= 1) {
+        svg += '<polyline fill="none" stroke="#1060A8" stroke-width="1.5" points="' + pts + '" />';
+      }
+      var yTickX = L - 4;
+      svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
+      svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
+      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">length</text>';
+      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">edges sorted</text>';
+      svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
+      global.$('#stats-edge-plot')
+        .attr('viewBox', '0 0 ' + W + ' ' + H)
+        .attr('preserveAspectRatio', 'none')
+        .html(svg);
+    }
+
+    function computeEdgeLengthDistribution(edgePairs, posById) {
+      if (!edgePairs || edgePairs.length === 0) {
+        return { ok: false, reason: 'No edges' };
+      }
+      var lengths = [];
+      var total = 0;
+      for (var i = 0; i < edgePairs.length; i += 1) {
+        var u = String(edgePairs[i][0]);
+        var v = String(edgePairs[i][1]);
+        var pu = posById[u];
+        var pv = posById[v];
+        if (!pu || !pv || !Number.isFinite(pu.x) || !Number.isFinite(pu.y) || !Number.isFinite(pv.x) || !Number.isFinite(pv.y)) {
+          return { ok: false, reason: 'Metrics unavailable' };
+        }
+        var dx = pu.x - pv.x;
+        var dy = pu.y - pv.y;
+        var len = Math.sqrt(dx * dx + dy * dy);
+        if (!(len > 1e-12)) {
+          continue;
+        }
+        lengths.push(len);
+        total += len;
+      }
+      if (lengths.length === 0 || !(total > 0)) {
+        return { ok: false, reason: 'No edge lengths available' };
+      }
+      var normalized = lengths.map(function (x) { return x / total; });
+      normalized.sort(function (a, b) { return a - b; });
+      return {
+        ok: true,
+        values: normalized,
+        ideal: 1 / normalized.length
+      };
     }
 
     function hasCrossingsFromPositions(posById, edgePairs) {
@@ -810,6 +922,36 @@
       updateFaceAreaQuality(result.values);
     }
 
+    function updateEdgeLengthPlot() {
+      if (!currentParsed || !currentParsed.elements) {
+        clearEdgeLengthPlot('No graph');
+        return;
+      }
+      var edgePairs = edgePairsFromParsed(currentParsed);
+      var posById = {};
+      var nodeIds = [];
+      if (cy) {
+        nodeIds = cy.nodes().map(function (node) { return String(node.id()); });
+        cy.nodes().forEach(function (node) {
+          posById[String(node.id())] = node.position();
+        });
+      } else {
+        nodeIds = getNodeIdsFromParsed(currentParsed);
+        posById = savedPositions || {};
+      }
+      if (!nodeIds.length) {
+        clearEdgeLengthPlot('No graph');
+        return;
+      }
+      var result = computeEdgeLengthDistribution(edgePairs, posById);
+      if (!result.ok) {
+        clearEdgeLengthPlot(result.reason || 'No data');
+        return;
+      }
+      renderEdgeLengthPlot(result.values, result.ideal);
+      updateEdgeLengthQuality(result.values);
+    }
+
     function updateFaceAreaQuality(values) {
       if (!values || values.length === 0) {
         global.$('#stats-face-quality').text('--');
@@ -831,6 +973,29 @@
       var quality = 1 - normalized;
       quality = Math.max(0, Math.min(1, quality));
       global.$('#stats-face-quality').text(quality.toFixed(3));
+    }
+
+    function updateEdgeLengthQuality(values) {
+      if (!values || values.length === 0) {
+        global.$('#stats-edge-quality').text('--');
+        return;
+      }
+      var k = values.length;
+      if (k <= 1) {
+        global.$('#stats-edge-quality').text('1.000');
+        return;
+      }
+      var uniform = 1 / k;
+      var sumSq = 0;
+      for (var i = 0; i < values.length; i += 1) {
+        var d = values[i] - uniform;
+        sumSq += d * d;
+      }
+      var denom = 1 - 1 / k;
+      var normalized = Math.sqrt(sumSq / Math.max(denom, 1e-12));
+      var quality = 1 - normalized;
+      quality = Math.max(0, Math.min(1, quality));
+      global.$('#stats-edge-quality').text(quality.toFixed(3));
     }
 
     function renderStaticSnapshot() {
@@ -942,6 +1107,7 @@
       }
       updateStatistics(currentParsed);
       updateFaceAreaPlot();
+      updateEdgeLengthPlot();
       if (!suppressStatus) {
         setStatus('Interactive mode enabled', false);
       }
@@ -1085,18 +1251,21 @@
       if (!cy) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Graph hidden');
+        clearEdgeLengthPlot('Graph hidden');
         setPlanarButtonsDisabled();
         return;
       }
       if (!parsed || !parsed.elements) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No graph');
+        clearEdgeLengthPlot('No graph');
         setPlanarButtonsDisabled();
         return;
       }
       if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
         setStatistics({ vertexCount: cy.nodes().length, edgeCount: edgePairsFromParsed(parsed).length, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No plot');
+        clearEdgeLengthPlot('No plot');
         setPlanarButtonsDisabled();
         return;
       }
@@ -1148,6 +1317,7 @@
       } catch (error) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Parse error');
+        clearEdgeLengthPlot('Parse error');
         setPlanarButtonsDisabled();
         updateCreateGraphButtonState();
         setStatus(error.message, true);
@@ -1428,6 +1598,7 @@
     initStyleControls();
 
     clearFaceAreaPlot(isInteractive ? 'No graph' : 'Static mode');
+    clearEdgeLengthPlot(isInteractive ? 'No graph' : 'Static mode');
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);
 
     if (!isInteractive && cy) {

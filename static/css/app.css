@@ -59,7 +59,7 @@ body {
 
 #dotfile {
   width: 100%;
-  height: 320px;
+  height: 260px;
   border: 1px solid #c9d7ea;
   border-radius: 8px;
   resize: vertical;
@@ -108,6 +108,12 @@ body {
 
 .stats-subpanel + .stats-subpanel {
   margin-top: 14px;
+}
+
+#drawing-stats-panel {
+  height: 240px;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .stats-title {
@@ -176,7 +182,8 @@ body {
   gap: 8px;
 }
 
-#stats-face-plot {
+#stats-face-plot,
+#stats-edge-plot {
   width: 100%;
   height: 120px;
   display: block;
