@@ -77,17 +77,23 @@
                   <span id="stat-is-plane" title="Yes if no edge crossings are present in the current drawing; otherwise no">--</span>
                 </div>
               </div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
+                  <span title="Angle Resolution Score compares incident-angle spacing at each vertex with the ideal equal-angle spacing. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">Angles Resolution Score:</span>
+                  <span id="stats-angle-quality" title="Angle Resolution Score compares incident-angle spacing at each vertex with the ideal equal-angle spacing. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                </div>
+              </div>
               <div class="stats-plot-wrap stats-plot-wrap-standalone">
                 <div class="stats-plot-label">
-                  <span title="Distribution of bounded face areas, normalized to total bounded area. Quality score is from 0 to 1, where 0 is worst and 1 is best">Face Area Distribution:</span>
-                  <span id="stats-face-quality" title="Distribution of bounded face areas, normalized to total bounded area. Quality score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <span title="Face Areas Score compares bounded face areas against the ideal equal-area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Face Areas Score:</span>
+                  <span id="stats-face-quality" title="Face Areas Score compares bounded face areas against the ideal equal-area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
                 </div>
                 <svg id="stats-face-plot" role="img" aria-label="Face area distribution plot"></svg>
               </div>
               <div class="stats-plot-wrap stats-plot-wrap-standalone">
                 <div class="stats-plot-label">
-                  <span title="Distribution of edge lengths, normalized so all edge lengths sum to one. Quality score is from 0 to 1, where 0 is worst and 1 is best">Edge Length Distribution:</span>
-                  <span id="stats-edge-quality" title="Distribution of edge lengths, normalized so all edge lengths sum to one. Quality score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <span title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Edge Lengths Score:</span>
+                  <span id="stats-edge-quality" title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
                 </div>
                 <svg id="stats-edge-plot" role="img" aria-label="Edge length distribution plot"></svg>
               </div>
@@ -164,6 +170,7 @@
   <script src="static/js/planar-graph-core.js"></script>
   <script src="static/js/planarity-test.js"></script>
   <script src="static/js/metrics.js"></script>
+  <script src="static/js/layout-random.js"></script>
   <script src="static/js/layout-tutte.js"></script>
   <script src="static/js/layout-p3t.js"></script>
   <script src="static/js/layout-fpp.js"></script>

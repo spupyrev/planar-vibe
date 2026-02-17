@@ -76,35 +76,6 @@
     };
   }
 
-  function hashString(value, seed) {
-    var hash = seed >>> 0;
-    for (var i = 0; i < value.length; i += 1) {
-      hash ^= value.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-    return hash >>> 0;
-  }
-
-  function normalizedHash(value, seed) {
-    return hashString(String(value), seed) / 4294967295;
-  }
-
-  function applyDeterministicRandomPositions(cy) {
-    var width = Math.max(cy.width(), 320);
-    var height = Math.max(cy.height(), 260);
-    var margin = 26;
-    var xSpan = Math.max(width - margin * 2, 1);
-    var ySpan = Math.max(height - margin * 2, 1);
-
-    cy.nodes().forEach(function (node) {
-      var id = node.id();
-      var x = margin + normalizedHash(id + ':x', 2166136261) * xSpan;
-      var y = margin + normalizedHash(id + ':y', 33554467) * ySpan;
-      node.position({ x: x, y: y });
-    });
-    cy.fit(undefined, 20);
-  }
-
   function layoutOptionsByName(name, parsedGraph) {
     if (name === 'circle') {
       return { name: 'circle', fit: true, padding: 24, animate: false };
@@ -118,8 +89,7 @@
   global.PlanarVibePlugin = {
     parseEdgeList: parseEdgeList,
     layoutOptions: layoutOptions,
-    layoutOptionsByName: layoutOptionsByName,
-    applyDeterministicRandomPositions: applyDeterministicRandomPositions
+    layoutOptionsByName: layoutOptionsByName
   };
 })(window);
 
@@ -467,6 +437,7 @@
         setStatus(message, true);
         clearFaceAreaPlot('No plot');
         clearEdgeLengthPlot('No plot');
+        clearAngleResolutionScore();
         return;
       }
       setStatus(message + smallGraphCoordinatesSuffix(), false);
@@ -744,106 +715,6 @@
         .html(svg);
     }
 
-    function computeEdgeLengthDistribution(edgePairs, posById) {
-      if (!edgePairs || edgePairs.length === 0) {
-        return { ok: false, reason: 'No edges' };
-      }
-      var lengths = [];
-      var total = 0;
-      for (var i = 0; i < edgePairs.length; i += 1) {
-        var u = String(edgePairs[i][0]);
-        var v = String(edgePairs[i][1]);
-        var pu = posById[u];
-        var pv = posById[v];
-        if (!pu || !pv || !Number.isFinite(pu.x) || !Number.isFinite(pu.y) || !Number.isFinite(pv.x) || !Number.isFinite(pv.y)) {
-          return { ok: false, reason: 'Metrics unavailable' };
-        }
-        var dx = pu.x - pv.x;
-        var dy = pu.y - pv.y;
-        var len = Math.sqrt(dx * dx + dy * dy);
-        if (!(len > 1e-12)) {
-          continue;
-        }
-        lengths.push(len);
-        total += len;
-      }
-      if (lengths.length === 0 || !(total > 0)) {
-        return { ok: false, reason: 'No edge lengths available' };
-      }
-      var normalized = lengths.map(function (x) { return x / total; });
-      normalized.sort(function (a, b) { return a - b; });
-      return {
-        ok: true,
-        values: normalized,
-        ideal: 1 / normalized.length
-      };
-    }
-
-    function hasCrossingsFromPositions(posById, edgePairs) {
-      var EPS = 1e-9;
-
-      function orient(a, b, c) {
-        return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-      }
-
-      function onSegment(a, b, c) {
-        return (
-          Math.min(a.x, b.x) - EPS <= c.x && c.x <= Math.max(a.x, b.x) + EPS &&
-          Math.min(a.y, b.y) - EPS <= c.y && c.y <= Math.max(a.y, b.y) + EPS
-        );
-      }
-
-      function pointsEqual(a, b) {
-        return Math.abs(a.x - b.x) <= EPS && Math.abs(a.y - b.y) <= EPS;
-      }
-
-      function properIntersect(a, b, c, d) {
-        var o1 = orient(a, b, c);
-        var o2 = orient(a, b, d);
-        var o3 = orient(c, d, a);
-        var o4 = orient(c, d, b);
-
-        if (((o1 > EPS && o2 < -EPS) || (o1 < -EPS && o2 > EPS)) &&
-            ((o3 > EPS && o4 < -EPS) || (o3 < -EPS && o4 > EPS))) {
-          return true;
-        }
-
-        if (Math.abs(o1) <= EPS && onSegment(a, b, c) && !pointsEqual(c, a) && !pointsEqual(c, b)) return true;
-        if (Math.abs(o2) <= EPS && onSegment(a, b, d) && !pointsEqual(d, a) && !pointsEqual(d, b)) return true;
-        if (Math.abs(o3) <= EPS && onSegment(c, d, a) && !pointsEqual(a, c) && !pointsEqual(a, d)) return true;
-        if (Math.abs(o4) <= EPS && onSegment(c, d, b) && !pointsEqual(b, c) && !pointsEqual(b, d)) return true;
-        return false;
-      }
-
-      for (var i = 0; i < edgePairs.length; i += 1) {
-        var s1 = String(edgePairs[i][0]);
-        var t1 = String(edgePairs[i][1]);
-        var p1 = posById[s1];
-        var q1 = posById[t1];
-        if (!p1 || !q1) {
-          continue;
-        }
-
-        for (var j = i + 1; j < edgePairs.length; j += 1) {
-          var s2 = String(edgePairs[j][0]);
-          var t2 = String(edgePairs[j][1]);
-          if (s1 === s2 || s1 === t2 || t1 === s2 || t1 === t2) {
-            continue;
-          }
-          var p2 = posById[s2];
-          var q2 = posById[t2];
-          if (!p2 || !q2) {
-            continue;
-          }
-
-          if (properIntersect(p1, q1, p2, q2)) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-
     function getNodeIdsFromParsed(parsed) {
       var ids = [];
       if (!parsed || !parsed.elements) {
@@ -870,9 +741,31 @@
       }
     }
 
+    function clearAngleResolutionScore() {
+      global.$('#stats-angle-quality').text('--');
+    }
+
+    function updateAngleResolutionScore(nodeIds, edgePairs, posById, hasCrossings) {
+      if (hasCrossings) {
+        global.$('#stats-angle-quality').text('--');
+        return;
+      }
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformAngleResolutionScore) {
+        global.$('#stats-angle-quality').text('--');
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeUniformAngleResolutionScore(nodeIds, edgePairs, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score)) {
+        global.$('#stats-angle-quality').text('--');
+        return;
+      }
+      global.$('#stats-angle-quality').text(result.score.toFixed(3));
+    }
+
     function updateFaceAreaPlot() {
       if (!currentParsed || !currentParsed.elements) {
         clearFaceAreaPlot('No graph');
+        clearAngleResolutionScore();
         return;
       }
       var edgePairs = edgePairsFromParsed(currentParsed);
@@ -889,11 +782,19 @@
       }
       if (!nodeIds.length) {
         clearFaceAreaPlot('No graph');
+        clearAngleResolutionScore();
         return;
       }
 
-      var hasCrossings = hasCrossingsFromPositions(posById, edgePairs);
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.hasCrossingsFromPositions) {
+        clearFaceAreaPlot('Metrics unavailable');
+        clearAngleResolutionScore();
+        setPlaneStat(null);
+        return;
+      }
+      var hasCrossings = global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs);
       setPlaneStat(!hasCrossings);
+      updateAngleResolutionScore(nodeIds, edgePairs, posById, hasCrossings);
       if (hasCrossings) {
         clearFaceAreaPlot('Drawing is not plane');
         setPlaneStat(false);
@@ -905,10 +806,10 @@
         return;
       }
       var result = null;
-      if (cy && global.PlanarVibeMetrics.computeFaceAreaDistributionFromCy) {
-        result = global.PlanarVibeMetrics.computeFaceAreaDistributionFromCy(cy, edgePairs);
-      } else if (global.PlanarVibeMetrics.computeFaceAreaDistribution) {
-        result = global.PlanarVibeMetrics.computeFaceAreaDistribution(nodeIds, edgePairs, posById);
+      if (cy && global.PlanarVibeMetrics.computeUniformFaceAreaScoreFromCy) {
+        result = global.PlanarVibeMetrics.computeUniformFaceAreaScoreFromCy(cy, edgePairs);
+      } else if (global.PlanarVibeMetrics.computeUniformFaceAreaScore) {
+        result = global.PlanarVibeMetrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
       }
       if (!result) {
         clearFaceAreaPlot('Metrics unavailable');
@@ -943,7 +844,11 @@
         clearEdgeLengthPlot('No graph');
         return;
       }
-      var result = computeEdgeLengthDistribution(edgePairs, posById);
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformEdgeLengthScore) {
+        clearEdgeLengthPlot('Metrics unavailable');
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeUniformEdgeLengthScore(edgePairs, posById);
       if (!result.ok) {
         clearEdgeLengthPlot(result.reason || 'No data');
         return;
@@ -953,49 +858,21 @@
     }
 
     function updateFaceAreaQuality(values) {
-      if (!values || values.length === 0) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeDistributionQuality) {
         global.$('#stats-face-quality').text('--');
         return;
       }
-      var k = values.length;
-      if (k <= 1) {
-        global.$('#stats-face-quality').text('1.000');
-        return;
-      }
-      var uniform = 1 / k;
-      var sumSq = 0;
-      for (var i = 0; i < values.length; i += 1) {
-        var d = values[i] - uniform;
-        sumSq += d * d;
-      }
-      var denom = 1 - 1 / k;
-      var normalized = Math.sqrt(sumSq / Math.max(denom, 1e-12));
-      var quality = 1 - normalized;
-      quality = Math.max(0, Math.min(1, quality));
-      global.$('#stats-face-quality').text(quality.toFixed(3));
+      var quality = global.PlanarVibeMetrics.computeDistributionQuality(values);
+      global.$('#stats-face-quality').text(quality === null ? '--' : quality.toFixed(3));
     }
 
     function updateEdgeLengthQuality(values) {
-      if (!values || values.length === 0) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeDistributionQuality) {
         global.$('#stats-edge-quality').text('--');
         return;
       }
-      var k = values.length;
-      if (k <= 1) {
-        global.$('#stats-edge-quality').text('1.000');
-        return;
-      }
-      var uniform = 1 / k;
-      var sumSq = 0;
-      for (var i = 0; i < values.length; i += 1) {
-        var d = values[i] - uniform;
-        sumSq += d * d;
-      }
-      var denom = 1 - 1 / k;
-      var normalized = Math.sqrt(sumSq / Math.max(denom, 1e-12));
-      var quality = 1 - normalized;
-      quality = Math.max(0, Math.min(1, quality));
-      global.$('#stats-edge-quality').text(quality.toFixed(3));
+      var quality = global.PlanarVibeMetrics.computeDistributionQuality(values);
+      global.$('#stats-edge-quality').text(quality === null ? '--' : quality.toFixed(3));
     }
 
     function renderStaticSnapshot() {
@@ -1097,7 +974,9 @@
       if (currentParsed && currentParsed.elements) {
         cy.add(currentParsed.elements);
         if (!applySavedPositionsToCy()) {
-          global.PlanarVibePlugin.applyDeterministicRandomPositions(cy);
+          if (global.PlanarVibeRandom && typeof global.PlanarVibeRandom.applyRandomLayout === 'function') {
+            global.PlanarVibeRandom.applyRandomLayout(cy);
+          }
           normalizeLayoutScale();
           saveViewportState(captureViewportFromCy());
         } else if (!applySavedViewportToCy()) {
@@ -1205,53 +1084,12 @@
       setFPPEnabled(false);
     }
 
-    function isBipartiteGraph(nodeIds, edgePairs) {
-      var adjacency = {};
-      for (var i = 0; i < nodeIds.length; i += 1) {
-        adjacency[String(nodeIds[i])] = [];
-      }
-      for (i = 0; i < edgePairs.length; i += 1) {
-        var u = String(edgePairs[i][0]);
-        var v = String(edgePairs[i][1]);
-        if (u === v) {
-          return false;
-        }
-        if (!adjacency[u]) adjacency[u] = [];
-        if (!adjacency[v]) adjacency[v] = [];
-        adjacency[u].push(v);
-        adjacency[v].push(u);
-      }
-
-      var color = {};
-      for (i = 0; i < nodeIds.length; i += 1) {
-        var start = String(nodeIds[i]);
-        if (color[start] !== undefined) continue;
-        color[start] = 0;
-        var queue = [start];
-        var head = 0;
-        while (head < queue.length) {
-          var x = queue[head];
-          head += 1;
-          var neigh = adjacency[x] || [];
-          for (var j = 0; j < neigh.length; j += 1) {
-            var y = neigh[j];
-            if (color[y] === undefined) {
-              color[y] = 1 - color[x];
-              queue.push(y);
-            } else if (color[y] === color[x]) {
-              return false;
-            }
-          }
-        }
-      }
-      return true;
-    }
-
     function updateStatistics(parsed) {
       if (!cy) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Graph hidden');
         clearEdgeLengthPlot('Graph hidden');
+        clearAngleResolutionScore();
         setPlanarButtonsDisabled();
         return;
       }
@@ -1259,6 +1097,7 @@
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No graph');
         clearEdgeLengthPlot('No graph');
+        clearAngleResolutionScore();
         setPlanarButtonsDisabled();
         return;
       }
@@ -1266,6 +1105,7 @@
         setStatistics({ vertexCount: cy.nodes().length, edgeCount: edgePairsFromParsed(parsed).length, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No plot');
         clearEdgeLengthPlot('No plot');
+        clearAngleResolutionScore();
         setPlanarButtonsDisabled();
         return;
       }
@@ -1273,7 +1113,8 @@
       var edgePairs = edgePairsFromParsed(parsed);
       var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
       var isPlanar = !!(embedding && embedding.ok);
-      var isBipartite = isBipartiteGraph(nodeIds, edgePairs);
+      var isBipartite = !!(global.PlanarVibeMetrics && global.PlanarVibeMetrics.isBipartiteGraph &&
+        global.PlanarVibeMetrics.isBipartiteGraph(nodeIds, edgePairs));
       var isPlanar3Tree = false;
       if (isPlanar && global.PlanarVibePlanarityTest.isPlanar3Tree) {
         isPlanar3Tree = !!global.PlanarVibePlanarityTest.isPlanar3Tree(nodeIds, edgePairs);
@@ -1318,6 +1159,7 @@
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Parse error');
         clearEdgeLengthPlot('Parse error');
+        clearAngleResolutionScore();
         setPlanarButtonsDisabled();
         updateCreateGraphButtonState();
         setStatus(error.message, true);
@@ -1362,7 +1204,11 @@
       setSelectedLayoutButton(layoutName);
 
       if (layoutName === 'random') {
-        global.PlanarVibePlugin.applyDeterministicRandomPositions(cy);
+        if (!global.PlanarVibeRandom || typeof global.PlanarVibeRandom.applyRandomLayout !== 'function') {
+          setStatus('Random layout module is missing', true);
+          return;
+        }
+        global.PlanarVibeRandom.applyRandomLayout(cy);
         normalizeLayoutScale();
         setLayoutStatus('Applied random coordinates', false);
         if (temporaryStaticRun) {
@@ -1599,6 +1445,7 @@
 
     clearFaceAreaPlot(isInteractive ? 'No graph' : 'Static mode');
     clearEdgeLengthPlot(isInteractive ? 'No graph' : 'Static mode');
+    clearAngleResolutionScore();
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);
 
     if (!isInteractive && cy) {
