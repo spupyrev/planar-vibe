@@ -1150,10 +1150,15 @@
       setLayoutEnabled('fpp', isEnabled);
     }
 
+    function setReweightTutteEnabled(isEnabled) {
+      setLayoutEnabled('reweighttutte', isEnabled);
+    }
+
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
       setP3TEnabled(false);
       setFPPEnabled(false);
+      setReweightTutteEnabled(false);
     }
 
     function updateStatistics(parsed) {
@@ -1201,6 +1206,7 @@
       setTutteEnabled(isPlanar);
       setP3TEnabled(isPlanar3Tree);
       setFPPEnabled(isPlanar);
+      setReweightTutteEnabled(isPlanar);
     }
 
     function drawGraph() {
@@ -1324,6 +1330,20 @@
           missingMessage: 'FPP layout module is missing',
           module: global.PlanarVibeFPP,
           methodName: 'applyFPPLayout'
+        });
+        if (temporaryStaticRun) {
+          setInteractiveMode(false, false, true);
+        }
+        return;
+      }
+
+      if (layoutName === 'reweighttutte') {
+        runSpecialLayout({
+          layoutName: 'reweighttutte',
+          disabledMessage: 'ReweightTutte layout requires a planar graph',
+          missingMessage: 'ReweightTutte layout module is missing',
+          module: global.PlanarVibeReweightTutte,
+          methodName: 'applyReweightTutteLayout'
         });
         if (temporaryStaticRun) {
           setInteractiveMode(false, false, true);
