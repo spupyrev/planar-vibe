@@ -71,6 +71,7 @@
             </div>
             <div id="drawing-stats-panel" class="stats-subpanel">
               <div class="stats-title">Drawing Stats</div>
+              <div class="stats-scroll-body">
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
                   <span title="Whether the current drawing is plane (no edge crossings)">Plane:</span>
@@ -79,9 +80,12 @@
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Angle Resolution Score compares incident-angle spacing at each vertex with the ideal equal-angle spacing. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">Angles Resolution Score:</span>
+                  <span title="Angle Resolution Score compares incident-angle spacing at each vertex with the ideal equal-angle spacing. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">Angle Resolution Score:</span>
                   <span id="stats-angle-quality" title="Angle Resolution Score compares incident-angle spacing at each vertex with the ideal equal-angle spacing. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
                 </div>
+              </div>
+              <div class="stats-plot-wrap stats-plot-wrap-standalone">
+                <svg id="stats-angle-plot" role="img" aria-label="Angle resolution distribution plot"></svg>
               </div>
               <div class="stats-plot-wrap stats-plot-wrap-standalone">
                 <div class="stats-plot-label">
@@ -92,10 +96,11 @@
               </div>
               <div class="stats-plot-wrap stats-plot-wrap-standalone">
                 <div class="stats-plot-label">
-                  <span title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Edge Lengths Score:</span>
+                  <span title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Edge Length Score:</span>
                   <span id="stats-edge-quality" title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
                 </div>
                 <svg id="stats-edge-plot" role="img" aria-label="Edge length distribution plot"></svg>
+              </div>
               </div>
             </div>
           </form>

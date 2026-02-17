@@ -229,7 +229,8 @@
     }
 
     var outerSet = new Set((emb.outerFace || []).map(String));
-    var vertexScores = [];
+    var allValues = [];
+    var allIdealValues = [];
     var TWO_PI = 2 * Math.PI;
 
     for (i = 0; i < nodeIds.length; i += 1) {
@@ -286,24 +287,34 @@
         continue;
       }
       var localValues = considered.map(function (x) { return x / localSum; });
-      var localIdeal = uniformIdealDistribution(localValues.length);
-      var localScore = computeUniformityScore(localValues, localIdeal);
-      if (localScore !== null) {
-        vertexScores.push(localScore);
+      var idealAngle = 1 / localValues.length;
+      for (j = 0; j < localValues.length; j += 1) {
+        allValues.push(localValues[j]);
+        allIdealValues.push(idealAngle);
       }
     }
 
-    if (vertexScores.length === 0) {
+    if (allValues.length === 0) {
       return { ok: false, reason: 'No angle data' };
     }
-    var sum = 0;
-    for (i = 0; i < vertexScores.length; i += 1) {
-      sum += vertexScores[i];
+    var score = computeUniformityScore(allValues, allIdealValues);
+    var pairs = [];
+    for (i = 0; i < allValues.length; i += 1) {
+      pairs.push([allValues[i], allIdealValues[i]]);
     }
+    pairs.sort(function (a, b) {
+      var ra = a[0] / Math.max(a[1], 1e-12);
+      var rb = b[0] / Math.max(b[1], 1e-12);
+      return ra - rb;
+    });
+    var valuesSorted = pairs.map(function (p) { return p[0]; });
+    var idealSorted = pairs.map(function (p) { return p[1]; });
     return {
       ok: true,
-      score: Math.max(0, Math.min(1, sum / vertexScores.length)),
-      vertexCount: vertexScores.length
+      score: score === null ? null : Math.max(0, Math.min(1, score)),
+      values: valuesSorted,
+      idealValues: idealSorted,
+      angleCount: allValues.length
     };
   }
 

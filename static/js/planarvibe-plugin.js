@@ -437,7 +437,7 @@
         setStatus(message, true);
         clearFaceAreaPlot('No plot');
         clearEdgeLengthPlot('No plot');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('No plot');
         return;
       }
       setStatus(message + smallGraphCoordinatesSuffix(), false);
@@ -578,6 +578,13 @@
       return { width: w, height: h };
     }
 
+    function getAnglePlotSize() {
+      var el = global.document.getElementById('stats-angle-plot');
+      var w = el ? Math.max(220, Math.floor(el.clientWidth || el.getBoundingClientRect().width || 220)) : 220;
+      var h = 120;
+      return { width: w, height: h };
+    }
+
     function clearFaceAreaPlot(text) {
       var label = text || 'No data';
       var size = getFacePlotSize();
@@ -598,6 +605,20 @@
       var size = getEdgePlotSize();
       global.$('#stats-edge-quality').text('--');
       global.$('#stats-edge-plot')
+        .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
+        .attr('preserveAspectRatio', 'none')
+        .html(
+        '<rect x="0" y="0" width="' + size.width + '" height="' + size.height + '" fill="#fbfdff" />' +
+        '<text x="' + (size.width / 2) + '" y="' + Math.floor(size.height / 2 + 4) + '" text-anchor="middle" fill="#7b8797" font-size="11">' + escapeXml(label) + '</text>' +
+        ''
+      );
+    }
+
+    function clearAngleResolutionPlot(text) {
+      var label = text || 'No data';
+      var size = getAnglePlotSize();
+      global.$('#stats-angle-quality').text('--');
+      global.$('#stats-angle-plot')
         .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
         .attr('preserveAspectRatio', 'none')
         .html(
@@ -715,6 +736,60 @@
         .html(svg);
     }
 
+    function renderAngleResolutionPlot(values, idealValues) {
+      var size = getAnglePlotSize();
+      var W = size.width;
+      var H = size.height;
+      var L = 36;
+      var R = 8;
+      var T = 8;
+      var B = 20;
+      var PW = W - L - R;
+      var PH = H - T - B;
+      var maxY = 5;
+      var i;
+
+      function sx(idx) {
+        if (values.length <= 1) {
+          return L + PW / 2;
+        }
+        return L + (idx / (values.length - 1)) * PW;
+      }
+      function sy(v) {
+        return T + PH - (v / maxY) * PH;
+      }
+
+      var pts = '';
+      for (i = 0; i < values.length; i += 1) {
+        var ideal = Math.max(idealValues[i], 1e-12);
+        var ratio = values[i] / ideal;
+        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(ratio, maxY));
+      }
+
+      var yIdeal = sy(1);
+      var yMaxLabel = '5';
+
+      var svg = '';
+      svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
+      svg += '<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + (L - 4) + '" y1="' + T + '" x2="' + (L + 4) + '" y2="' + T + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + L + '" y1="' + yIdeal + '" x2="' + (L + PW) + '" y2="' + yIdeal + '" stroke="#ea9624" stroke-width="1" stroke-dasharray="3 3" />';
+      if (values.length >= 1) {
+        svg += '<polyline fill="none" stroke="#1060A8" stroke-width="1.5" points="' + pts + '" />';
+      }
+      var yTickX = L - 4;
+      svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
+      svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
+      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">ratio</text>';
+      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">angles sorted</text>';
+      svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
+      global.$('#stats-angle-plot')
+        .attr('viewBox', '0 0 ' + W + ' ' + H)
+        .attr('preserveAspectRatio', 'none')
+        .html(svg);
+    }
+
     function getNodeIdsFromParsed(parsed) {
       var ids = [];
       if (!parsed || !parsed.elements) {
@@ -741,31 +816,28 @@
       }
     }
 
-    function clearAngleResolutionScore() {
-      global.$('#stats-angle-quality').text('--');
-    }
-
     function updateAngleResolutionScore(nodeIds, edgePairs, posById, hasCrossings) {
       if (hasCrossings) {
-        global.$('#stats-angle-quality').text('--');
+        clearAngleResolutionPlot('Drawing is not plane');
         return;
       }
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformAngleResolutionScore) {
-        global.$('#stats-angle-quality').text('--');
+        clearAngleResolutionPlot('Metrics unavailable');
         return;
       }
       var result = global.PlanarVibeMetrics.computeUniformAngleResolutionScore(nodeIds, edgePairs, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-angle-quality').text('--');
+      if (!result || !result.ok || !Number.isFinite(result.score) || !result.values || !result.idealValues) {
+        clearAngleResolutionPlot((result && result.reason) ? result.reason : 'No data');
         return;
       }
       global.$('#stats-angle-quality').text(result.score.toFixed(3));
+      renderAngleResolutionPlot(result.values, result.idealValues);
     }
 
     function updateFaceAreaPlot() {
       if (!currentParsed || !currentParsed.elements) {
         clearFaceAreaPlot('No graph');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('No graph');
         return;
       }
       var edgePairs = edgePairsFromParsed(currentParsed);
@@ -782,13 +854,13 @@
       }
       if (!nodeIds.length) {
         clearFaceAreaPlot('No graph');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('No graph');
         return;
       }
 
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.hasCrossingsFromPositions) {
         clearFaceAreaPlot('Metrics unavailable');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('Metrics unavailable');
         setPlaneStat(null);
         return;
       }
@@ -1089,7 +1161,7 @@
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Graph hidden');
         clearEdgeLengthPlot('Graph hidden');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('Graph hidden');
         setPlanarButtonsDisabled();
         return;
       }
@@ -1097,7 +1169,7 @@
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No graph');
         clearEdgeLengthPlot('No graph');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('No graph');
         setPlanarButtonsDisabled();
         return;
       }
@@ -1105,7 +1177,7 @@
         setStatistics({ vertexCount: cy.nodes().length, edgeCount: edgePairsFromParsed(parsed).length, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('No plot');
         clearEdgeLengthPlot('No plot');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('No plot');
         setPlanarButtonsDisabled();
         return;
       }
@@ -1159,7 +1231,7 @@
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearFaceAreaPlot('Parse error');
         clearEdgeLengthPlot('Parse error');
-        clearAngleResolutionScore();
+        clearAngleResolutionPlot('Parse error');
         setPlanarButtonsDisabled();
         updateCreateGraphButtonState();
         setStatus(error.message, true);
@@ -1445,7 +1517,7 @@
 
     clearFaceAreaPlot(isInteractive ? 'No graph' : 'Static mode');
     clearEdgeLengthPlot(isInteractive ? 'No graph' : 'Static mode');
-    clearAngleResolutionScore();
+    clearAngleResolutionPlot(isInteractive ? 'No graph' : 'Static mode');
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);
 
     if (!isInteractive && cy) {

@@ -112,6 +112,11 @@ body {
 
 #drawing-stats-panel {
   height: 240px;
+  overflow: visible;
+}
+
+#drawing-stats-panel .stats-scroll-body {
+  height: 100%;
   overflow-y: auto;
   scrollbar-gutter: stable;
 }
@@ -183,7 +188,8 @@ body {
 }
 
 #stats-face-plot,
-#stats-edge-plot {
+#stats-edge-plot,
+#stats-angle-plot {
   width: 100%;
   height: 120px;
   display: block;
