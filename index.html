@@ -23,6 +23,7 @@
       <section class="col-12 col-lg-auto input-col">
         <div class="panel">
           <form id="graph-form" method="post" action="#" accept-charset="UTF-8">
+            <span class="muted">paste a graph edge list:</span>
             <div class="wide center">
               <textarea
                 name="dotfile"
@@ -30,21 +31,58 @@
                 class="wide"
                 spellcheck="false"
                 maxlength="10000000"
-                placeholder="Paste a graph edge list..."></textarea>
+                placeholder="# each line: source target&#10;1 2&#10;2 3&#10;3 1&#10;3 4"></textarea>
               <div style="margin:5px 0 0px; text-align:center;">
                 <input id="submit" value="Create Graph" type="submit" class="btn btn-primary btn-sm"/>
               </div>
-              <div>
+              <div class="sample-row">
                 <span class="muted">...or try an example:</span>
-                <br>
-                <a class="small-link sample-link" data-sample="sample1" href="#">[Sample1]</a>
-                <a class="small-link sample-link" data-sample="sample2" href="#">[Sample2]</a>
-                <a class="small-link sample-link" data-sample="sample3" href="#">[Sample3]</a>
-                <a class="small-link sample-link" data-sample="cycle20" href="#">[Cycle20]</a>
-                <a class="small-link sample-link" data-sample="ladder20" href="#">[Ladder20]</a>
-                <a class="small-link sample-link" data-sample="grid9x9" href="#">[Grid 9x9]</a>
-                <a class="small-link sample-link" data-sample="planar3tree10" href="#">[Planar 3-Tree 10]</a>
-                <a class="small-link sample-link" data-sample="planar3tree30" href="#">[Planar 3-Tree 30]</a>
+                <table class="sample-table" role="presentation">
+                  <tr>
+                    <td>
+                      <select id="sample-main-select" class="form-select form-select-sm sample-select" title="Main samples">
+                        <option value="">Sample</option>
+                        <option value="sample1">1</option>
+                        <option value="sample2">2</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select id="sample-3tree-select" class="form-select form-select-sm sample-select" title="Planar 3-tree samples">
+                        <option value="">Planar 3-Tree</option>
+                        <option value="planar3tree10">10 vertices</option>
+                        <option value="planar3tree30">30 vertices</option>
+                        <option value="planar3tree100">100 vertices</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <select id="sample-misc-select" class="form-select form-select-sm sample-select" title="Misc samples">
+                        <option value="">Misc</option>
+                        <option value="cycle20">Cycle20</option>
+                        <option value="xtree30">X-Tree 30</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select id="sample-grid-select" class="form-select form-select-sm sample-select" title="Grid samples">
+                        <option value="">Grid</option>
+                        <option value="grid2x20">2x20</option>
+                        <option value="grid4x20">4x20</option>
+                        <option value="grid9x9">9x9</option>
+                      </select>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td>
+                      <select id="sample-nonplanar-select" class="form-select form-select-sm sample-select" title="Non-planar samples">
+                        <option value="">Non-Planar</option>
+                        <option value="nonplanar1">1 (K3,3)</option>
+                        <option value="nonplanar2">2 (K6)</option>
+                      </select>
+                    </td>
+                    <td></td>
+                  </tr>
+                </table>
               </div>
             </div>
 

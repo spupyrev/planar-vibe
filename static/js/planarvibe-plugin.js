@@ -1573,6 +1573,46 @@
         }
       });
 
+      global.$('#sample-main-select').on('change', function () {
+        var sampleName = String(global.$(this).val() || '');
+        if (!sampleName) {
+          return;
+        }
+        pasteStaticGraph(sampleName);
+      });
+
+      global.$('#sample-nonplanar-select').on('change', function () {
+        var sampleName = String(global.$(this).val() || '');
+        if (!sampleName) {
+          return;
+        }
+        pasteStaticGraph(sampleName);
+      });
+
+      global.$('#sample-misc-select').on('change', function () {
+        var sampleName = String(global.$(this).val() || '');
+        if (!sampleName) {
+          return;
+        }
+        pasteStaticGraph(sampleName);
+      });
+
+      global.$('#sample-3tree-select').on('change', function () {
+        var sampleName = String(global.$(this).val() || '');
+        if (!sampleName) {
+          return;
+        }
+        pasteStaticGraph(sampleName);
+      });
+
+      global.$('#sample-grid-select').on('change', function () {
+        var sampleName = String(global.$(this).val() || '');
+        if (!sampleName) {
+          return;
+        }
+        pasteStaticGraph(sampleName);
+      });
+
       global.$('.layout-btn').on('click', function () {
         var layoutName = global.$(this).data('layout');
         if (layoutName) {
