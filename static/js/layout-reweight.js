@@ -24,6 +24,33 @@
     return best || '';
   }
 
+  function canonicalizeCycleOrder(face) {
+    if (!face || face.length === 0) return [];
+    var arr = face.map(String);
+    var n = arr.length;
+    var best = null;
+    var bestKey = null;
+    var i;
+    for (i = 0; i < n; i += 1) {
+      var rot = arr.slice(i).concat(arr.slice(0, i));
+      var key = rot.join('|');
+      if (bestKey === null || key < bestKey) {
+        bestKey = key;
+        best = rot;
+      }
+    }
+    var rev = arr.slice().reverse();
+    for (i = 0; i < n; i += 1) {
+      var rrot = rev.slice(i).concat(rev.slice(0, i));
+      var rkey = rrot.join('|');
+      if (bestKey === null || rkey < bestKey) {
+        bestKey = rkey;
+        best = rrot;
+      }
+    }
+    return best || arr.slice();
+  }
+
   function polygonAreaAbs(face, posById) {
     if (!face || face.length < 3) return 0;
     var s = 0;
@@ -208,6 +235,41 @@
     return { pos: pos, iters: iters };
   }
 
+  function fillMissingPositionsByNeighborAverage(nodeIds, adj, posById, maxPasses) {
+    var out = {};
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      if (posById[id] && Number.isFinite(posById[id].x) && Number.isFinite(posById[id].y)) {
+        out[id] = { x: posById[id].x, y: posById[id].y };
+      }
+    }
+    var passes = Math.max(1, Number(maxPasses) || 1);
+    for (var p = 0; p < passes; p += 1) {
+      var changed = false;
+      for (i = 0; i < nodeIds.length; i += 1) {
+        id = String(nodeIds[i]);
+        if (out[id]) continue;
+        var ngh = adj[id] || [];
+        var sx = 0;
+        var sy = 0;
+        var cnt = 0;
+        for (var j = 0; j < ngh.length; j += 1) {
+          var u = String(ngh[j]);
+          if (!out[u]) continue;
+          sx += out[u].x;
+          sy += out[u].y;
+          cnt += 1;
+        }
+        if (cnt > 0) {
+          out[id] = { x: sx / cnt, y: sy / cnt };
+          changed = true;
+        }
+      }
+      if (!changed) break;
+    }
+    return out;
+  }
+
   function buildEdgeToFaceMap(faces) {
     var map = {};
     for (var i = 0; i < faces.length; i += 1) {
@@ -223,12 +285,48 @@
     return map;
   }
 
-  function adjustWeights(edgePairs, outerFace, faces, faceAreas, desired, oldWeights) {
+  function updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, stepSize, clampValue, deltaClamp) {
+    var next = facePressure.slice();
+    var safeStep = Number.isFinite(stepSize) ? Math.max(0, stepSize) : 0.08;
+    var safeClamp = Number.isFinite(clampValue) ? Math.max(0.05, clampValue) : 0.7;
+    var safeDeltaClamp = Number.isFinite(deltaClamp) ? Math.max(0.05, deltaClamp) : 1.0;
+    var sum = 0;
+    var cnt = 0;
+    for (var i = 0; i < boundedFaceIdx.length; i += 1) {
+      var fi = boundedFaceIdx[i];
+      var area = faceAreas[fi];
+      if (!Number.isFinite(area) || !(area > 1e-12)) continue;
+      var delta = Math.log(Math.max(desired, 1e-12) / Math.max(area, 1e-12));
+      if (delta < -safeDeltaClamp) delta = -safeDeltaClamp;
+      if (delta > safeDeltaClamp) delta = safeDeltaClamp;
+      var p = next[fi] + safeStep * delta;
+      if (p < -safeClamp) p = -safeClamp;
+      if (p > safeClamp) p = safeClamp;
+      next[fi] = p;
+      sum += p;
+      cnt += 1;
+    }
+    // Remove constant offset for numerical stability.
+    var mean = cnt > 0 ? (sum / cnt) : 0;
+    if (cnt > 0 && Math.abs(mean) > 1e-12) {
+      for (i = 0; i < boundedFaceIdx.length; i += 1) {
+        fi = boundedFaceIdx[i];
+        next[fi] -= mean;
+      }
+    }
+    return next;
+  }
+
+  function adjustWeights(edgePairs, outerFace, faces, faceAreas, desired, oldWeights, facePressure, e2f, boundedSet, pressureBeta, scaleMin, scaleMax, pressureScaleMin, pressureScaleMax) {
     var outerSet = new Set((outerFace || []).map(String));
-    var e2f = buildEdgeToFaceMap(faces);
     var newWeights = {};
     var sumW = 0;
     var cnt = 0;
+    var beta = Number.isFinite(pressureBeta) ? Math.max(0, pressureBeta) : 0.12;
+    var sMin = Number.isFinite(scaleMin) ? Math.max(0.01, scaleMin) : 0.2;
+    var sMax = Number.isFinite(scaleMax) ? Math.max(sMin, scaleMax) : 10.0;
+    var psMin = Number.isFinite(pressureScaleMin) ? Math.max(0.01, pressureScaleMin) : 0.85;
+    var psMax = Number.isFinite(pressureScaleMax) ? Math.max(psMin, pressureScaleMax) : 1.15;
 
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
@@ -262,8 +360,26 @@
 
       var penalty = (areaSum / areaCnt) / Math.max(desired, 1e-12);
       var scale = penalty > 1 ? Math.sqrt(penalty) : penalty;
-      if (scale < 0.2) scale = 0.2;
-      if (scale > 10.0) scale = 10.0;
+      if (scale < sMin) scale = sMin;
+      if (scale > sMax) scale = sMax;
+
+      var pSum = 0;
+      var pCnt = 0;
+      for (j = 0; j < facesIdx.length; j += 1) {
+        fi = facesIdx[j];
+        if (!boundedSet[fi]) continue;
+        var p = facePressure[fi];
+        if (Number.isFinite(p)) {
+          pSum += p;
+          pCnt += 1;
+        }
+      }
+      if (pCnt > 0 && beta > 0) {
+        var pressureScale = Math.exp(-beta * (pSum / pCnt));
+        if (pressureScale < psMin) pressureScale = psMin;
+        if (pressureScale > psMax) pressureScale = psMax;
+        scale *= pressureScale;
+      }
 
       var wNew = wOld * scale;
       if (wNew < 1e-4) wNew = 1e-4;
@@ -318,24 +434,26 @@
 
   async function applyReweightTutteLayout(cy, options) {
     var opts = options || {};
+    var tuning = opts.tuning || {};
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing' };
     }
 
     var g = graphFromCy(cy);
     if (g.nodeIds.length < 3) {
-      return { ok: false, message: 'ReweightTutte requires at least 3 vertices' };
+      return { ok: false, message: 'ReweightTutte++ requires at least 3 vertices' };
     }
 
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
     if (!emb || !emb.ok) {
-      return { ok: false, message: 'ReweightTutte requires a planar graph' };
+      return { ok: false, message: 'ReweightTutte++ requires a planar graph' };
     }
 
     var outer = longestFace(emb.faces);
     if (!outer || outer.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
+    outer = canonicalizeCycleOrder(outer);
 
     var augmented = augmentExceptOuter(g.nodeIds, g.edgePairs, emb, outer);
     var embAug = global.PlanarVibePlanarityTest.computePlanarEmbedding(augmented.nodeIds, augmented.edgePairs);
@@ -354,12 +472,30 @@
     }
 
     var adj = buildAdjacency(augmented.nodeIds, augmented.edgePairs);
+    var e2f = buildEdgeToFaceMap(faces);
     var weights = {};
     for (i = 0; i < augmented.edgePairs.length; i += 1) {
       weights[edgeKey(augmented.edgePairs[i][0], augmented.edgePairs[i][1])] = 1;
     }
+    var facePressure = [];
+    for (i = 0; i < faces.length; i += 1) facePressure[i] = 0;
+    var boundedSet = {};
+    for (i = 0; i < boundedFaceIdx.length; i += 1) boundedSet[boundedFaceIdx[i]] = true;
 
-    var MAX_OUTER_ITERS = 8;
+    var MAX_OUTER_ITERS = Number.isFinite(tuning.maxOuterIters) ? Math.max(1, Math.floor(tuning.maxOuterIters)) : 8;
+    var PRESSURE_STEP = Number.isFinite(tuning.pressureStep) ? Math.max(0, tuning.pressureStep) : 0.16;
+    var PRESSURE_CLAMP = Number.isFinite(tuning.pressureClamp) ? Math.max(0.05, tuning.pressureClamp) : 1.20;
+    var PRESSURE_BETA = Number.isFinite(tuning.pressureBeta) ? Math.max(0, tuning.pressureBeta) : 0.18;
+    var WARM_ITERS = Number.isFinite(tuning.warmIters) ? Math.max(1, Math.floor(tuning.warmIters)) : 2000;
+    var WARM_FILL_PASSES = Number.isFinite(tuning.warmFillPasses) ? Math.max(1, Math.floor(tuning.warmFillPasses)) : 5;
+    var INNER_ITERS = Number.isFinite(tuning.innerIters) ? Math.max(1, Math.floor(tuning.innerIters)) : 3000;
+    var FINAL_ITERS = Number.isFinite(tuning.finalIters) ? Math.max(1, Math.floor(tuning.finalIters)) : 3000;
+    var DELAY_MS = Number.isFinite(tuning.delayMs) ? Math.max(0, tuning.delayMs) : 90;
+    var PRESSURE_DELTA_CLAMP = Number.isFinite(tuning.pressureDeltaClamp) ? Math.max(0.05, tuning.pressureDeltaClamp) : 0.75;
+    var SCALE_MIN = Number.isFinite(tuning.scaleMin) ? Math.max(0.01, tuning.scaleMin) : 0.25;
+    var SCALE_MAX = Number.isFinite(tuning.scaleMax) ? Math.max(SCALE_MIN, tuning.scaleMax) : 10.0;
+    var PRESSURE_SCALE_MIN = Number.isFinite(tuning.pressureScaleMin) ? Math.max(0.01, tuning.pressureScaleMin) : 1.0;
+    var PRESSURE_SCALE_MAX = Number.isFinite(tuning.pressureScaleMax) ? Math.max(PRESSURE_SCALE_MIN, tuning.pressureScaleMax) : 1.25;
     var inner = null;
     var desired = 1 / boundedFaceIdx.length;
     var totalInnerIters = 0;
@@ -372,10 +508,20 @@
       var ov = String(outer[oi]);
       fixedOuterPos[ov] = { x: initPos[ov].x, y: initPos[ov].y };
     }
+    var originalAdj = buildAdjacency(g.nodeIds, g.edgePairs);
+    var originalWeights = {};
+    for (i = 0; i < g.edgePairs.length; i += 1) {
+      originalWeights[edgeKey(g.edgePairs[i][0], g.edgePairs[i][1])] = 1;
+    }
+    // Warm-start on the original graph before augmented iterations.
+    var warm = barycentricLayoutWeighted(g.nodeIds, originalAdj, outer, originalWeights, WARM_ITERS, seedPos, fixedOuterPos);
+    totalInnerIters += warm.iters;
+    var warmSeed = fillMissingPositionsByNeighborAverage(augmented.nodeIds, adj, warm.pos, WARM_FILL_PASSES);
+    seedPos = warmSeed;
 
     var didFit = false;
     for (var iter = 0; iter < MAX_OUTER_ITERS; iter += 1) {
-      inner = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, 3000, seedPos, fixedOuterPos);
+      inner = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, INNER_ITERS, seedPos, fixedOuterPos);
       totalInnerIters += inner.iters;
 
       var pos = inner.pos;
@@ -393,7 +539,7 @@
           positions: pos
         });
       }
-      await waitForNextFrame(90);
+      await waitForNextFrame(DELAY_MS);
 
       var outerArea = polygonAreaAbs(outer, pos);
       if (!(outerArea > 1e-12)) outerArea = 1;
@@ -402,10 +548,26 @@
         faceAreas[i] = polygonAreaAbs(faces[i], pos) / outerArea;
       }
 
-      weights = adjustWeights(augmented.edgePairs, outer, faces, faceAreas, desired, weights);
+      facePressure = updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, PRESSURE_STEP, PRESSURE_CLAMP, PRESSURE_DELTA_CLAMP);
+      weights = adjustWeights(
+        augmented.edgePairs,
+        outer,
+        faces,
+        faceAreas,
+        desired,
+        weights,
+        facePressure,
+        e2f,
+        boundedSet,
+        PRESSURE_BETA,
+        SCALE_MIN,
+        SCALE_MAX,
+        PRESSURE_SCALE_MIN,
+        PRESSURE_SCALE_MAX
+      );
     }
 
-    var finalLayout = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, 3000, seedPos, fixedOuterPos);
+    var finalLayout = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, FINAL_ITERS, seedPos, fixedOuterPos);
     totalInnerIters += finalLayout.iters;
     var finalPos = finalLayout.pos;
 

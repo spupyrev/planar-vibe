@@ -57,6 +57,7 @@ function loadBrowserModules() {
     'static/js/planarvibe-plugin.js',
     'static/js/graph-generator.js',
     'static/js/planarity-test.js',
+    'static/js/metrics.js',
     'static/js/planar-graph-core.js',
     'static/js/layout-tutte.js',
     'static/js/layout-reweight.js',
@@ -76,6 +77,7 @@ function loadBrowserModules() {
 const modules = loadBrowserModules();
 const Generator = modules.PlanarVibeGraphGenerator;
 const Planarity = modules.PlanarVibePlanarityTest;
+const Metrics = modules.PlanarVibeMetrics;
 const FPP = modules.PlanarVibeFPP;
 const Reweight = modules.PlanarVibeReweightTutte;
 
@@ -536,4 +538,25 @@ test('ReweightTutte keeps outer-face coordinates fixed across iterations', async
       assert.ok(Math.abs(a.y - b.y) < 1e-9, `outer y moved for vertex ${v}`);
     }
   }
+});
+
+test('ReweightTutte on sample1 computes Face Areas Score', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  for (let i = 0; i < graph.nodeIds.length; i += 1) {
+    const id = graph.nodeIds[i];
+    const node = cy.nodes().find((n) => n.id() === id);
+    node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
+  }
+
+  const result = await Reweight.applyReweightTutteLayout(cy);
+  assert.equal(result.ok, true, result.message || 'ReweightTutte failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  const face = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+  assert.equal(face.ok, true, face.reason || 'Face area score failed');
+  assert.ok(Number.isFinite(face.quality), 'Face area quality is not finite');
+  assert.ok(face.quality >= 0 && face.quality <= 1, `Face area quality out of [0,1]: ${face.quality}`);
 });

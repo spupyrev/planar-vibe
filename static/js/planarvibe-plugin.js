@@ -185,6 +185,7 @@
     var savedPositions = {};
     var savedViewport = null;
     var currentVisualizedInput = null;
+    var layoutBusyState = null;
 
     function hashStringLocal(value, seed) {
       var hash = seed >>> 0;
@@ -435,9 +436,7 @@
     function setLayoutStatus(message, isError) {
       if (isError) {
         setStatus(message, true);
-        clearFaceAreaPlot('No plot');
-        clearEdgeLengthPlot('No plot');
-        clearAngleResolutionPlot('No plot');
+        clearDrawingStats('No plot');
         return;
       }
       setStatus(message + smallGraphCoordinatesSuffix(), false);
@@ -564,68 +563,55 @@
       };
     }
 
-    function getFacePlotSize() {
-      var el = global.document.getElementById('stats-face-plot');
+    function getPlotSize(plotId) {
+      var el = global.document.getElementById(plotId);
       var w = el ? Math.max(220, Math.floor(el.clientWidth || el.getBoundingClientRect().width || 220)) : 220;
       var h = 120;
       return { width: w, height: h };
+    }
+
+    function getFacePlotSize() {
+      return getPlotSize('stats-face-plot');
     }
 
     function getEdgePlotSize() {
-      var el = global.document.getElementById('stats-edge-plot');
-      var w = el ? Math.max(220, Math.floor(el.clientWidth || el.getBoundingClientRect().width || 220)) : 220;
-      var h = 120;
-      return { width: w, height: h };
+      return getPlotSize('stats-edge-plot');
     }
 
     function getAnglePlotSize() {
-      var el = global.document.getElementById('stats-angle-plot');
-      var w = el ? Math.max(220, Math.floor(el.clientWidth || el.getBoundingClientRect().width || 220)) : 220;
-      var h = 120;
-      return { width: w, height: h };
+      return getPlotSize('stats-angle-plot');
+    }
+
+    function clearPlot(plotId, qualityId, text) {
+      var label = text || 'No data';
+      var size = getPlotSize(plotId);
+      global.$('#' + qualityId).text('--');
+      global.$('#' + plotId)
+        .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
+        .attr('preserveAspectRatio', 'none')
+        .html(
+          '<rect x="0" y="0" width="' + size.width + '" height="' + size.height + '" fill="#fbfdff" />' +
+          '<text x="' + (size.width / 2) + '" y="' + Math.floor(size.height / 2 + 4) + '" text-anchor="middle" fill="#7b8797" font-size="11">' + escapeXml(label) + '</text>'
+        );
     }
 
     function clearFaceAreaPlot(text) {
-      var label = text || 'No data';
-      var size = getFacePlotSize();
-      global.$('#stats-face-quality').text('--');
       global.$('#stat-is-plane').text('--');
-      global.$('#stats-face-plot')
-        .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
-        .attr('preserveAspectRatio', 'none')
-        .html(
-        '<rect x="0" y="0" width="' + size.width + '" height="' + size.height + '" fill="#fbfdff" />' +
-        '<text x="' + (size.width / 2) + '" y="' + Math.floor(size.height / 2 + 4) + '" text-anchor="middle" fill="#7b8797" font-size="11">' + escapeXml(label) + '</text>' +
-        ''
-      );
+      clearPlot('stats-face-plot', 'stats-face-quality', text);
     }
 
     function clearEdgeLengthPlot(text) {
-      var label = text || 'No data';
-      var size = getEdgePlotSize();
-      global.$('#stats-edge-quality').text('--');
-      global.$('#stats-edge-plot')
-        .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
-        .attr('preserveAspectRatio', 'none')
-        .html(
-        '<rect x="0" y="0" width="' + size.width + '" height="' + size.height + '" fill="#fbfdff" />' +
-        '<text x="' + (size.width / 2) + '" y="' + Math.floor(size.height / 2 + 4) + '" text-anchor="middle" fill="#7b8797" font-size="11">' + escapeXml(label) + '</text>' +
-        ''
-      );
+      clearPlot('stats-edge-plot', 'stats-edge-quality', text);
     }
 
     function clearAngleResolutionPlot(text) {
-      var label = text || 'No data';
-      var size = getAnglePlotSize();
-      global.$('#stats-angle-quality').text('--');
-      global.$('#stats-angle-plot')
-        .attr('viewBox', '0 0 ' + size.width + ' ' + size.height)
-        .attr('preserveAspectRatio', 'none')
-        .html(
-        '<rect x="0" y="0" width="' + size.width + '" height="' + size.height + '" fill="#fbfdff" />' +
-        '<text x="' + (size.width / 2) + '" y="' + Math.floor(size.height / 2 + 4) + '" text-anchor="middle" fill="#7b8797" font-size="11">' + escapeXml(label) + '</text>' +
-        ''
-      );
+      clearPlot('stats-angle-plot', 'stats-angle-quality', text);
+    }
+
+    function clearDrawingStats(text) {
+      clearFaceAreaPlot(text);
+      clearEdgeLengthPlot(text);
+      clearAngleResolutionPlot(text);
     }
 
     function renderFaceAreaPlot(values, ideal, showLine) {
@@ -1164,25 +1150,19 @@
     function updateStatistics(parsed) {
       if (!cy) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        clearFaceAreaPlot('Graph hidden');
-        clearEdgeLengthPlot('Graph hidden');
-        clearAngleResolutionPlot('Graph hidden');
+        clearDrawingStats('Graph hidden');
         setPlanarButtonsDisabled();
         return;
       }
       if (!parsed || !parsed.elements) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        clearFaceAreaPlot('No graph');
-        clearEdgeLengthPlot('No graph');
-        clearAngleResolutionPlot('No graph');
+        clearDrawingStats('No graph');
         setPlanarButtonsDisabled();
         return;
       }
       if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
         setStatistics({ vertexCount: cy.nodes().length, edgeCount: edgePairsFromParsed(parsed).length, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        clearFaceAreaPlot('No plot');
-        clearEdgeLengthPlot('No plot');
-        clearAngleResolutionPlot('No plot');
+        clearDrawingStats('No plot');
         setPlanarButtonsDisabled();
         return;
       }
@@ -1235,9 +1215,7 @@
         setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges', false);
       } catch (error) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        clearFaceAreaPlot('Parse error');
-        clearEdgeLengthPlot('Parse error');
-        clearAngleResolutionPlot('Parse error');
+        clearDrawingStats('Parse error');
         setPlanarButtonsDisabled();
         updateCreateGraphButtonState();
         setStatus(error.message, true);
@@ -1348,7 +1326,8 @@
           missingMessage: 'ReweightTutte layout module is missing',
           module: global.PlanarVibeReweightTutte,
           methodName: 'applyReweightTutteLayout',
-          normalizeOnSuccess: false
+          normalizeOnSuccess: false,
+          disableOtherButtonsWhileRunning: true
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -1381,6 +1360,7 @@
     function runSpecialLayout(config, onDone) {
       var name = config.layoutName;
       var shouldNormalizeOnSuccess = config.normalizeOnSuccess !== false;
+      var shouldDisableOthers = !!config.disableOtherButtonsWhileRunning;
       if (global.$('.layout-btn[data-layout="' + name + '"]').prop('disabled')) {
         setStatus(config.disabledMessage, true);
         if (typeof onDone === 'function') onDone();
@@ -1391,6 +1371,9 @@
         if (typeof onDone === 'function') onDone();
         return;
       }
+      if (shouldDisableOthers) {
+        enterLayoutBusy(name);
+      }
       var result = config.module[config.methodName](cy);
       if (result && typeof result.then === 'function') {
         result.then(function (resolved) {
@@ -1398,9 +1381,15 @@
             normalizeLayoutScale();
           }
           setLayoutStatus(resolved && resolved.message ? resolved.message : ('Applied ' + name + ' layout'), !(resolved && resolved.ok));
+          if (shouldDisableOthers) {
+            restoreLayoutBusy();
+          }
           if (typeof onDone === 'function') onDone();
         }).catch(function (err) {
           setLayoutStatus((err && err.message) ? err.message : ('Failed ' + name + ' layout'), true);
+          if (shouldDisableOthers) {
+            restoreLayoutBusy();
+          }
           if (typeof onDone === 'function') onDone();
         });
         return;
@@ -1409,12 +1398,39 @@
         normalizeLayoutScale();
       }
       setLayoutStatus(result && result.message ? result.message : ('Applied ' + name + ' layout'), !(result && result.ok));
+      if (shouldDisableOthers) {
+        restoreLayoutBusy();
+      }
       if (typeof onDone === 'function') onDone();
     }
 
     function setSelectedLayoutButton(layoutName) {
       global.$('.layout-btn').removeClass('is-active');
       global.$('.layout-btn[data-layout="' + layoutName + '"]').addClass('is-active');
+    }
+
+    function enterLayoutBusy(activeLayoutName) {
+      var snapshot = [];
+      global.$('.layout-btn').each(function () {
+        var $btn = global.$(this);
+        var name = String($btn.data('layout') || '');
+        snapshot.push({ name: name, disabled: !!$btn.prop('disabled') });
+        if (name !== activeLayoutName) {
+          $btn.prop('disabled', true);
+        }
+      });
+      layoutBusyState = snapshot;
+    }
+
+    function restoreLayoutBusy() {
+      if (!layoutBusyState) {
+        return;
+      }
+      for (var i = 0; i < layoutBusyState.length; i += 1) {
+        var item = layoutBusyState[i];
+        global.$('.layout-btn[data-layout="' + item.name + '"]').prop('disabled', !!item.disabled);
+      }
+      layoutBusyState = null;
     }
 
     function resetZoom() {
@@ -1588,9 +1604,7 @@
     bindUiEvents();
     initStyleControls();
 
-    clearFaceAreaPlot(isInteractive ? 'No graph' : 'Static mode');
-    clearEdgeLengthPlot(isInteractive ? 'No graph' : 'Static mode');
-    clearAngleResolutionPlot(isInteractive ? 'No graph' : 'Static mode');
+    clearDrawingStats(isInteractive ? 'No graph' : 'Static mode');
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);
 
     if (!isInteractive && cy) {

@@ -12,6 +12,7 @@ Live app: https://spupyrev.github.io/planar-vibe/
   - `Circular`
   - `Force-Dir`
   - `Tutte`
+  - `Reweight`
   - `P3T`
   - `FPP`
 - Graph stats:
@@ -19,9 +20,12 @@ Live app: https://spupyrev.github.io/planar-vibe/
   - planar, bipartite, planar 3-tree
 - Drawing stats:
   - plane (`yes/no`, based on crossings in the current drawing)
-  - face-area distribution plot
-  - face-area quality score
+  - `Angle Resolution Score`
+  - `Face Areas Score`
+  - `Edge Length Score`
+  - clickable metric rows to show/hide each distribution plot
 - Interactive/static mode switch (static mode is lower CPU)
+- Vertex size and edge width sliders (persisted)
 - SVG export
 
 ## Input format
