@@ -125,6 +125,7 @@
     var PREF_VERTEX_SIZE_KEY = 'planarvibe_vertex_size';
     var PREF_EDGE_WIDTH_KEY = 'planarvibe_edge_width';
     var PREF_INTERACTIVE_KEY = 'planarvibe_interactive_mode';
+    var PREF_STATUS_COLLAPSED_KEY = 'planarvibe_status_collapsed';
 
     function writeCookie(name, value, days) {
       var d = new Date();
@@ -182,6 +183,7 @@
       edgeWidth: readNumericPreference(PREF_EDGE_WIDTH_KEY, DEFAULT_EDGE_WIDTH, 0.25, 5)
     };
     var isInteractive = readStorage(PREF_INTERACTIVE_KEY) !== '0';
+    var isStatusCollapsed = readStorage(PREF_STATUS_COLLAPSED_KEY) === '1';
     var savedPositions = {};
     var savedViewport = null;
     var currentVisualizedInput = null;
@@ -252,7 +254,50 @@
     cy = createCyInstance();
 
     function setStatus(message, isError) {
-      global.$('#status').text(message).css('color', isError ? '#ba1b1b' : LOGO_COLORS.ink);
+      var $status = global.$('#status');
+      if (!$status.length) {
+        return;
+      }
+      var $entry = global.$('<div class="status-entry"></div>').text(String(message || ''));
+      if (isError) {
+        $entry.addClass('is-error');
+      }
+      $status.append($entry);
+
+      var $entries = $status.children('.status-entry');
+      var maxEntries = 250;
+      if ($entries.length > maxEntries) {
+        $entries.slice(0, $entries.length - maxEntries).remove();
+      }
+
+      var el = $status.get(0);
+      if (el) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }
+
+    function setStatusPanelCollapsed(collapsed, persist) {
+      isStatusCollapsed = !!collapsed;
+      var $panel = global.$('.status-panel');
+      $panel.toggleClass('is-collapsed', isStatusCollapsed);
+
+      var $btn = global.$('#status-collapse-btn');
+      if ($btn.length) {
+        $btn.text(isStatusCollapsed ? '▸' : '▾');
+        $btn.attr('aria-expanded', String(!isStatusCollapsed));
+        $btn.attr('title', isStatusCollapsed ? 'Expand status bar' : 'Collapse status bar');
+      }
+
+      if (!isStatusCollapsed) {
+        var el = global.$('#status').get(0);
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+      }
+
+      if (persist) {
+        writeStorage(PREF_STATUS_COLLAPSED_KEY, isStatusCollapsed ? '1' : '0');
+      }
     }
 
     function updateCreateGraphButtonState() {
@@ -433,13 +478,26 @@
       return ' | coords: ' + parts.join(' ');
     }
 
+    function graphSizeSuffix() {
+      var vertices = 0;
+      var edges = 0;
+      if (currentParsed && Number.isFinite(currentParsed.nodeCount) && Number.isFinite(currentParsed.edgeCount)) {
+        vertices = currentParsed.nodeCount;
+        edges = currentParsed.edgeCount;
+      } else if (cy) {
+        vertices = cy.nodes().length;
+        edges = cy.edges().length;
+      }
+      return ' | size: ' + vertices + 'V, ' + edges + 'E';
+    }
+
     function setLayoutStatus(message, isError) {
       if (isError) {
         setStatus(message, true);
         clearDrawingStats('No plot');
         return;
       }
-      setStatus(message + smallGraphCoordinatesSuffix(), false);
+      setStatus(message + graphSizeSuffix() + smallGraphCoordinatesSuffix(), false);
       if (cy) {
         savedPositions = capturePositionsFromCy();
         saveViewportState(captureViewportFromCy());
@@ -1232,11 +1290,14 @@
       return false;
     }
 
-    function pasteStaticGraph(name) {
+    function pasteStaticGraph(name, displayName) {
       var sampleGraph = global.PlanarVibeGraphGenerator.getSample(name);
       if (!sampleGraph) {
         setStatus('Unknown sample: ' + name, true);
         return;
+      }
+      if (displayName) {
+        setStatus('Loaded sample: ' + String(displayName), false);
       }
       global.$('#dotfile').val(sampleGraph);
       drawGraph();
@@ -1326,6 +1387,27 @@
           missingMessage: 'ReweightTutte layout module is missing',
           module: global.PlanarVibeReweightTutte,
           methodName: 'applyReweightTutteLayout',
+          buildMethodOptions: function () {
+            return {
+              onIteration: function (progress) {
+                if (!progress) {
+                  return;
+                }
+                var parts = [];
+                parts.push('Reweight step ' + progress.iter + '/' + progress.maxIters);
+                if (Number.isFinite(progress.faceAreaScore)) {
+                  parts.push('face score ' + progress.faceAreaScore.toFixed(3));
+                }
+                if (Number.isFinite(progress.faceAreaMinRatio) && Number.isFinite(progress.faceAreaMaxRatio)) {
+                  parts.push('area ratio min/avg ' + progress.faceAreaMinRatio.toFixed(2) + ', max/avg ' + progress.faceAreaMaxRatio.toFixed(2));
+                }
+                if (Number.isFinite(progress.boundedFaceCount)) {
+                  parts.push('faces ' + progress.boundedFaceCount);
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            };
+          },
           normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
         }, function () {
@@ -1374,7 +1456,15 @@
       if (shouldDisableOthers) {
         enterLayoutBusy(name);
       }
-      var result = config.module[config.methodName](cy);
+      var methodOptions = null;
+      if (typeof config.buildMethodOptions === 'function') {
+        methodOptions = config.buildMethodOptions();
+      }
+      if (!methodOptions) {
+        methodOptions = {};
+      }
+
+      var result = config.module[config.methodName](cy, methodOptions);
       if (result && typeof result.then === 'function') {
         result.then(function (resolved) {
           if (resolved && resolved.ok && shouldNormalizeOnSuccess) {
@@ -1556,6 +1646,47 @@
     }
 
     function bindUiEvents() {
+      var sampleSelectIds = [
+        '#sample-main-select',
+        '#sample-nonplanar-select',
+        '#sample-misc-select',
+        '#sample-3tree-select',
+        '#sample-grid-select'
+      ];
+
+      function updateSampleSelectVisualState($select) {
+        if (!$select || !$select.length) {
+          return;
+        }
+        var isDefault = String($select.val() || '') === '';
+        $select.toggleClass('is-default', isDefault);
+      }
+
+      function bindSampleSelect(selectId) {
+        global.$(selectId).on('change', function () {
+          var $select = global.$(this);
+          updateSampleSelectVisualState($select);
+          var sampleName = String($select.val() || '');
+          if (!sampleName) {
+            return;
+          }
+          for (var i = 0; i < sampleSelectIds.length; i += 1) {
+            var otherId = sampleSelectIds[i];
+            if (otherId === selectId) {
+              continue;
+            }
+            var $other = global.$(otherId);
+            if ($other.length) {
+              $other.prop('selectedIndex', 0);
+              updateSampleSelectVisualState($other);
+            }
+          }
+          var groupLabel = String($select.find('option:first').text() || 'Sample').trim();
+          var optionLabel = String($select.find('option:selected').text() || sampleName).trim();
+          pasteStaticGraph(sampleName, groupLabel + ' / ' + optionLabel);
+        });
+      }
+
       global.$('#graph-form').on('submit', function (event) {
         event.preventDefault();
         checkTextArea();
@@ -1573,45 +1704,10 @@
         }
       });
 
-      global.$('#sample-main-select').on('change', function () {
-        var sampleName = String(global.$(this).val() || '');
-        if (!sampleName) {
-          return;
-        }
-        pasteStaticGraph(sampleName);
-      });
-
-      global.$('#sample-nonplanar-select').on('change', function () {
-        var sampleName = String(global.$(this).val() || '');
-        if (!sampleName) {
-          return;
-        }
-        pasteStaticGraph(sampleName);
-      });
-
-      global.$('#sample-misc-select').on('change', function () {
-        var sampleName = String(global.$(this).val() || '');
-        if (!sampleName) {
-          return;
-        }
-        pasteStaticGraph(sampleName);
-      });
-
-      global.$('#sample-3tree-select').on('change', function () {
-        var sampleName = String(global.$(this).val() || '');
-        if (!sampleName) {
-          return;
-        }
-        pasteStaticGraph(sampleName);
-      });
-
-      global.$('#sample-grid-select').on('change', function () {
-        var sampleName = String(global.$(this).val() || '');
-        if (!sampleName) {
-          return;
-        }
-        pasteStaticGraph(sampleName);
-      });
+      for (var s = 0; s < sampleSelectIds.length; s += 1) {
+        bindSampleSelect(sampleSelectIds[s]);
+        updateSampleSelectVisualState(global.$(sampleSelectIds[s]));
+      }
 
       global.$('.layout-btn').on('click', function () {
         var layoutName = global.$(this).data('layout');
@@ -1639,10 +1735,19 @@
           showDrawingMetricPlot(String(target));
         }
       });
+
+      global.$('#status-collapse-btn').on('click', function () {
+        setStatusPanelCollapsed(!isStatusCollapsed, true);
+      });
+
+      global.$('#status-clear-btn').on('click', function () {
+        global.$('#status').empty();
+      });
     }
 
     bindUiEvents();
     initStyleControls();
+    setStatusPanelCollapsed(isStatusCollapsed, false);
 
     clearDrawingStats(isInteractive ? 'No graph' : 'Static mode');
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);

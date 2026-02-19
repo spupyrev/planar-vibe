@@ -432,6 +432,49 @@
     });
   }
 
+  function computeFaceAreaIterationStats(faceAreas, boundedFaceIdx) {
+    var values = [];
+    for (var i = 0; i < boundedFaceIdx.length; i += 1) {
+      var area = faceAreas[boundedFaceIdx[i]];
+      if (Number.isFinite(area) && area > 1e-12) {
+        values.push(area);
+      }
+    }
+    if (values.length === 0) {
+      return null;
+    }
+
+    var sum = 0;
+    var j;
+    for (j = 0; j < values.length; j += 1) {
+      sum += values[j];
+    }
+    if (!(sum > 0)) {
+      return null;
+    }
+
+    var normalized = [];
+    for (j = 0; j < values.length; j += 1) {
+      normalized.push(values[j] / sum);
+    }
+    normalized.sort(function (a, b) { return a - b; });
+
+    var ideal = 1 / normalized.length;
+    var minVal = normalized[0];
+    var maxVal = normalized[normalized.length - 1];
+    var score = null;
+    if (global.PlanarVibeMetrics && typeof global.PlanarVibeMetrics.computeDistributionQuality === 'function') {
+      score = global.PlanarVibeMetrics.computeDistributionQuality(normalized);
+    }
+
+    return {
+      score: Number.isFinite(score) ? score : null,
+      minRatio: minVal / ideal,
+      maxRatio: maxVal / ideal,
+      faceCount: normalized.length
+    };
+  }
+
   async function applyReweightTutteLayout(cy, options) {
     var opts = options || {};
     var tuning = opts.tuning || {};
@@ -531,14 +574,6 @@
         didFit = true;
       }
       seedPos = pos;
-      if (typeof opts.onIteration === 'function') {
-        opts.onIteration({
-          iter: iter + 1,
-          maxIters: MAX_OUTER_ITERS,
-          outerFace: outer.slice(),
-          positions: pos
-        });
-      }
       await waitForNextFrame(DELAY_MS);
 
       var outerArea = polygonAreaAbs(outer, pos);
@@ -547,6 +582,7 @@
       for (i = 0; i < faces.length; i += 1) {
         faceAreas[i] = polygonAreaAbs(faces[i], pos) / outerArea;
       }
+      var iterStats = computeFaceAreaIterationStats(faceAreas, boundedFaceIdx);
 
       facePressure = updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, PRESSURE_STEP, PRESSURE_CLAMP, PRESSURE_DELTA_CLAMP);
       weights = adjustWeights(
@@ -565,6 +601,18 @@
         PRESSURE_SCALE_MIN,
         PRESSURE_SCALE_MAX
       );
+      if (typeof opts.onIteration === 'function') {
+        opts.onIteration({
+          iter: iter + 1,
+          maxIters: MAX_OUTER_ITERS,
+          outerFace: outer.slice(),
+          positions: pos,
+          faceAreaScore: iterStats ? iterStats.score : null,
+          faceAreaMinRatio: iterStats ? iterStats.minRatio : null,
+          faceAreaMaxRatio: iterStats ? iterStats.maxRatio : null,
+          boundedFaceCount: iterStats ? iterStats.faceCount : boundedFaceIdx.length
+        });
+      }
     }
 
     var finalLayout = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, FINAL_ITERS, seedPos, fixedOuterPos);
