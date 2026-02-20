@@ -60,6 +60,7 @@ function loadBrowserModules() {
     'static/js/metrics.js',
     'static/js/planar-graph-core.js',
     'static/js/layout-tutte.js',
+    'static/js/layout-ceg23.js',
     'static/js/layout-reweight.js',
     'static/js/layout-p3t.js',
     'static/js/layout-fpp.js'
@@ -80,6 +81,7 @@ const Generator = modules.PlanarVibeGraphGenerator;
 const Planarity = modules.PlanarVibePlanarityTest;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
+const CEG23 = modules.PlanarVibeCEG23;
 const FPP = modules.PlanarVibeFPP;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
@@ -211,6 +213,14 @@ function hasEdgeCrossing(nodeIds, edgePairs, positionsById) {
     }
   }
   return false;
+}
+
+function seedGridPositions(cy, nodeIds) {
+  for (let i = 0; i < nodeIds.length; i += 1) {
+    const id = nodeIds[i];
+    const node = cy.nodes().find((n) => n.id() === id);
+    node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
+  }
 }
 
 test('sample3 (K3,3) is non-planar', () => {
@@ -577,6 +587,102 @@ test('Tutte layout applies on planar sample and assigns finite positions', () =>
     assert.equal(node._pos !== null, true, `missing Tutte position for node ${node.id()}`);
     assert.equal(Number.isFinite(node._pos.x), true);
     assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('CEG23 layout applies on planar sample and assigns finite positions', () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = CEG23.applyCEG23Layout(cy);
+  assert.equal(result.ok, true, result.message || 'CEG23 failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing CEG23 position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('CEG23 rejects non-planar graphs', () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = CEG23.applyCEG23Layout(cy);
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /planar graph/i);
+});
+
+test('CEG23 parameter sweep on sample1/sample2 tunes Face Areas score', () => {
+  const samples = ['sample1', 'sample2'];
+  const depthSources = ['outer-multi', 'outer-single'];
+  const edgeDepthModes = ['min', 'avg', 'max'];
+  const decayR = [1.10, 1.20, 1.30, 1.45, 1.60, 1.80];
+  const scaleA = [0.5, 1.0, 2.0];
+  const maxIters = 800;
+
+  for (const sampleName of samples) {
+    const text = Generator.getSample(sampleName);
+    const graph = parseEdgeListText(text);
+
+    const baselineCy = buildMockCy(graph.nodeIds, graph.edgePairs);
+    seedGridPositions(baselineCy, graph.nodeIds);
+    const baselineRes = CEG23.applyCEG23Layout(baselineCy, {
+      tuning: {
+        depthSource: 'outer-multi',
+        edgeDepthMode: 'min',
+        a: 1.0,
+        r: 1.35,
+        maxIters
+      }
+    });
+    assert.equal(baselineRes.ok, true, `baseline CEG23 failed on ${sampleName}`);
+    const baselineFace = Metrics.computeUniformFaceAreaScoreFromCy(baselineCy, graph.edgePairs);
+    assert.equal(baselineFace.ok, true, `baseline face metric failed on ${sampleName}: ${baselineFace.reason || ''}`);
+
+    let bestScore = baselineFace.quality;
+    let bestParams = {
+      depthSource: 'outer-multi',
+      edgeDepthMode: 'min',
+      a: 1.0,
+      r: 1.35
+    };
+
+    const t0 = Date.now();
+    let runs = 0;
+    for (const depthSource of depthSources) {
+      for (const edgeDepthMode of edgeDepthModes) {
+        for (const r of decayR) {
+          for (const a of scaleA) {
+            const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+            seedGridPositions(cy, graph.nodeIds);
+            const result = CEG23.applyCEG23Layout(cy, {
+              tuning: { depthSource, edgeDepthMode, a, r, maxIters }
+            });
+            assert.equal(result.ok, true, `CEG23 failed on ${sampleName} with ${depthSource}/${edgeDepthMode}/a=${a}/r=${r}`);
+            const face = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+            assert.equal(face.ok, true, `face metric failed on ${sampleName}: ${face.reason || ''}`);
+            runs += 1;
+            if (face.quality > bestScore) {
+              bestScore = face.quality;
+              bestParams = { depthSource, edgeDepthMode, a, r };
+            }
+          }
+        }
+      }
+    }
+    const elapsedMs = Date.now() - t0;
+    // eslint-disable-next-line no-console
+    console.log(
+      `[CEG23 sweep] ${sampleName}: baseline=${baselineFace.quality.toFixed(4)} best=${bestScore.toFixed(4)} ` +
+      `params=${JSON.stringify(bestParams)} runs=${runs} time_ms=${elapsedMs}`
+    );
+
+    assert.ok(Number.isFinite(bestScore), `best score is not finite for ${sampleName}`);
+    assert.ok(bestScore >= baselineFace.quality - 1e-12, `sweep regressed ${sampleName}`);
   }
 });
 

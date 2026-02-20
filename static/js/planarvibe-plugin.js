@@ -1186,6 +1186,10 @@
       setLayoutEnabled('tutte', isEnabled);
     }
 
+    function setCEG23Enabled(isEnabled) {
+      setLayoutEnabled('ceg23', isEnabled);
+    }
+
     function setP3TEnabled(isEnabled) {
       setLayoutEnabled('p3t', isEnabled);
     }
@@ -1200,6 +1204,7 @@
 
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
+      setCEG23Enabled(false);
       setP3TEnabled(false);
       setFPPEnabled(false);
       setReweightTutteEnabled(false);
@@ -1242,6 +1247,7 @@
         isPlanar3Tree: isPlanar3Tree
       });
       setTutteEnabled(isPlanar);
+      setCEG23Enabled(isPlanar);
       setP3TEnabled(isPlanar3Tree);
       setFPPEnabled(isPlanar);
       setReweightTutteEnabled(isPlanar);
@@ -1341,6 +1347,21 @@
           missingMessage: 'Tutte layout module is missing',
           module: global.PlanarVibeTutte,
           methodName: 'applyTutteLayout'
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'ceg23') {
+        runSpecialLayout({
+          layoutName: 'ceg23',
+          disabledMessage: 'CEG23 layout requires a planar graph',
+          missingMessage: 'CEG23 layout module is missing',
+          module: global.PlanarVibeCEG23,
+          methodName: 'applyCEG23Layout'
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
