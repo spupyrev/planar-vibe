@@ -6,6 +6,8 @@
     var nodes = new Set();
     var edges = [];
     var edgeKeys = new Set();
+    var positionsById = {};
+    var hasExplicitPositions = false;
 
     for (var i = 0; i < lines.length; i += 1) {
       var line = lines[i].trim();
@@ -14,6 +16,22 @@
       }
 
       var parts = line.split(/\s+/);
+      if (parts[0] === 'v' || parts[0] === 'V') {
+        if (parts.length < 4) {
+          throw new Error('Invalid line ' + (i + 1) + ': expected "v id x y".');
+        }
+        var vertexId = parts[1];
+        var x = Number(parts[2]);
+        var y = Number(parts[3]);
+        if (!vertexId || !Number.isFinite(x) || !Number.isFinite(y)) {
+          throw new Error('Invalid line ' + (i + 1) + ': expected finite coordinates in "v id x y".');
+        }
+        nodes.add(vertexId);
+        positionsById[vertexId] = { x: x, y: y };
+        hasExplicitPositions = true;
+        continue;
+      }
+
       if (parts.length < 2) {
         throw new Error('Invalid line ' + (i + 1) + ': expected "source target".');
       }
@@ -56,7 +74,9 @@
     return {
       elements: nodeElements.concat(edges),
       nodeCount: nodeElements.length,
-      edgeCount: edges.length
+      edgeCount: edges.length,
+      positionsById: positionsById,
+      hasExplicitPositions: hasExplicitPositions
     };
   }
 
@@ -1256,6 +1276,27 @@
     function drawGraph() {
       try {
         currentParsed = global.PlanarVibePlugin.parseEdgeList(global.$('#dotfile').val());
+
+        function applyParsedPositionsIfAny() {
+          if (!currentParsed || !currentParsed.hasExplicitPositions) {
+            return false;
+          }
+          var fallback = assignDeterministicPositionsForParsed(currentParsed);
+          cy.nodes().forEach(function (node) {
+            var id = String(node.id());
+            var p = currentParsed.positionsById && currentParsed.positionsById[id];
+            if (!p) {
+              p = fallback[id];
+            }
+            if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+              node.position({ x: p.x, y: p.y });
+            }
+          });
+          normalizeLayoutScale();
+          setLayoutStatus('Applied input coordinates', false);
+          return true;
+        }
+
         if (!cy) {
           setInteractiveMode(true, false, true);
           cy.elements().remove();
@@ -1263,7 +1304,9 @@
           savedPositions = {};
           saveViewportState(null);
           updateStatistics(currentParsed);
-          applyLayout('random');
+          if (!applyParsedPositionsIfAny()) {
+            applyLayout('random');
+          }
           setInteractiveMode(false, false, true);
           markCurrentInputAsVisualized();
           setStatus('Graph rendered in static mode', false);
@@ -1274,7 +1317,9 @@
         savedPositions = {};
         saveViewportState(null);
         updateStatistics(currentParsed);
-        applyLayout('random');
+        if (!applyParsedPositionsIfAny()) {
+          applyLayout('random');
+        }
         markCurrentInputAsVisualized();
         setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges', false);
       } catch (error) {
@@ -1302,6 +1347,28 @@
         setStatus('Unknown sample: ' + name, true);
         return;
       }
+
+      // Keep sample selects in sync with the currently loaded sample.
+      var sampleSelectIds = [
+        '#sample-main-select',
+        '#sample-nonplanar-select',
+        '#sample-misc-select',
+        '#sample-3tree-select',
+        '#sample-grid-select'
+      ];
+      for (var i = 0; i < sampleSelectIds.length; i += 1) {
+        var $select = global.$(sampleSelectIds[i]);
+        if (!$select.length) {
+          continue;
+        }
+        if ($select.find('option[value="' + String(name) + '"]').length > 0) {
+          $select.val(String(name));
+        } else {
+          $select.prop('selectedIndex', 0);
+        }
+        $select.toggleClass('is-default', String($select.val() || '') === '');
+      }
+
       if (displayName) {
         setStatus('Loaded sample: ' + String(displayName), false);
       }

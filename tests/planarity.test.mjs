@@ -16,6 +16,12 @@ function parseEdgeListText(text) {
       continue;
     }
     const parts = line.split(/\s+/);
+    if (parts[0] === 'v' || parts[0] === 'V') {
+      if (parts.length >= 2) {
+        nodes.add(parts[1]);
+      }
+      continue;
+    }
     if (parts.length < 2) {
       throw new Error(`Invalid edge line: ${line}`);
     }
@@ -223,11 +229,28 @@ function seedGridPositions(cy, nodeIds) {
   }
 }
 
-test('sample3 (K3,3) is non-planar', () => {
-  const text = Generator.getSample('sample3');
+test('nonplanar1 (K3,3) is non-planar', () => {
+  const text = Generator.getSample('nonplanar1');
   const graph = parseEdgeListText(text);
   const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   assert.equal(emb.ok, false);
+});
+
+test('edge-list parser accepts explicit vertex coordinates via "v id x y"', () => {
+  const parsed = modules.PlanarVibePlugin.parseEdgeList(
+    [
+      'v a 10 20',
+      'v b -5.5 7.25',
+      'a b'
+    ].join('\n')
+  );
+  assert.equal(parsed.nodeCount, 2);
+  assert.equal(parsed.edgeCount, 1);
+  assert.equal(parsed.hasExplicitPositions, true);
+  assert.equal(parsed.positionsById.a.x, 10);
+  assert.equal(parsed.positionsById.a.y, 20);
+  assert.equal(parsed.positionsById.b.x, -5.5);
+  assert.equal(parsed.positionsById.b.y, 7.25);
 });
 
 test('large non-planar generator stays non-planar', () => {

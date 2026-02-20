@@ -7,11 +7,13 @@ Live app: https://spupyrev.github.io/planar-vibe/
 ## Features
 
 - Paste an edge list or load built-in samples
+- Samples `sample1..sample5` include embedded vertex coordinates
 - Run layouts:
   - `Random`
   - `Circular`
   - `Force-Dir`
   - `Tutte`
+  - `CEG23`
   - `Reweight`
   - `P3T`
   - `FPP`
@@ -30,7 +32,15 @@ Live app: https://spupyrev.github.io/planar-vibe/
 
 ## Input format
 
-Edge list, one undirected edge per line:
+You can provide:
+
+1. Vertex coordinates:
+
+```text
+v id x y
+```
+
+2. Undirected edges:
 
 ```text
 u v
@@ -39,6 +49,7 @@ u v
 - Blank lines are ignored
 - Lines starting with `#` are ignored
 - Duplicate edges are ignored
+- If coordinates are provided, they are used as the initial drawing
 
 ## Local run
 
