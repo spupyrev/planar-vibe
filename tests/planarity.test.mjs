@@ -43,6 +43,27 @@ function parseEdgeListText(text) {
   return { nodeIds: [...nodes], edgePairs: edges };
 }
 
+function parseVertexPositionsFromEdgeList(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const pos = {};
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+    const parts = line.split(/\s+/);
+    if ((parts[0] === 'v' || parts[0] === 'V') && parts.length >= 4) {
+      const id = String(parts[1]);
+      const x = Number(parts[2]);
+      const y = Number(parts[3]);
+      if (Number.isFinite(x) && Number.isFinite(y)) {
+        pos[id] = { x, y };
+      }
+    }
+  }
+  return pos;
+}
+
 function loadBrowserModules() {
   const window = {};
   window.window = window;
@@ -68,6 +89,7 @@ function loadBrowserModules() {
     'static/js/layout-barycentric-core.js',
     'static/js/layout-tutte.js',
     'static/js/layout-ceg23.js',
+    'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
     'static/js/layout-p3t.js',
     'static/js/layout-fpp.js'
@@ -90,6 +112,7 @@ const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
 const CEG23 = modules.PlanarVibeCEG23Bfs;
 const CEG23XY = modules.PlanarVibeCEG23Xy;
+const ImPrEd = modules.PlanarVibeImPrEd;
 const FPP = modules.PlanarVibeFPP;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
@@ -702,6 +725,139 @@ test('CEG23-xy runs on G(50, 144) without crossings', () => {
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
   assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+});
+
+test('ImPrEd layout applies on sample1 and assigns finite positions', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 40, delayMs: 0, fit: true });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing ImPrEd position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('ImPrEd handles non-planar graph by preserving a valid drawing state', async () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 30, delayMs: 0 });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on non-planar graph');
+  for (const node of cy.nodes()) {
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('ImPrEd keeps planar G(50, 144) drawing without crossings', async () => {
+  const text = Generator.getSample('randomplanar3'); // G(50, 144)
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 60, delayMs: 0 });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on G(50,144)');
+
+  const posById = {};
+  for (const node of cy.nodes()) {
+    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
+  }
+  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+});
+
+test('ImPrEd keeps outer-face coordinates fixed on planar graph', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  assert.equal(!!(emb && emb.ok && emb.outerFace && emb.outerFace.length >= 3), true, 'planar embedding/outer face missing');
+
+  const before = {};
+  for (const v of emb.outerFace) {
+    const node = cy.nodes().find((n) => String(n.id()) === String(v));
+    const p0 = node.position();
+    before[String(v)] = { x: p0.x, y: p0.y };
+  }
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 50, delayMs: 0 });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on outer-face invariant test');
+
+  for (const v of emb.outerFace) {
+    const node = cy.nodes().find((n) => String(n.id()) === String(v));
+    const p = node._pos;
+    assert.ok(Math.abs(p.x - before[String(v)].x) < 1e-9, `outer vertex ${v} x changed`);
+    assert.ok(Math.abs(p.y - before[String(v)].y) < 1e-9, `outer vertex ${v} y changed`);
+  }
+});
+
+test('ImPrEd does not introduce crossings on sample1 with original coordinates', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const initialPos = parseVertexPositionsFromEdgeList(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  for (const node of cy.nodes()) {
+    const id = String(node.id());
+    const p = initialPos[id];
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      node.position({ x: p.x, y: p.y });
+    }
+  }
+
+  const before = {};
+  for (const node of cy.nodes()) {
+    before[String(node.id())] = { x: node.position().x, y: node.position().y };
+  }
+  assert.equal(Metrics.hasCrossingsFromPositions(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 80, delayMs: -1 });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
+
+  const after = {};
+  for (const node of cy.nodes()) {
+    after[String(node.id())] = { x: node.position().x, y: node.position().y };
+  }
+  assert.equal(Metrics.hasCrossingsFromPositions(after, graph.edgePairs), false, 'ImPrEd introduced crossings on sample1');
+});
+
+test('ImPrEd keeps drawing plane after every iteration on sample1 coordinates', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const initialPos = parseVertexPositionsFromEdgeList(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  for (const node of cy.nodes()) {
+    const id = String(node.id());
+    const p = initialPos[id];
+    if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+      node.position({ x: p.x, y: p.y });
+    }
+  }
+
+  const before = {};
+  for (const node of cy.nodes()) {
+    before[String(node.id())] = { x: node.position().x, y: node.position().y };
+  }
+  assert.equal(Metrics.hasCrossingsFromPositions(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
+
+  let seenIterations = 0;
+  const result = await ImPrEd.applyImPrEdLayout(cy, {
+    maxIters: 80,
+    delayMs: -1,
+    onIteration(progress) {
+      seenIterations += 1;
+      assert.equal(!!(progress && progress.hasCrossings), false, `crossings introduced at iteration ${progress ? progress.iter : '?'}`);
+    }
+  });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
+  assert.ok(seenIterations > 0, 'ImPrEd did not report iterations');
 });
 
 test('CEG23-bfs parameter sweep on sample1/sample2 tunes Face Areas score', () => {

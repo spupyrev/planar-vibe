@@ -1244,6 +1244,10 @@
       setLayoutEnabled('tutte', isEnabled);
     }
 
+    function setImPrEdEnabled(isEnabled) {
+      setLayoutEnabled('impred', isEnabled);
+    }
+
     function setCEG23BfsEnabled(isEnabled) {
       setLayoutEnabled('ceg23-bfs', isEnabled);
     }
@@ -1266,6 +1270,7 @@
 
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
+      setImPrEdEnabled(false);
       setCEG23BfsEnabled(false);
       setCEG23XyEnabled(false);
       setP3TEnabled(false);
@@ -1310,6 +1315,7 @@
         isPlanar3Tree: isPlanar3Tree
       });
       setTutteEnabled(isPlanar);
+      setImPrEdEnabled(isPlanar);
       setCEG23BfsEnabled(isPlanar);
       setCEG23XyEnabled(isPlanar);
       setP3TEnabled(isPlanar3Tree);
@@ -1449,6 +1455,42 @@
         if (temporaryStaticRun) {
           setInteractiveMode(false, false, true);
         }
+        return;
+      }
+
+      if (layoutName === 'impred') {
+        runSpecialLayout({
+          layoutName: 'impred',
+          disabledMessage: 'ImPrEd layout is currently unavailable',
+          missingMessage: 'ImPrEd layout module is missing',
+          module: global.PlanarVibeImPrEd,
+          methodName: 'applyImPrEdLayout',
+          buildMethodOptions: function () {
+            var lastStatsIter = 0;
+            return {
+              delayMs: 0,
+              onIteration: function (progress) {
+                if (!progress) return;
+                var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
+                  ' | moved ' + progress.movedNodes +
+                  ' | max move ' + progress.maxMove.toFixed(2);
+                setStatus(msg, false);
+                var shouldRefreshStats = (progress.iter % 10 === 0) || (progress.iter === progress.maxIters);
+                if (shouldRefreshStats && progress.iter !== lastStatsIter && cy) {
+                  lastStatsIter = progress.iter;
+                  updateFaceAreaPlot();
+                  updateEdgeLengthPlot();
+                }
+              }
+            };
+          },
+          normalizeOnSuccess: false,
+          disableOtherButtonsWhileRunning: true
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
         return;
       }
 
