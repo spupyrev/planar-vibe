@@ -77,6 +77,30 @@ test('computeUniformEdgeLengthScore normalizes and sorts edge lengths', () => {
   assert.ok(Math.abs(result.quality - Metrics.computeDistributionQuality(result.values)) < 1e-12);
 });
 
+test('computeEdgeLengthRatio returns shortest/longest ratio', () => {
+  const edges = [['1', '2'], ['2', '3']];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 1, y: 0 },
+    '3': { x: 3, y: 0 }
+  };
+  const result = Metrics.computeEdgeLengthRatio(edges, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.minLength - 1) < 1e-12);
+  assert.ok(Math.abs(result.maxLength - 2) < 1e-12);
+  assert.ok(Math.abs(result.ratio - 0.5) < 1e-12);
+});
+
+test('computeEdgeLengthRatio fails with no valid lengths', () => {
+  const edges = [['1', '2']];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 0, y: 0 }
+  };
+  const result = Metrics.computeEdgeLengthRatio(edges, posById);
+  assert.equal(result.ok, false);
+});
+
 test('computeUniformFaceAreaScore returns two equal bounded faces on a triangulated square', () => {
   const nodeIds = ['1', '2', '3', '4'];
   const edgePairs = [
@@ -180,4 +204,45 @@ test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K
   assert.ok(symmetric.score >= 0 && symmetric.score <= 1);
   assert.ok(skewed.score >= 0 && skewed.score <= 1);
   assert.ok(symmetric.score > skewed.score + 0.05);
+});
+
+test('computeSpacingUniformityScore is 1 for equal nearest-neighbor spacing', () => {
+  const nodeIds = ['1', '2', '3', '4', '5', '6'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 1, y: 0 },
+    '3': { x: 2, y: 0 },
+    '4': { x: 3, y: 0 },
+    '5': { x: 4, y: 0 },
+    '6': { x: 5, y: 0 }
+  };
+  const result = Metrics.computeSpacingUniformityScore(nodeIds, posById, { boundaryTrimQuantile: 0 });
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.score - 1) < 1e-12);
+});
+
+test('computeSpacingUniformityScore decreases for uneven spacing', () => {
+  const nodeIds = ['1', '2', '3', '4', '5'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 0.1, y: 0 },
+    '3': { x: 0.2, y: 0 },
+    '4': { x: 5, y: 0 },
+    '5': { x: 10, y: 0 }
+  };
+  const result = Metrics.computeSpacingUniformityScore(nodeIds, posById, { boundaryTrimQuantile: 0 });
+  assert.equal(result.ok, true);
+  assert.ok(result.score < 0.6);
+});
+
+test('computeSpacingUniformityScore returns no-data for insufficient valid distances', () => {
+  const nodeIds = ['1', '2', '3'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 0, y: 0 },
+    '3': { x: 0, y: 0 }
+  };
+  const result = Metrics.computeSpacingUniformityScore(nodeIds, posById);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'Not enough valid nearest-neighbor distances');
 });

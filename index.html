@@ -83,7 +83,16 @@
                         <option value="nonplanar2">2 (K6)</option>
                       </select>
                     </td>
-                    <td></td>
+                    <td>
+                      <select id="sample-random-planar-select" class="form-select form-select-sm sample-select" title="Random planar samples">
+                        <option value="">Random Planar</option>
+                        <option value="randomplanar1">G(30, 80)</option>
+                        <option value="randomplanar2">G(50, 130)</option>
+                        <option value="randomplanar3">G(50, 144)</option>
+                        <option value="randomplanar4">G(60, 150)</option>
+                        <option value="randomplanar5">G(70, 200)</option>
+                      </select>
+                    </td>
                   </tr>
                 </table>
               </div>
@@ -141,6 +150,18 @@
                 <div class="stats-value-item stats-value-item-right">
                   <a href="#" class="drawing-metric-link" data-target="stats-edge-plot-wrap" title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Edge Length Score:</a>
                   <span id="stats-edge-quality" title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                </div>
+              </div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
+                  <span title="Shortest edge length divided by longest edge length in the current drawing">Edge-Length Ratio:</span>
+                  <span id="stats-edge-ratio" title="Shortest edge length divided by longest edge length in the current drawing">--</span>
+                </div>
+              </div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
+                  <span title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">Spacing-Uniformity:</span>
+                  <span id="stats-spacing-uniformity" title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">--</span>
                 </div>
               </div>
               <div id="stats-edge-plot-wrap" class="stats-plot-wrap stats-plot-wrap-standalone is-hidden">

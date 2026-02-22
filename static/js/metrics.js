@@ -194,6 +194,153 @@
     return buildUniformDistributionResult(lengths, 'No edge lengths available', 'No edge lengths available');
   }
 
+  function computeEdgeLengthRatio(edgePairs, posById) {
+    if (!edgePairs || edgePairs.length === 0) {
+      return { ok: false, reason: 'No edges' };
+    }
+    var minLen = Infinity;
+    var maxLen = 0;
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var u = String(edgePairs[i][0]);
+      var v = String(edgePairs[i][1]);
+      var pu = posById[u];
+      var pv = posById[v];
+      if (!pu || !pv || !Number.isFinite(pu.x) || !Number.isFinite(pu.y) || !Number.isFinite(pv.x) || !Number.isFinite(pv.y)) {
+        return { ok: false, reason: 'Metrics unavailable' };
+      }
+      var dx = pu.x - pv.x;
+      var dy = pu.y - pv.y;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (!(len > 1e-12)) {
+        continue;
+      }
+      if (len < minLen) {
+        minLen = len;
+      }
+      if (len > maxLen) {
+        maxLen = len;
+      }
+    }
+    if (!(maxLen > 0) || !Number.isFinite(minLen)) {
+      return { ok: false, reason: 'No edge lengths available' };
+    }
+    return {
+      ok: true,
+      ratio: minLen / maxLen,
+      minLength: minLen,
+      maxLength: maxLen
+    };
+  }
+
+  function computeSpacingUniformityScore(nodeIds, posById, options) {
+    var opts = options || {};
+    var trimQuantile = Number.isFinite(opts.boundaryTrimQuantile)
+      ? Math.max(0, Math.min(0.45, opts.boundaryTrimQuantile))
+      : 0.1;
+
+    var points = [];
+    if (!nodeIds || nodeIds.length === 0) {
+      return { ok: false, reason: 'No nodes' };
+    }
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      var p = posById[id];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      points.push({ id: id, x: p.x, y: p.y });
+    }
+    if (points.length < 2) {
+      return { ok: false, reason: 'Not enough positioned nodes' };
+    }
+
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (i = 0; i < points.length; i += 1) {
+      if (points[i].x < minX) minX = points[i].x;
+      if (points[i].y < minY) minY = points[i].y;
+      if (points[i].x > maxX) maxX = points[i].x;
+      if (points[i].y > maxY) maxY = points[i].y;
+    }
+
+    var kept = points.slice();
+    if (trimQuantile > 0 && points.length >= 10) {
+      var boundaryDist = [];
+      for (i = 0; i < points.length; i += 1) {
+        var d = Math.min(
+          points[i].x - minX,
+          maxX - points[i].x,
+          points[i].y - minY,
+          maxY - points[i].y
+        );
+        boundaryDist.push({ idx: i, d: d });
+      }
+      boundaryDist.sort(function (a, b) { return a.d - b.d; });
+      var dropCount = Math.floor(trimQuantile * boundaryDist.length);
+      var keepMask = {};
+      for (i = dropCount; i < boundaryDist.length; i += 1) {
+        keepMask[boundaryDist[i].idx] = true;
+      }
+      var trimmed = [];
+      for (i = 0; i < points.length; i += 1) {
+        if (keepMask[i]) {
+          trimmed.push(points[i]);
+        }
+      }
+      if (trimmed.length >= 2) {
+        kept = trimmed;
+      }
+    }
+
+    var nn = [];
+    for (i = 0; i < kept.length; i += 1) {
+      var best = Infinity;
+      for (var j = 0; j < kept.length; j += 1) {
+        if (i === j) continue;
+        var dx = kept[i].x - kept[j].x;
+        var dy = kept[i].y - kept[j].y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < best) best = dist;
+      }
+      if (Number.isFinite(best) && best > 1e-12) {
+        nn.push(best);
+      }
+    }
+    if (nn.length < 2) {
+      return { ok: false, reason: 'Not enough valid nearest-neighbor distances' };
+    }
+
+    var sum = 0;
+    for (i = 0; i < nn.length; i += 1) {
+      sum += nn[i];
+    }
+    var mean = sum / nn.length;
+    if (!(mean > 1e-12)) {
+      return { ok: false, reason: 'Degenerate nearest-neighbor distances' };
+    }
+    var varSum = 0;
+    for (i = 0; i < nn.length; i += 1) {
+      var delta = nn[i] - mean;
+      varSum += delta * delta;
+    }
+    var std = Math.sqrt(varSum / nn.length);
+    var cv = std / mean;
+    var score = 1 / (1 + cv);
+    if (!Number.isFinite(score)) {
+      return { ok: false, reason: 'Invalid spacing score' };
+    }
+    return {
+      ok: true,
+      score: Math.max(0, Math.min(1, score)),
+      cv: cv,
+      meanNN: mean,
+      stdNN: std,
+      usedNodeCount: kept.length
+    };
+  }
+
   function computeDistributionQuality(values) {
     var ideal = uniformIdealDistribution(values ? values.length : 0);
     return computeUniformityScore(values, ideal);
@@ -429,6 +576,8 @@
     computeUniformFaceAreaScore: computeUniformFaceAreaScore,
     computeUniformFaceAreaScoreFromCy: computeUniformFaceAreaScoreFromCy,
     computeUniformEdgeLengthScore: computeUniformEdgeLengthScore,
+    computeEdgeLengthRatio: computeEdgeLengthRatio,
+    computeSpacingUniformityScore: computeSpacingUniformityScore,
     computeUniformAngleResolutionScore: computeUniformAngleResolutionScore,
     computeUniformityScore: computeUniformityScore,
     computeDistributionQuality: computeDistributionQuality,

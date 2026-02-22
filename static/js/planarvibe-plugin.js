@@ -680,16 +680,22 @@
 
     function clearEdgeLengthPlot(text) {
       clearPlot('stats-edge-plot', 'stats-edge-quality', text);
+      global.$('#stats-edge-ratio').text('--');
     }
 
     function clearAngleResolutionPlot(text) {
       clearPlot('stats-angle-plot', 'stats-angle-quality', text);
     }
 
+    function clearSpacingUniformity() {
+      global.$('#stats-spacing-uniformity').text('--');
+    }
+
     function clearDrawingStats(text) {
       clearFaceAreaPlot(text);
       clearEdgeLengthPlot(text);
       clearAngleResolutionPlot(text);
+      clearSpacingUniformity();
     }
 
     function renderFaceAreaPlot(values, ideal, showLine) {
@@ -962,6 +968,7 @@
     function updateEdgeLengthPlot() {
       if (!currentParsed || !currentParsed.elements) {
         clearEdgeLengthPlot('No graph');
+        clearSpacingUniformity();
         return;
       }
       var edgePairs = edgePairsFromParsed(currentParsed);
@@ -978,19 +985,24 @@
       }
       if (!nodeIds.length) {
         clearEdgeLengthPlot('No graph');
+        clearSpacingUniformity();
         return;
       }
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformEdgeLengthScore) {
         clearEdgeLengthPlot('Metrics unavailable');
+        clearSpacingUniformity();
         return;
       }
       var result = global.PlanarVibeMetrics.computeUniformEdgeLengthScore(edgePairs, posById);
       if (!result.ok) {
         clearEdgeLengthPlot(result.reason || 'No data');
+        clearSpacingUniformity();
         return;
       }
       renderEdgeLengthPlot(result.values, result.ideal);
       updateEdgeLengthQuality(result.values);
+      updateEdgeLengthRatio(edgePairs, posById);
+      updateSpacingUniformity(nodeIds, posById);
     }
 
     function updateFaceAreaQuality(values) {
@@ -1009,6 +1021,32 @@
       }
       var quality = global.PlanarVibeMetrics.computeDistributionQuality(values);
       global.$('#stats-edge-quality').text(quality === null ? '--' : quality.toFixed(3));
+    }
+
+    function updateEdgeLengthRatio(edgePairs, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeEdgeLengthRatio) {
+        global.$('#stats-edge-ratio').text('--');
+        return;
+      }
+      var ratio = global.PlanarVibeMetrics.computeEdgeLengthRatio(edgePairs, posById);
+      if (!ratio || !ratio.ok || !Number.isFinite(ratio.ratio)) {
+        global.$('#stats-edge-ratio').text('--');
+        return;
+      }
+      global.$('#stats-edge-ratio').text(ratio.ratio.toFixed(3));
+    }
+
+    function updateSpacingUniformity(nodeIds, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeSpacingUniformityScore) {
+        clearSpacingUniformity();
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeSpacingUniformityScore(nodeIds, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score)) {
+        clearSpacingUniformity();
+        return;
+      }
+      global.$('#stats-spacing-uniformity').text(result.score.toFixed(3));
     }
 
     function renderStaticSnapshot() {
@@ -1354,7 +1392,8 @@
         '#sample-nonplanar-select',
         '#sample-misc-select',
         '#sample-3tree-select',
-        '#sample-grid-select'
+        '#sample-grid-select',
+        '#sample-random-planar-select'
       ];
       for (var i = 0; i < sampleSelectIds.length; i += 1) {
         var $select = global.$(sampleSelectIds[i]);
@@ -1739,7 +1778,8 @@
         '#sample-nonplanar-select',
         '#sample-misc-select',
         '#sample-3tree-select',
-        '#sample-grid-select'
+        '#sample-grid-select',
+        '#sample-random-planar-select'
       ];
 
       function updateSampleSelectVisualState($select) {

@@ -289,6 +289,24 @@ test('10 random non-planar graphs (100 vertices) from K3,3 core are non-planar',
   }
 });
 
+test('random planar sample set has requested sizes and is planar', () => {
+  const expected = [
+    { key: 'randomplanar1', n: 30, m: 80 },
+    { key: 'randomplanar2', n: 50, m: 130 },
+    { key: 'randomplanar3', n: 50, m: 144 },
+    { key: 'randomplanar4', n: 60, m: 150 },
+    { key: 'randomplanar5', n: 70, m: 200 }
+  ];
+  for (const item of expected) {
+    const text = Generator.getSample(item.key);
+    const graph = parseEdgeListText(text);
+    assert.equal(graph.nodeIds.length, item.n, `${item.key} vertex count mismatch`);
+    assert.equal(graph.edgePairs.length, item.m, `${item.key} edge count mismatch`);
+    const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+    assert.equal(emb.ok, true, `${item.key} expected planar`);
+  }
+});
+
 test('maximal planar 3-tree generator returns planar 3-tree', () => {
   const text = Generator.maximalPlanar3Tree(30);
   const graph = parseEdgeListText(text);

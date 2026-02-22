@@ -245,6 +245,34 @@
     return edges.join('\n') + '\n';
   }
 
+  function randomPlanarGraphNM(n, m, seed) {
+    var nodeCount = Math.max(3, Math.floor(Number(n) || 3));
+    var maxEdges = 3 * nodeCount - 6;
+    var targetEdges = Math.max(0, Math.min(maxEdges, Math.floor(Number(m) || 0)));
+    var nextRand = createSeededRng(seed);
+
+    var baseLines = maximalPlanar3Tree(nodeCount).trim().split('\n');
+    var edges = [];
+    for (var i = 0; i < baseLines.length; i += 1) {
+      var parts = baseLines[i].trim().split(/\s+/);
+      if (parts.length < 2) {
+        continue;
+      }
+      edges.push([parts[0], parts[1]]);
+    }
+
+    while (edges.length > targetEdges) {
+      var pick = Math.floor(nextRand() * edges.length);
+      edges.splice(pick, 1);
+    }
+
+    var out = [];
+    for (i = 0; i < edges.length; i += 1) {
+      out.push(edges[i][0] + ' ' + edges[i][1]);
+    }
+    return out.join('\n') + '\n';
+  }
+
   var SAMPLE1_WITH_COORDS = "v 0 -450 0\nv 1 150 -300\nv 2 0 450\nv 3 450 0\nv 4 -150 240\nv 5 -45 166\nv 6 -30 120\nv 7 210 0\nv 8 0 90\nv 9 150 -16\nv 10 0 60\nv 11 120 -30\nv 12 -30 30\nv 13 90 -60\nv 14 -60 -14\nv 15 60 -90\nv 16 -90 -46\nv 17 30 -120\nv 18 -90 -76\nv 19 14 -150\nv 20 -90 -106\nv 21 0 -180\nv 22 -120 -120\nv 23 0 -210\nv 24 -120 -166\nv 25 0 -240\nv 26 -136 -194\nv 27 0 -270\nv 28 -150 -223\nv 29 0 -300\nv 30 -134 -270\nv 31 0 -330\nv 32 -498 0\nv 33 0 498\nv 34 498 0\nv 35 76 240\nv 36 120 90\nv 37 330 0\nv 38 -35 392\nv 39 85 272\nv 40 2 286\nv 41 -60 300\nv 42 -5 332\nv 43 46 196\nv 44 60 150\nv 45 0 180\nv 46 -15 226\nv 47 55 362\nv 48 0 -498\nv 49 -90 -360\n0 2\n0 4\n0 6\n0 8\n0 10\n0 12\n0 14\n0 16\n0 18\n0 20\n0 22\n0 24\n0 26\n0 28\n0 30\n0 49\n0 32\n1 48\n1 31\n1 29\n1 27\n1 25\n1 23\n1 21\n1 19\n1 17\n1 15\n1 13\n1 11\n1 9\n1 7\n1 3\n2 33\n2 3\n2 47\n2 38\n3 34\n3 37\n4 38\n4 41\n4 35\n4 46\n4 5\n5 36\n5 6\n5 45\n6 7\n7 36\n7 37\n7 8\n8 9\n9 10\n10 11\n11 12\n12 13\n13 14\n14 15\n15 16\n16 17\n17 18\n18 19\n19 20\n20 21\n21 22\n22 23\n23 24\n24 25\n25 26\n26 27\n27 28\n28 29\n29 30\n30 31\n31 49\n32 48\n32 33\n33 34\n34 48\n35 37\n35 36\n35 43\n35 40\n36 44\n37 39\n37 47\n38 42\n39 40\n39 42\n40 41\n41 42\n42 47\n43 44\n43 46\n44 45\n45 46\n48 49\n";
   var SAMPLE2_WITH_COORDS = "v 0 448 351\nv 1 335 380\nv 2 392 10\nv 3 245 162\nv 4 214 41\nv 5 150 269\nv 6 539 25\nv 7 99 141\nv 8 217 478\nv 9 182 584\nv 10 156 391\nv 11 47 529\nv 12 281 273\nv 13 313 591\nv 14 10 387\nv 15 348 123\nv 16 603 353\nv 17 726 178\nv 18 548 159\nv 19 621 251\nv 20 441 208\nv 21 783 328\nv 22 674 442\nv 23 476 621\nv 24 587 662\nv 25 425 527\nv 26 404 720\nv 27 550 487\nv 28 696 581\nv 29 263 717\n0 15\n0 6\n0 2\n0 3\n1 3\n1 4\n1 7\n1 15\n15 7\n15 4\n15 2\n15 6\n6 2\n2 4\n2 3\n3 4\n4 7\n3 5\n1 5\n0 5\n0 16\n0 21\n0 17\n0 18\n1 18\n1 19\n1 22\n1 16\n16 22\n16 19\n16 17\n16 21\n21 17\n17 19\n17 18\n18 19\n19 22\n18 20\n1 20\n0 20\n23 29\n23 26\n23 24\n23 28\n28 24\n24 26\n24 25\n25 26\n26 29\n25 27\n27 0\n25 0\n24 0\n28 0\n27 1\n25 1\n26 1\n29 1\n23 1\n23 0\n8 14\n8 11\n8 9\n8 13\n13 9\n9 11\n9 10\n10 11\n11 14\n10 12\n1 12\n10 1\n11 1\n12 0\n10 0\n9 0\n13 0\n14 1\n8 1\n8 0\n12 15\n16 27\n";
   var SAMPLE3_WITH_COORDS = "v 1 1173 262\nv 2 669 -48\nv 3 166 262\nv 4 360 765\nv 5 979 765\nv 6 979 300\nv 7 669 107\nv 8 360 300\nv 9 476 630\nv 10 863 630\nv 11 824 223\nv 12 515 223\nv 13 437 455\nv 14 669 572\nv 15 902 455\nv 16 766 417\nv 17 730 322\nv 18 592 322\nv 19 553 417\nv 20 669 494\n1 2\n2 3\n3 4\n4 5\n5 1\n1 6\n7 2\n8 3\n9 4\n10 5\n15 6\n6 11\n11 7\n7 12\n12 8\n8 13\n13 9\n9 14\n14 10\n10 15\n16 17\n17 18\n18 19\n19 20\n20 16\n16 15\n20 14\n19 13\n18 12\n17 11\n";
@@ -257,6 +285,11 @@
     sample3: SAMPLE3_WITH_COORDS,
     sample4: SAMPLE4_WITH_COORDS,
     sample5: SAMPLE5_WITH_COORDS,
+    randomplanar1: randomPlanarGraphNM(30, 80, 30080),
+    randomplanar2: randomPlanarGraphNM(50, 130, 50130),
+    randomplanar3: randomPlanarGraphNM(50, 144, 50144),
+    randomplanar4: randomPlanarGraphNM(60, 150, 60150),
+    randomplanar5: randomPlanarGraphNM(70, 200, 70200),
     nonplanar1: nonPlanarK33(),
     nonplanar2: nonPlanarK6(),
     cycle20: cycleGraph(20),
@@ -289,6 +322,7 @@
     nonPlanarK33PlusPath: nonPlanarK33PlusPath,
     createSeededRng: createSeededRng,
     planarStellationGraph: planarStellationGraph,
+    randomPlanarGraphNM: randomPlanarGraphNM,
     getSample: getSample,
     defaultSample: 'sample1'
   };
