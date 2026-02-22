@@ -65,6 +65,7 @@ function loadBrowserModules() {
     'static/js/planarity-test.js',
     'static/js/metrics.js',
     'static/js/planar-graph-core.js',
+    'static/js/layout-barycentric-core.js',
     'static/js/layout-tutte.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-reweight.js',
@@ -87,7 +88,8 @@ const Generator = modules.PlanarVibeGraphGenerator;
 const Planarity = modules.PlanarVibePlanarityTest;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
-const CEG23 = modules.PlanarVibeCEG23;
+const CEG23 = modules.PlanarVibeCEG23Bfs;
+const CEG23XY = modules.PlanarVibeCEG23Xy;
 const FPP = modules.PlanarVibeFPP;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
@@ -631,33 +633,59 @@ test('Tutte layout applies on planar sample and assigns finite positions', () =>
   }
 });
 
-test('CEG23 layout applies on planar sample and assigns finite positions', () => {
+test('CEG23-bfs layout applies on planar sample and assigns finite positions', () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = CEG23.applyCEG23Layout(cy);
-  assert.equal(result.ok, true, result.message || 'CEG23 failed');
+  const result = CEG23.applyCEG23BfsLayout(cy);
+  assert.equal(result.ok, true, result.message || 'CEG23-bfs failed');
   assert.equal(cy._fitCalls > 0, true);
 
   for (const node of cy.nodes()) {
-    assert.equal(node._pos !== null, true, `missing CEG23 position for node ${node.id()}`);
+    assert.equal(node._pos !== null, true, `missing CEG23-bfs position for node ${node.id()}`);
     assert.equal(Number.isFinite(node._pos.x), true);
     assert.equal(Number.isFinite(node._pos.y), true);
   }
 });
 
-test('CEG23 rejects non-planar graphs', () => {
+test('CEG23-bfs rejects non-planar graphs', () => {
   const text = Generator.getSample('nonplanar1');
   const graph = parseEdgeListText(text);
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = CEG23.applyCEG23Layout(cy);
+  const result = CEG23.applyCEG23BfsLayout(cy);
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /planar graph/i);
 });
 
-test('CEG23 parameter sweep on sample1/sample2 tunes Face Areas score', () => {
+test('CEG23-xy layout applies on planar sample and assigns finite positions', () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = CEG23XY.applyCEG23XyLayout(cy);
+  assert.equal(result.ok, true, result.message || 'CEG23-xy failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing CEG23-xy position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('CEG23-xy rejects non-planar graphs', () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = CEG23XY.applyCEG23XyLayout(cy);
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /planar graph/i);
+});
+
+test('CEG23-bfs parameter sweep on sample1/sample2 tunes Face Areas score', () => {
   const samples = ['sample1', 'sample2'];
   const depthSources = ['outer-multi', 'outer-single'];
   const edgeDepthModes = ['min', 'avg', 'max'];
@@ -671,7 +699,7 @@ test('CEG23 parameter sweep on sample1/sample2 tunes Face Areas score', () => {
 
     const baselineCy = buildMockCy(graph.nodeIds, graph.edgePairs);
     seedGridPositions(baselineCy, graph.nodeIds);
-    const baselineRes = CEG23.applyCEG23Layout(baselineCy, {
+    const baselineRes = CEG23.applyCEG23BfsLayout(baselineCy, {
       tuning: {
         depthSource: 'outer-multi',
         edgeDepthMode: 'min',
@@ -680,7 +708,7 @@ test('CEG23 parameter sweep on sample1/sample2 tunes Face Areas score', () => {
         maxIters
       }
     });
-    assert.equal(baselineRes.ok, true, `baseline CEG23 failed on ${sampleName}`);
+    assert.equal(baselineRes.ok, true, `baseline CEG23-bfs failed on ${sampleName}`);
     const baselineFace = Metrics.computeUniformFaceAreaScoreFromCy(baselineCy, graph.edgePairs);
     assert.equal(baselineFace.ok, true, `baseline face metric failed on ${sampleName}: ${baselineFace.reason || ''}`);
 
@@ -700,10 +728,10 @@ test('CEG23 parameter sweep on sample1/sample2 tunes Face Areas score', () => {
           for (const a of scaleA) {
             const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
             seedGridPositions(cy, graph.nodeIds);
-            const result = CEG23.applyCEG23Layout(cy, {
+            const result = CEG23.applyCEG23BfsLayout(cy, {
               tuning: { depthSource, edgeDepthMode, a, r, maxIters }
             });
-            assert.equal(result.ok, true, `CEG23 failed on ${sampleName} with ${depthSource}/${edgeDepthMode}/a=${a}/r=${r}`);
+            assert.equal(result.ok, true, `CEG23-bfs failed on ${sampleName} with ${depthSource}/${edgeDepthMode}/a=${a}/r=${r}`);
             const face = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
             assert.equal(face.ok, true, `face metric failed on ${sampleName}: ${face.reason || ''}`);
             runs += 1;
@@ -718,7 +746,7 @@ test('CEG23 parameter sweep on sample1/sample2 tunes Face Areas score', () => {
     const elapsedMs = Date.now() - t0;
     // eslint-disable-next-line no-console
     console.log(
-      `[CEG23 sweep] ${sampleName}: baseline=${baselineFace.quality.toFixed(4)} best=${bestScore.toFixed(4)} ` +
+      `[CEG23-bfs sweep] ${sampleName}: baseline=${baselineFace.quality.toFixed(4)} best=${bestScore.toFixed(4)} ` +
       `params=${JSON.stringify(bestParams)} runs=${runs} time_ms=${elapsedMs}`
     );
 

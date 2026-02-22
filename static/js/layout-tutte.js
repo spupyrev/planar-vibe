@@ -34,68 +34,47 @@
       };
     }
 
-    var coord = {};
-    for (var i = 0; i < nodes.length; i += 1) {
-      coord[nodes[i].id()] = { x: 0, y: 0 };
+    if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout) {
+      return {
+        ok: false,
+        message: 'Barycentric core is missing. Check script load order'
+      };
     }
 
-    var R = 1000;
-    var gamma = 2.0 * Math.PI / outerFace.length;
-    for (var j = 0; j < outerFace.length; j += 1) {
-      var v = outerFace[outerFace.length - j - 1];
-      var x = R * Math.cos(gamma * (0.25 + j)) + 2.0 * R;
-      var y = R * Math.sin(gamma * (0.25 + j)) + 2.0 * R;
-      coord[v] = { x: x, y: y };
-    }
-
-    var outerSet = {};
-    for (var k = 0; k < outerFace.length; k += 1) {
-      outerSet[outerFace[k]] = true;
-    }
-
-    var iters = 0;
-    var converged = false;
-    while (!converged && iters < 1000) {
-      converged = true;
-      iters += 1;
-
-      for (var n = 0; n < nodes.length; n += 1) {
-        var id = nodes[n].id();
-        if (outerSet[id]) {
-          continue;
-        }
-
-        var ngh = adj[id] || [];
-        if (ngh.length === 0) {
-          continue;
-        }
-
-        var sx = 0;
-        var sy = 0;
-        for (var p = 0; p < ngh.length; p += 1) {
-          var u = ngh[p];
-          sx += coord[u].x;
-          sy += coord[u].y;
-        }
-        var nx = sx / ngh.length;
-        var ny = sy / ngh.length;
-
-        if (Math.abs(coord[id].x - nx) > 1e-6 || Math.abs(coord[id].y - ny) > 1e-6) {
-          coord[id] = { x: nx, y: ny };
-          converged = false;
-        }
+    var edgePairs = cy.edges().map(function (e) {
+      return [String(e.source().id()), String(e.target().id())];
+    });
+    var weights = global.PlanarVibeBarycentricCore.buildUniformWeights(edgePairs, 1);
+    var out = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
+      nodeIds: planarGraph.nodeIds,
+      adjacency: adj,
+      outerFace: outerFace,
+      weights: weights,
+      maxIters: 1000,
+      tolerance: 1e-6,
+      initOptions: {
+        useSeedOuter: false,
+        defaultCenterX: 2000,
+        defaultCenterY: 2000,
+        defaultRadius: 1000
       }
+    });
+    if (!out.ok) {
+      return {
+        ok: false,
+        message: out.message || 'Tutte solver failed'
+      };
     }
 
-    for (var q = 0; q < nodes.length; q += 1) {
-      var nodeId = nodes[q].id();
-      nodes[q].position(coord[nodeId]);
+    for (var i = 0; i < nodes.length; i += 1) {
+      var nodeId = nodes[i].id();
+      nodes[i].position(out.pos[nodeId]);
     }
     cy.fit(undefined, 24);
 
     return {
       ok: true,
-      message: 'Applied Tutte (' + outerFace.length + '-vertex outer face, ' + iters + ' iters)'
+      message: 'Applied Tutte (' + outerFace.length + '-vertex outer face, ' + out.iters + ' iters)'
     };
   }
 

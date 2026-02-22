@@ -1244,8 +1244,12 @@
       setLayoutEnabled('tutte', isEnabled);
     }
 
-    function setCEG23Enabled(isEnabled) {
-      setLayoutEnabled('ceg23', isEnabled);
+    function setCEG23BfsEnabled(isEnabled) {
+      setLayoutEnabled('ceg23-bfs', isEnabled);
+    }
+
+    function setCEG23XyEnabled(isEnabled) {
+      setLayoutEnabled('ceg23-xy', isEnabled);
     }
 
     function setP3TEnabled(isEnabled) {
@@ -1262,7 +1266,8 @@
 
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
-      setCEG23Enabled(false);
+      setCEG23BfsEnabled(false);
+      setCEG23XyEnabled(false);
       setP3TEnabled(false);
       setFPPEnabled(false);
       setReweightTutteEnabled(false);
@@ -1305,7 +1310,8 @@
         isPlanar3Tree: isPlanar3Tree
       });
       setTutteEnabled(isPlanar);
-      setCEG23Enabled(isPlanar);
+      setCEG23BfsEnabled(isPlanar);
+      setCEG23XyEnabled(isPlanar);
       setP3TEnabled(isPlanar3Tree);
       setFPPEnabled(isPlanar);
       setReweightTutteEnabled(isPlanar);
@@ -1461,13 +1467,28 @@
         return;
       }
 
-      if (layoutName === 'ceg23') {
+      if (layoutName === 'ceg23-bfs') {
         runSpecialLayout({
-          layoutName: 'ceg23',
-          disabledMessage: 'CEG23 layout requires a planar graph',
-          missingMessage: 'CEG23 layout module is missing',
-          module: global.PlanarVibeCEG23,
-          methodName: 'applyCEG23Layout'
+          layoutName: 'ceg23-bfs',
+          disabledMessage: 'CEG23-bfs layout requires a planar graph',
+          missingMessage: 'CEG23-bfs layout module is missing',
+          module: global.PlanarVibeCEG23Bfs,
+          methodName: 'applyCEG23BfsLayout'
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'ceg23-xy') {
+        runSpecialLayout({
+          layoutName: 'ceg23-xy',
+          disabledMessage: 'CEG23-xy layout requires a planar graph',
+          missingMessage: 'CEG23-xy layout module is missing',
+          module: global.PlanarVibeCEG23Xy,
+          methodName: 'applyCEG23XyLayout'
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);

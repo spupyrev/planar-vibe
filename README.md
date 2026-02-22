@@ -13,7 +13,7 @@ Live app: https://spupyrev.github.io/planar-vibe/
   - `Circular`
   - `Force-Dir`
   - `Tutte`
-  - `CEG23`
+  - `CEG23-bfs`
   - `Reweight`
   - `P3T`
   - `FPP`
