@@ -136,6 +136,26 @@
     return out;
   }
 
+  function combineWeights(edgePairs, wA, wB, lambdaA) {
+    var out = {};
+    var lam = Number.isFinite(lambdaA) ? Math.max(0, Math.min(1, lambdaA)) : 0.5;
+    var lamB = 1 - lam;
+    var ek = global.PlanarVibeBarycentricCore.edgeKey;
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var u = String(edgePairs[i][0]);
+      var v = String(edgePairs[i][1]);
+      var key = ek(u, v);
+      var a = Number.isFinite(wA[key]) ? wA[key] : 1;
+      var b = Number.isFinite(wB[key]) ? wB[key] : 1;
+      var w = lam * a + lamB * b;
+      if (!Number.isFinite(w) || !(w > 0)) {
+        w = 1;
+      }
+      out[key] = w;
+    }
+    return out;
+  }
+
   function applyCEG23BfsLayout(cy, options) {
     var opts = options || {};
     var tuning = opts.tuning || {};
@@ -246,6 +266,7 @@
     var maxIters = Number.isFinite(tuning.maxIters) ? Math.max(1, Math.floor(tuning.maxIters)) : 2500;
     var alpha = Number.isFinite(tuning.alpha) ? tuning.alpha : 0.5;
     var beta = Number.isFinite(tuning.beta) ? tuning.beta : 1.0;
+    var lambdaX = Number.isFinite(tuning.lambdaX) ? tuning.lambdaX : 0.5;
 
     var seed = global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy);
     var uniformWeights = global.PlanarVibeBarycentricCore.buildUniformWeights(edgePairs, 1);
@@ -269,12 +290,12 @@
     var yRank = rankByAxis(nodeIds, base.pos, 'y');
     var wx = buildSpreadWeights(edgePairs, xRank, alpha, beta);
     var wy = buildSpreadWeights(edgePairs, yRank, alpha, beta);
-
-    var xSolve = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
+    var wxy = combineWeights(edgePairs, wx, wy, lambdaX);
+    var xySolve = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
       nodeIds: nodeIds,
       adjacency: graph.adjacency,
       outerFace: outerFace,
-      weights: wx,
+      weights: wxy,
       maxIters: maxIters,
       tolerance: 1e-8,
       initOptions: {
@@ -282,38 +303,21 @@
         seedPos: base.pos
       }
     });
-    if (!xSolve.ok) {
-      return { ok: false, message: xSolve.message || 'CEG23-xy x-spread solve failed' };
+    if (!xySolve.ok) {
+      return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };
     }
 
-    var ySolve = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-      nodeIds: nodeIds,
-      adjacency: graph.adjacency,
-      outerFace: outerFace,
-      weights: wy,
-      maxIters: maxIters,
-      tolerance: 1e-8,
-      initOptions: {
-        useSeedOuter: true,
-        seedPos: base.pos
-      }
-    });
-    if (!ySolve.ok) {
-      return { ok: false, message: ySolve.message || 'CEG23-xy y-spread solve failed' };
-    }
-
-    var finalPos = averagePositions(nodeIds, xSolve.pos, ySolve.pos);
     for (var i = 0; i < nodes.length; i += 1) {
       var id = String(nodes[i].id());
-      if (finalPos[id]) {
-        nodes[i].position(finalPos[id]);
+      if (xySolve.pos[id]) {
+        nodes[i].position(xySolve.pos[id]);
       }
     }
     cy.fit(undefined, 24);
 
     return {
       ok: true,
-      message: 'Applied CEG23-xy (' + outerFace.length + '-vertex outer face, alpha=' + alpha + ', beta=' + beta + ', ' + (base.iters + xSolve.iters + ySolve.iters) + ' total iters)'
+      message: 'Applied CEG23-xy (' + outerFace.length + '-vertex outer face, alpha=' + alpha + ', beta=' + beta + ', lambdaX=' + Math.max(0, Math.min(1, lambdaX)) + ', ' + (base.iters + xySolve.iters) + ' total iters)'
     };
   }
 

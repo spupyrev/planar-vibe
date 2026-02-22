@@ -685,6 +685,25 @@ test('CEG23-xy rejects non-planar graphs', () => {
   assert.match(String(result.message || ''), /planar graph/i);
 });
 
+test('CEG23-xy runs on G(50, 144) without crossings', () => {
+  const text = Generator.getSample('randomplanar3'); // G(50, 144)
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = CEG23XY.applyCEG23XyLayout(cy);
+  assert.equal(result.ok, true, result.message || 'CEG23-xy failed on G(50,144)');
+  assert.equal(cy._fitCalls > 0, true);
+
+  const posById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing CEG23-xy position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
+  }
+  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+});
+
 test('CEG23-bfs parameter sweep on sample1/sample2 tunes Face Areas score', () => {
   const samples = ['sample1', 'sample2'];
   const depthSources = ['outer-multi', 'outer-single'];
