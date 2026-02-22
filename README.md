@@ -13,7 +13,9 @@ Live app: https://spupyrev.github.io/planar-vibe/
   - `Circular`
   - `Force-Dir`
   - `Tutte`
+  - `ImPrEd`
   - `CEG23-bfs`
+  - `CEG23-xy`
   - `Reweight`
   - `P3T`
   - `FPP`
@@ -25,6 +27,8 @@ Live app: https://spupyrev.github.io/planar-vibe/
   - `Angle Resolution Score`
   - `Face Areas Score`
   - `Edge Length Score`
+  - `Edge-Length Ratio`
+  - `Spacing-Uniformity`
   - clickable metric rows to show/hide each distribution plot
 - Interactive/static mode switch (static mode is lower CPU)
 - Vertex size and edge width sliders (persisted)
