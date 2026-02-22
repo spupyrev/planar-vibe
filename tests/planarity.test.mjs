@@ -92,7 +92,8 @@ function loadBrowserModules() {
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
     'static/js/layout-p3t.js',
-    'static/js/layout-fpp.js'
+    'static/js/layout-fpp.js',
+    'static/js/layout-schnyder.js'
   ];
 
   for (const rel of files) {
@@ -114,6 +115,7 @@ const CEG23 = modules.PlanarVibeCEG23Bfs;
 const CEG23XY = modules.PlanarVibeCEG23Xy;
 const ImPrEd = modules.PlanarVibeImPrEd;
 const FPP = modules.PlanarVibeFPP;
+const Schnyder = modules.PlanarVibeSchnyder;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
 
@@ -251,6 +253,17 @@ function seedGridPositions(cy, nodeIds) {
     const id = nodeIds[i];
     const node = cy.nodes().find((n) => n.id() === id);
     node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
+  }
+}
+
+function assertNoVertexOverlaps(cy, messagePrefix = 'vertex overlap') {
+  const seen = new Set();
+  for (const node of cy.nodes()) {
+    const p = node._pos;
+    assert.equal(!!p, true, `${messagePrefix}: missing position for node ${node.id()}`);
+    const key = `${p.x},${p.y}`;
+    assert.equal(seen.has(key), false, `${messagePrefix}: node ${node.id()} overlaps at ${key}`);
+    seen.add(key);
   }
 }
 
@@ -467,6 +480,68 @@ test('FPP layout applies on 10 random planar 3-trees', () => {
     const crossing = hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById);
     assert.equal(crossing, false, `FPP produced crossings for seed=${seed}`);
   }
+});
+
+test('Schnyder layout applies on planar sample and assigns finite positions', () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = Schnyder.applySchnyderLayout(cy);
+  assert.equal(result.ok, true, result.message || 'Schnyder failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing Schnyder position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('Schnyder layout rejects non-planar graphs', () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = Schnyder.applySchnyderLayout(cy);
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /not planar|planar graph/i);
+});
+
+test('Schnyder layout produces non-crossing drawing on randomplanar3', () => {
+  const text = Generator.getSample('randomplanar3');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = Schnyder.applySchnyderLayout(cy);
+  assert.equal(result.ok, true, result.message || 'Schnyder failed on randomplanar3');
+  const posById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing Schnyder position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
+  }
+  assertNoVertexOverlaps(cy, 'Schnyder randomplanar3');
+  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+});
+
+test('Schnyder layout produces non-crossing drawing on randomplanar2 (G(50, 130))', () => {
+  const text = Generator.getSample('randomplanar2');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = Schnyder.applySchnyderLayout(cy);
+  assert.equal(result.ok, true, result.message || 'Schnyder failed on randomplanar2');
+  const posById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing Schnyder position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
+  }
+  assertNoVertexOverlaps(cy, 'Schnyder randomplanar2');
+  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
 });
 
 test('FPP layout produces non-crossing drawings on 10 small planar 3-trees', () => {

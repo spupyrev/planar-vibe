@@ -578,10 +578,11 @@ body {
 }
 
 .layout-toolbar .layout-btn {
-  width: 96px;
+  width: 90px;
   min-height: 24px;
   padding-top: 1px;
   padding-bottom: 1px;
+  font-size: 0.8rem;
 }
 
 .layout-toolbar .btn-outline-secondary:hover {

@@ -1264,6 +1264,10 @@
       setLayoutEnabled('fpp', isEnabled);
     }
 
+    function setSchnyderEnabled(isEnabled) {
+      setLayoutEnabled('schnyder', isEnabled);
+    }
+
     function setReweightTutteEnabled(isEnabled) {
       setLayoutEnabled('reweighttutte', isEnabled);
     }
@@ -1275,6 +1279,7 @@
       setCEG23XyEnabled(false);
       setP3TEnabled(false);
       setFPPEnabled(false);
+      setSchnyderEnabled(false);
       setReweightTutteEnabled(false);
     }
 
@@ -1320,6 +1325,7 @@
       setCEG23XyEnabled(isPlanar);
       setP3TEnabled(isPlanar3Tree);
       setFPPEnabled(isPlanar);
+      setSchnyderEnabled(isPlanar);
       setReweightTutteEnabled(isPlanar);
     }
 
@@ -1561,6 +1567,21 @@
           missingMessage: 'FPP layout module is missing',
           module: global.PlanarVibeFPP,
           methodName: 'applyFPPLayout'
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'schnyder') {
+        runSpecialLayout({
+          layoutName: 'schnyder',
+          disabledMessage: 'Schnyder layout requires a planar graph',
+          missingMessage: 'Schnyder layout module is missing',
+          module: global.PlanarVibeSchnyder,
+          methodName: 'applySchnyderLayout'
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
