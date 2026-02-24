@@ -339,6 +339,13 @@ body {
   justify-content: center;
 }
 
+.layout-group-buttons.planar-layout-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  justify-items: center;
+}
+
 .reset-zoom-btn {
   position: absolute;
   top: 10px;
@@ -578,7 +585,7 @@ body {
 }
 
 .layout-toolbar .layout-btn {
-  width: 90px;
+  width: 98px;
   min-height: 24px;
   padding-top: 1px;
   padding-bottom: 1px;

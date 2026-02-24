@@ -1272,6 +1272,10 @@
       setLayoutEnabled('reweighttutte', isEnabled);
     }
 
+    function setFDUniformEnabled(isEnabled) {
+      setLayoutEnabled('fd-uniform', isEnabled);
+    }
+
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
       setImPrEdEnabled(false);
@@ -1281,6 +1285,7 @@
       setFPPEnabled(false);
       setSchnyderEnabled(false);
       setReweightTutteEnabled(false);
+      setFDUniformEnabled(false);
     }
 
     function updateStatistics(parsed) {
@@ -1327,6 +1332,7 @@
       setFPPEnabled(isPlanar);
       setSchnyderEnabled(isPlanar);
       setReweightTutteEnabled(isPlanar);
+      setFDUniformEnabled(isPlanar);
     }
 
     function drawGraph() {
@@ -1616,6 +1622,43 @@
                   parts.push('faces ' + progress.boundedFaceCount);
                 }
                 setStatus(parts.join(' | '), false);
+              }
+            };
+          },
+          normalizeOnSuccess: false,
+          disableOtherButtonsWhileRunning: true
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'fd-uniform') {
+        normalizeLayoutScale();
+        runSpecialLayout({
+          layoutName: 'fd-uniform',
+          disabledMessage: 'FD-uniform layout requires a planar graph',
+          missingMessage: 'FD-uniform layout module is missing',
+          module: global.PlanarVibeFDUniform,
+          methodName: 'applyFDUniformLayout',
+          buildMethodOptions: function () {
+            return {
+              interactive: true,
+              delayMs: 0,
+              renderEvery: 4,
+              useSeedOuter: true,
+              onIteration: function (progress) {
+                if (!progress || progress.iter % 10 !== 0) {
+                  return;
+                }
+                setStatus(
+                  'FD-uniform step ' + progress.iter + '/' + progress.maxIters +
+                  ' | accepted ' + progress.accepted +
+                  ' | rejected ' + progress.rejected,
+                  false
+                );
               }
             };
           },

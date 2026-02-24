@@ -91,6 +91,7 @@ function loadBrowserModules() {
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
+    'static/js/layout-fd-uniform.js',
     'static/js/layout-p3t.js',
     'static/js/layout-fpp.js',
     'static/js/layout-schnyder.js'
@@ -118,6 +119,7 @@ const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
+const FDUniform = modules.PlanarVibeFDUniform;
 
 function buildMockCy(nodeIds, edgePairs) {
   const nodeMap = new Map();
@@ -1014,6 +1016,48 @@ test('Tutte rejects graphs with fewer than 3 vertices', () => {
   const result = Tutte.applyTutteLayout(cy);
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /at least 3 vertices/i);
+});
+
+test('FD-uniform applies on planar sample and assigns finite positions', () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = FDUniform.applyFDUniformLayout(cy, { maxIters: 120 });
+  assert.equal(result.ok, true, result.message || 'FD-uniform failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing FD-uniform position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('FD-uniform rejects non-planar graphs', () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = FDUniform.applyFDUniformLayout(cy);
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /planar graph/i);
+});
+
+test('FD-uniform preserves planarity on randomplanar2 (G(50, 130))', () => {
+  const text = Generator.getSample('randomplanar2');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = FDUniform.applyFDUniformLayout(cy, { maxIters: 160 });
+  assert.equal(result.ok, true, result.message || 'FD-uniform failed on randomplanar2');
+
+  const posById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing FD-uniform position for node ${node.id()}`);
+    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
+  }
+  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
 });
 
 test('P3T layout applies on planar3tree10 sample', () => {
