@@ -51,6 +51,39 @@
     return best || arr.slice();
   }
 
+  function sameCyclicDirection(a, b) {
+    if (!a || !b || a.length !== b.length || a.length === 0) return false;
+    var n = a.length;
+    var i;
+    for (i = 0; i < n; i += 1) {
+      if (String(b[i]) === String(a[0])) break;
+    }
+    if (i === n) return false;
+    for (var j = 0; j < n; j += 1) {
+      if (String(a[j]) !== String(b[(i + j) % n])) return false;
+    }
+    return true;
+  }
+
+  function sameCyclicEitherDirection(a, b) {
+    if (sameCyclicDirection(a, b)) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    var rev = b.slice().reverse();
+    return sameCyclicDirection(a, rev);
+  }
+
+  function findOuterFaceIndex(faces, outerFace) {
+    if (!faces || faces.length === 0 || !outerFace || outerFace.length === 0) return -1;
+    // Prefer exact cyclic direction match, then allow reversed direction.
+    for (var i = 0; i < faces.length; i += 1) {
+      if (sameCyclicDirection(outerFace, faces[i])) return i;
+    }
+    for (i = 0; i < faces.length; i += 1) {
+      if (sameCyclicEitherDirection(outerFace, faces[i])) return i;
+    }
+    return -1;
+  }
+
   function polygonAreaAbs(face, posById) {
     if (!face || face.length < 3) return 0;
     var s = 0;
@@ -505,10 +538,10 @@
     }
 
     var faces = embAug.faces || [];
-    var outerKey = faceKey(outer);
+    var outerFaceIdx = findOuterFaceIndex(faces, outer);
     var boundedFaceIdx = [];
     for (var i = 0; i < faces.length; i += 1) {
-      if (faceKey(faces[i]) !== outerKey) boundedFaceIdx.push(i);
+      if (i !== outerFaceIdx) boundedFaceIdx.push(i);
     }
     if (boundedFaceIdx.length === 0) {
       return { ok: false, message: 'No bounded faces' };

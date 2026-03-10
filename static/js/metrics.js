@@ -24,6 +24,59 @@
     return forward < backward ? forward : backward;
   }
 
+  function sameCyclicDirection(a, b) {
+    if (!a || !b || a.length !== b.length || a.length === 0) {
+      return false;
+    }
+    var aa = a.map(String);
+    var bb = b.map(String);
+    var n = aa.length;
+    var start = -1;
+    for (var i = 0; i < n; i += 1) {
+      if (bb[i] === aa[0]) {
+        start = i;
+        break;
+      }
+    }
+    if (start === -1) {
+      return false;
+    }
+    for (i = 0; i < n; i += 1) {
+      if (aa[i] !== bb[(start + i) % n]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function sameCyclicEitherDirection(a, b) {
+    if (sameCyclicDirection(a, b)) {
+      return true;
+    }
+    if (!a || !b || a.length !== b.length) {
+      return false;
+    }
+    return sameCyclicDirection(a, b.slice().reverse());
+  }
+
+  function findOuterFaceIndex(faces, outerFace) {
+    if (!faces || !outerFace || faces.length === 0 || outerFace.length === 0) {
+      return -1;
+    }
+    var i;
+    for (i = 0; i < faces.length; i += 1) {
+      if (sameCyclicDirection(outerFace, faces[i])) {
+        return i;
+      }
+    }
+    for (i = 0; i < faces.length; i += 1) {
+      if (sameCyclicEitherDirection(outerFace, faces[i])) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   function polygonAreaAbs(face, posById) {
     if (!face || face.length < 3) {
       return 0;
@@ -134,11 +187,11 @@
       return { ok: false, reason: 'No faces available' };
     }
 
-    var outerKey = emb.outerFace ? faceCanonicalKey(emb.outerFace) : null;
+    var outerFaceIdx = findOuterFaceIndex(emb.faces, emb.outerFace || []);
     var areas = [];
     for (var i = 0; i < emb.faces.length; i += 1) {
       var face = emb.faces[i];
-      if (outerKey && faceCanonicalKey(face) === outerKey) {
+      if (i === outerFaceIdx) {
         continue;
       }
       var a = polygonAreaAbs(face, posById);

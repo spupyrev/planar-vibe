@@ -41,6 +41,23 @@
     return adj;
   }
 
+  function adjacencyToArrayMap(adjacency) {
+    var out = {};
+    var keys = Object.keys(adjacency || {});
+    for (var i = 0; i < keys.length; i += 1) {
+      var k = keys[i];
+      var value = adjacency[k];
+      if (Array.isArray(value)) {
+        out[k] = value.slice();
+      } else if (value && typeof value.forEach === 'function') {
+        out[k] = Array.from(value);
+      } else {
+        out[k] = [];
+      }
+    }
+    return out;
+  }
+
   function estimateDelta(edgePairs, posById) {
     var sum = 0;
     var cnt = 0;
@@ -95,6 +112,21 @@
       return best.slice();
     }
     return embedding.outerFace ? embedding.outerFace.slice() : null;
+  }
+
+  function chooseLongestEmbeddingFace(embedding) {
+    if (!embedding || !Array.isArray(embedding.faces) || embedding.faces.length === 0) {
+      return embedding && Array.isArray(embedding.outerFace) ? embedding.outerFace.slice() : null;
+    }
+    var best = null;
+    for (var i = 0; i < embedding.faces.length; i += 1) {
+      var face = embedding.faces[i];
+      if (!Array.isArray(face) || face.length < 3) continue;
+      if (!best || face.length > best.length) {
+        best = face.slice();
+      }
+    }
+    return best || (Array.isArray(embedding.outerFace) ? embedding.outerFace.slice() : null);
   }
 
   function dot(ax, ay, bx, by) {
@@ -479,9 +511,38 @@
 
     var posById = currentPositionsFromCy(cy);
     var adj = buildAdjacency(g.nodeIds, g.edgePairs);
+    var emb = null;
+    var initialHadCrossings = false;
+    if (global.PlanarVibeMetrics && global.PlanarVibeMetrics.hasCrossingsFromPositions) {
+      initialHadCrossings = !!global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, g.edgePairs);
+    }
     var fixedOuter = new Set();
     if (global.PlanarVibePlanarityTest && global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
+      emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
+      if (
+        emb && emb.ok &&
+        initialHadCrossings &&
+        global.PlanarVibeBarycentricCore &&
+        typeof global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout === 'function' &&
+        typeof global.PlanarVibeBarycentricCore.buildUniformWeights === 'function'
+      ) {
+        var initOuter = chooseLongestEmbeddingFace(emb);
+        if (initOuter && initOuter.length >= 3) {
+          var initSolve = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
+            nodeIds: g.nodeIds.slice(),
+            adjacency: adjacencyToArrayMap(adj),
+            outerFace: initOuter,
+            weights: global.PlanarVibeBarycentricCore.buildUniformWeights(g.edgePairs, 1),
+            maxIters: 4000,
+            tolerance: 1e-8,
+            initOptions: { useSeedOuter: false }
+          });
+          if (initSolve && initSolve.ok && initSolve.pos) {
+            posById = initSolve.pos;
+            applyPositionsToCy(cy, posById);
+          }
+        }
+      }
       if (emb && emb.ok) {
         var visibleOuter = chooseCurrentOuterFaceByArea(emb, posById);
         if (visibleOuter && visibleOuter.length >= 3) {

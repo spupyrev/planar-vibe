@@ -1,6 +1,23 @@
 (function (global) {
   'use strict';
 
+  function chooseLongestEmbeddingFace(embeddingFaces) {
+    if (!Array.isArray(embeddingFaces) || embeddingFaces.length === 0) {
+      return null;
+    }
+    var best = null;
+    for (var i = 0; i < embeddingFaces.length; i += 1) {
+      var face = embeddingFaces[i];
+      if (!Array.isArray(face) || face.length < 3) {
+        continue;
+      }
+      if (!best || face.length > best.length) {
+        best = face.slice().map(String);
+      }
+    }
+    return best;
+  }
+
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
     var depth = {};
     var q = [];
@@ -119,23 +136,6 @@
     return weights;
   }
 
-  function averagePositions(nodeIds, posA, posB) {
-    var out = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      var pa = posA[id];
-      var pb = posB[id];
-      if (!pa || !pb) {
-        continue;
-      }
-      out[id] = {
-        x: 0.5 * (pa.x + pb.x),
-        y: 0.5 * (pa.y + pb.y)
-      };
-    }
-    return out;
-  }
-
   function combineWeights(edgePairs, wA, wB, lambdaA) {
     var out = {};
     var lam = Number.isFinite(lambdaA) ? Math.max(0, Math.min(1, lambdaA)) : 0.5;
@@ -186,7 +186,7 @@
       return { ok: false, message: 'CEG23-bfs requires a planar graph' };
     }
 
-    var outerFace = graph.chooseOuterFace();
+    var outerFace = chooseLongestEmbeddingFace(emb.faces) || graph.chooseOuterFace();
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
@@ -207,7 +207,7 @@
       maxIters: MAX_ITERS,
       tolerance: 1e-8,
       initOptions: {
-        useSeedOuter: true,
+        useSeedOuter: false,
         seedPos: global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy)
       }
     });
@@ -258,7 +258,7 @@
       return { ok: false, message: 'CEG23-xy requires a planar graph' };
     }
 
-    var outerFace = graph.chooseOuterFace();
+    var outerFace = chooseLongestEmbeddingFace(emb.faces) || graph.chooseOuterFace();
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
@@ -278,7 +278,7 @@
       maxIters: maxIters,
       tolerance: 1e-8,
       initOptions: {
-        useSeedOuter: true,
+        useSeedOuter: false,
         seedPos: seed
       }
     });
@@ -299,7 +299,7 @@
       maxIters: maxIters,
       tolerance: 1e-8,
       initOptions: {
-        useSeedOuter: true,
+        useSeedOuter: false,
         seedPos: base.pos
       }
     });

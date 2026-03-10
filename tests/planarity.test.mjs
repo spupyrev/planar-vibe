@@ -636,6 +636,24 @@ test('FPP layout applies on 5 random planar non-3-tree graphs', () => {
   }
 });
 
+test('FPP layout regression: randomplanar4 should not fail during augmentation', () => {
+  const text = Generator.getSample('randomplanar4');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = FPP.applyFPPLayout(cy);
+  assert.equal(result.ok, true, `applyFPPLayout failed on randomplanar4: ${result.message}`);
+
+  const posById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing FPP position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
+  }
+  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false, 'FPP produced crossings for randomplanar4');
+});
+
 test('canonical ordering works on random planar non-3-tree graph', () => {
   const text = Generator.planarStellationGraph(80, 10, 42);
   const graph = parseEdgeListText(text);
