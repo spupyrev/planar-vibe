@@ -1,17 +1,11 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+
   function collectGraphFromCy(cy) {
-    var nodeIds = cy.nodes().map(function (node) {
-      return String(node.id());
-    });
-    var edgePairs = cy.edges().map(function (edge) {
-      return [String(edge.source().id()), String(edge.target().id())];
-    });
-    return {
-      nodeIds: nodeIds,
-      edgePairs: edgePairs
-    };
+    return PlanarCommon.graphFromCy(cy);
   }
 
   function prepareTriangulatedEmbedding(nodeIds, edgePairs) {
@@ -590,17 +584,27 @@
         maxY = coords[yv].y;
       }
     }
-    cy.nodes().forEach(function (node) {
-      var id = String(node.id());
-      if (coords[id]) {
-        node.position({
-          x: coords[id].x * SCALE + 20,
-          // Flip Y for screen coordinates (y-down) so v1-v2 is the lowest pair.
-          y: (maxY - coords[id].y) * SCALE + 20
-        });
-      }
-    });
-    cy.fit(undefined, 24);
+    var screenPos = {};
+    for (var pi = 0; pi < order.length; pi += 1) {
+      var pid = String(order[pi]);
+      if (!coords[pid]) continue;
+      screenPos[pid] = {
+        x: coords[pid].x * SCALE + 20,
+        // Flip Y for screen coordinates (y-down) so v1-v2 is the lowest pair.
+        y: (maxY - coords[pid].y) * SCALE + 20
+      };
+    }
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, Object.keys(screenPos), screenPos, 24);
+    } else {
+      cy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        if (screenPos[id]) {
+          node.position(screenPos[id]);
+        }
+      });
+      cy.fit(undefined, 24);
+    }
 
     return {
       ok: true,

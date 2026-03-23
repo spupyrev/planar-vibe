@@ -1,20 +1,11 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+
   function buildAdjacency(nodeIds, edgePairs) {
-    var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adj[String(nodeIds[i])] = [];
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!adj[u]) adj[u] = [];
-      if (!adj[v]) adj[v] = [];
-      adj[u].push(v);
-      adj[v].push(u);
-    }
-    return adj;
+    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
   }
 
   function extractOriginalPositions(posById, nodeIds) {
@@ -56,10 +47,9 @@
       };
     }
 
-    var nodeIds = cy.nodes().map(function (n) { return String(n.id()); });
-    var edgePairs = cy.edges().map(function (e) {
-      return [String(e.source().id()), String(e.target().id())];
-    });
+    var graph = PlanarCommon.graphFromCy(cy);
+    var nodeIds = graph.nodeIds.slice();
+    var edgePairs = graph.edgePairs.slice();
 
     var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!embedding || !embedding.ok) {
@@ -127,9 +117,7 @@
         message: out.message || 'Tutte solver failed'
       };
     }
-    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
-      out.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(out.pos, outerFace);
-    }
+    out.pos = PlanarCommon.alignOuterFace(out.pos, outerFace);
     if (hasCrossings) {
       return {
         ok: false,
@@ -137,13 +125,17 @@
       };
     }
 
-    for (var i = 0; i < nodes.length; i += 1) {
-      var nodeId = nodes[i].id();
-      if (out.pos[nodeId]) {
-        nodes[i].position(out.pos[nodeId]);
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, nodeIds, out.pos, 24);
+    } else {
+      for (var i = 0; i < nodes.length; i += 1) {
+        var nodeId = nodes[i].id();
+        if (out.pos[nodeId]) {
+          nodes[i].position(out.pos[nodeId]);
+        }
       }
+      cy.fit(undefined, 24);
     }
-    cy.fit(undefined, 24);
 
     return {
       ok: true,

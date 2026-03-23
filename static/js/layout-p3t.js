@@ -1,6 +1,9 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+
   function cliqueKey(a, b, c, indexById) {
     var arr = [a, b, c];
     arr.sort(function (x, y) {
@@ -17,12 +20,9 @@
       };
     }
 
-    var nodeIds = cy.nodes().map(function (node) {
-      return String(node.id());
-    });
-    var edgePairs = cy.edges().map(function (edge) {
-      return [String(edge.source().id()), String(edge.target().id())];
-    });
+    var graph = PlanarCommon.graphFromCy(cy);
+    var nodeIds = graph.nodeIds.slice();
+    var edgePairs = graph.edgePairs.slice();
 
     var info = global.PlanarVibePlanarityTest.analyzePlanar3Tree(nodeIds, edgePairs);
     if (!info.ok) {
@@ -104,13 +104,17 @@
 
     processClique(outer[0], outer[1], outer[2]);
 
-    cy.nodes().forEach(function (node) {
-      var id = String(node.id());
-      if (coord[id]) {
-        node.position(coord[id]);
-      }
-    });
-    cy.fit(undefined, 24);
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, nodeIds, coord, 24);
+    } else {
+      cy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        if (coord[id]) {
+          node.position(coord[id]);
+        }
+      });
+      cy.fit(undefined, 24);
+    }
 
     return {
       ok: true,

@@ -1,6 +1,8 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+
   function canonicalEdgeKey(u, v) {
     var a = String(u);
     var b = String(v);
@@ -8,19 +10,7 @@
   }
 
   function buildAdjacency(nodeIds, edgePairs) {
-    var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adj[String(nodeIds[i])] = [];
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!adj[u]) adj[u] = [];
-      if (!adj[v]) adj[v] = [];
-      adj[u].push(v);
-      adj[v].push(u);
-    }
-    return adj;
+    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
   }
 
   function triangleArea2(a, b, c) {
@@ -199,25 +189,6 @@
     };
   }
 
-  function applyPositionsToCy(cy, nodeIds, pos) {
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var nodeId = String(nodeIds[i]);
-      var node = cy.getElementById ? cy.getElementById(nodeId) : null;
-      if (!node || typeof node.position !== 'function') {
-        var arr = cy.nodes();
-        for (var t = 0; t < arr.length; t += 1) {
-          if (String(arr[t].id()) === nodeId) {
-            node = arr[t];
-            break;
-          }
-        }
-      }
-      if (node && pos[nodeId]) {
-        node.position({ x: pos[nodeId].x, y: pos[nodeId].y });
-      }
-    }
-  }
-
   function evaluateSpacingQuality(nodeIds, edgePairs, pos) {
     if (!global.PlanarVibeMetrics || typeof global.PlanarVibeMetrics.computeSpacingUniformityScore !== 'function') {
       return null;
@@ -233,30 +204,12 @@
     return score.score;
   }
 
-  function waitForNextFrame(delayMs) {
-    var delay = Math.max(0, Number(delayMs) || 0);
-    return new Promise(function (resolve) {
-      var schedule = (typeof global.setTimeout === 'function')
-        ? global.setTimeout.bind(global)
-        : (typeof setTimeout === 'function' ? setTimeout : null);
-      if (!schedule) {
-        resolve();
-        return;
-      }
-      schedule(function () {
-        var raf = (typeof global.requestAnimationFrame === 'function')
-          ? global.requestAnimationFrame.bind(global)
-          : (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
-        if (raf) {
-          raf(function () { resolve(); });
-        } else {
-          resolve();
-        }
-      }, delay);
-    });
-  }
-
   function applyFDUniformLayout(cy, options) {
+    var runtime = global.PlanarVibeLayoutRuntime;
+    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
+      return { ok: false, message: 'Layout runtime is missing' };
+    }
+
     var opts = options || {};
     var EPS = Number.isFinite(opts.epsilon) ? Math.max(1e-12, opts.epsilon) : 1e-9;
     var repEps = Number.isFinite(opts.repulsionEps) ? Math.max(1e-12, opts.repulsionEps) : 1e-6;
@@ -287,13 +240,12 @@
       return { ok: false, message: 'Barycentric core is missing' };
     }
 
-    var nodeIds = cy.nodes().map(function (n) { return String(n.id()); });
+    var graph = PlanarCommon.graphFromCy(cy);
+    var nodeIds = graph.nodeIds.slice();
     if (nodeIds.length < 3) {
       return { ok: false, message: 'FD-uniform requires at least 3 vertices' };
     }
-    var edgePairs = cy.edges().map(function (e) {
-      return [String(e.source().id()), String(e.target().id())];
-    });
+    var edgePairs = graph.edgePairs.slice();
     if (edgePairs.length < 3) {
       return { ok: false, message: 'FD-uniform requires at least 3 edges' };
     }
@@ -323,9 +275,7 @@
     }
     var adjacencyAug = buildAdjacency(augmentedNodeIds, augmentedEdgePairs);
     var uniformWeights = global.PlanarVibeBarycentricCore.buildUniformWeights(augmentedEdgePairs, 1);
-    var seedPos = (global.PlanarVibeBarycentricCore && global.PlanarVibeBarycentricCore.currentPositionsFromCy)
-      ? global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy)
-      : {};
+    var seedPos = PlanarCommon.currentPositionsFromCy(cy);
     var initial = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
       nodeIds: augmentedNodeIds,
       adjacency: adjacencyAug,
@@ -342,9 +292,7 @@
       return { ok: false, message: 'Initial barycentric embedding failed' };
     }
 
-    var pos = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
-      ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(initial.pos, outerFace)
-      : copyPositions(initial.pos);
+    var pos = PlanarCommon.alignOuterFace(initial.pos, outerFace);
     var adjOrig = buildAdjacency(nodeIds, edgePairs);
     var outerSet = new Set(outerFace.map(String));
     var movable = [];
@@ -394,10 +342,20 @@
     var acceptedTotal = 0;
     var rejectedTotal = 0;
     var performedIters = 0;
-    var didFit = false;
     var bestScore = -Infinity;
     var bestPos = null;
     var stopReason = 'max-iters';
+    var livePositions = pos;
+    var renderer = runtime.createIncrementalRenderer({
+      cy: cy,
+      nodeIds: nodeIds,
+      getPositions: function () { return livePositions; },
+      interactive: interactive,
+      delayMs: delayMs,
+      renderEvery: renderEvery,
+      yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
+      fitPadding: 24
+    });
 
     function runIteration(iter) {
       performedIters = iter;
@@ -558,11 +516,8 @@
 
     function finalizeResult() {
       var finalPos = bestPos || pos;
-      applyPositionsToCy(cy, nodeIds, finalPos);
-      if (!didFit) {
-        cy.fit(undefined, 24);
-        didFit = true;
-      }
+      livePositions = finalPos;
+      renderer.finish();
       return {
         ok: true,
         stopReason: stopReason,
@@ -614,11 +569,7 @@
     }
 
     return (async function () {
-      // Match Reweight behavior: show first valid state immediately and fit once.
-      applyPositionsToCy(cy, nodeIds, pos);
-      cy.fit(undefined, 24);
-      didFit = true;
-      await waitForNextFrame(delayMs);
+      await renderer.begin();
 
       for (var iter = 1; iter <= maxIters; iter += 1) {
         if (h < hMin) {
@@ -651,17 +602,13 @@
         }
 
         if (iter % renderEvery === 0 || iter === 1 || iter === maxIters) {
-          applyPositionsToCy(cy, nodeIds, pos);
+          livePositions = pos;
           var q = evaluateSpacingQuality(nodeIds, edgePairs, pos);
           if (Number.isFinite(q) && q > bestScore) {
             bestScore = q;
             bestPos = copyPositions(pos);
           }
-          if (!didFit) {
-            cy.fit(undefined, 24);
-            didFit = true;
-          }
-          await waitForNextFrame(delayMs);
+          await renderer.onProgress({ iter: iter, maxIters: maxIters }, { forceYield: true });
         }
       }
       return finalizeResult();

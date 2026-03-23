@@ -1,13 +1,11 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+
   function collectGraphFromCy(cy) {
-    return {
-      nodeIds: cy.nodes().map(function (n) { return String(n.id()); }),
-      edgePairs: cy.edges().map(function (e) {
-        return [String(e.source().id()), String(e.target().id())];
-      })
-    };
+    return PlanarCommon.graphFromCy(cy);
   }
 
   function edgeKey(u, v) {
@@ -17,20 +15,21 @@
   }
 
   function buildAdjacency(nodeIds, edgePairs) {
+    var base = PlanarCommon.buildAdjacency(nodeIds, edgePairs);
     var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adj[String(nodeIds[i])] = [];
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (u === v) {
-        continue;
+    var ids = Object.keys(base);
+    for (var i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
+      var seen = new Set();
+      var out = [];
+      var neighbors = base[id] || [];
+      for (var j = 0; j < neighbors.length; j += 1) {
+        var v = String(neighbors[j]);
+        if (v === id || seen.has(v)) continue;
+        seen.add(v);
+        out.push(v);
       }
-      if (!adj[u]) adj[u] = [];
-      if (!adj[v]) adj[v] = [];
-      adj[u].push(v);
-      adj[v].push(u);
+      adj[id] = out;
     }
     return adj;
   }
@@ -375,14 +374,18 @@
     if (!screenPos) {
       return false;
     }
-    cy.nodes().forEach(function (node) {
-      var id = String(node.id());
-      if (!screenPos[id]) {
-        return;
-      }
-      node.position(screenPos[id]);
-    });
-    cy.fit(undefined, 24);
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, nodeIds, screenPos, 24);
+    } else {
+      cy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        if (!screenPos[id]) {
+          return;
+        }
+        node.position(screenPos[id]);
+      });
+      cy.fit(undefined, 24);
+    }
     return true;
   }
 
@@ -421,14 +424,18 @@
   }
 
   function applyScreenPositions(cy, posById) {
-    cy.nodes().forEach(function (node) {
-      var id = String(node.id());
-      if (!posById[id]) {
-        return;
-      }
-      node.position({ x: posById[id].x, y: posById[id].y });
-    });
-    cy.fit(undefined, 24);
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, Object.keys(posById || {}), posById, 24);
+    } else {
+      cy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        if (!posById[id]) {
+          return;
+        }
+        node.position({ x: posById[id].x, y: posById[id].y });
+      });
+      cy.fit(undefined, 24);
+    }
   }
 
   function hasOverlappingVertices(posById) {
@@ -598,11 +605,18 @@
     var g = collectGraphFromCy(cy);
     if (g.nodeIds.length < 3) {
       if (g.nodeIds.length === 2) {
-        var map = {};
-        cy.nodes().forEach(function (n) { map[String(n.id())] = n; });
-        if (map[g.nodeIds[0]]) map[g.nodeIds[0]].position({ x: 20, y: 20 });
-        if (map[g.nodeIds[1]]) map[g.nodeIds[1]].position({ x: 50, y: 20 });
-        cy.fit(undefined, 24);
+        var twoPos = {};
+        twoPos[g.nodeIds[0]] = { x: 20, y: 20 };
+        twoPos[g.nodeIds[1]] = { x: 50, y: 20 };
+        if (typeof LayoutRuntime.applyAndFit === 'function') {
+          LayoutRuntime.applyAndFit(cy, g.nodeIds, twoPos, 24);
+        } else {
+          var map = {};
+          cy.nodes().forEach(function (n) { map[String(n.id())] = n; });
+          if (map[g.nodeIds[0]]) map[g.nodeIds[0]].position(twoPos[g.nodeIds[0]]);
+          if (map[g.nodeIds[1]]) map[g.nodeIds[1]].position(twoPos[g.nodeIds[1]]);
+          cy.fit(undefined, 24);
+        }
       }
       return { ok: true, message: 'Applied Schnyder layout (' + String(g.nodeIds.length) + ' vertices)' };
     }

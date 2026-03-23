@@ -1,6 +1,8 @@
 (function (global) {
   'use strict';
 
+  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+
   function hashString(value, seed) {
     var hash = seed >>> 0;
     var text = String(value);
@@ -21,14 +23,27 @@
     var margin = 26;
     var xSpan = Math.max(width - margin * 2, 1);
     var ySpan = Math.max(height - margin * 2, 1);
+    var posById = {};
+    var nodeIds = [];
 
     cy.nodes().forEach(function (node) {
       var id = node.id();
+      nodeIds.push(String(id));
       var x = margin + normalizedHash(id + ':x', 2166136261) * xSpan;
       var y = margin + normalizedHash(id + ':y', 33554467) * ySpan;
-      node.position({ x: x, y: y });
+      posById[String(id)] = { x: x, y: y };
     });
-    cy.fit(undefined, 20);
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, nodeIds, posById, 20);
+    } else {
+      cy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        if (posById[id]) {
+          node.position(posById[id]);
+        }
+      });
+      cy.fit(undefined, 20);
+    }
     return { ok: true, message: 'Applied random coordinates' };
   }
 

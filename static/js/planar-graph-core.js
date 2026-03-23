@@ -100,6 +100,50 @@
     return best || '';
   }
 
+  function sameCyclicDirection(a, b) {
+    if (!a || !b || a.length !== b.length || a.length === 0) return false;
+    var arrA = a.map(String);
+    var arrB = b.map(String);
+    var n = arrA.length;
+    var start = -1;
+    for (var i = 0; i < n; i += 1) {
+      if (arrB[i] === arrA[0]) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) return false;
+    for (i = 0; i < n; i += 1) {
+      if (arrA[i] !== arrB[(start + i) % n]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function sameCyclicEitherDirection(a, b) {
+    if (sameCyclicDirection(a, b)) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    return sameCyclicDirection(a, b.slice().reverse());
+  }
+
+  function findOuterFaceIndex(faces, outerFace) {
+    if (!Array.isArray(faces) || !Array.isArray(outerFace) || outerFace.length === 0) {
+      return -1;
+    }
+    for (var i = 0; i < faces.length; i += 1) {
+      if (sameCyclicDirection(outerFace, faces[i])) {
+        return i;
+      }
+    }
+    for (i = 0; i < faces.length; i += 1) {
+      if (sameCyclicEitherDirection(outerFace, faces[i])) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
   function chooseOuterFace(nodeIds, adjacency) {
     if (global.PlanarVibePlanarityTest && global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       var edgePairs = [];
@@ -220,13 +264,13 @@
     if (!embedding || !embedding.ok) {
       return false;
     }
-    var outerKey = faceKey(outerFace);
+    var outerIndex = findOuterFaceIndex(embedding.faces, outerFace);
     for (var i = 0; i < embedding.faces.length; i += 1) {
       var face = embedding.faces[i];
       if (!face || face.length < 3) {
         return false;
       }
-      if (outerKey && faceKey(face) === outerKey) {
+      if (i === outerIndex) {
         continue;
       }
       if (face.length !== 3) {
@@ -417,7 +461,7 @@
     var idSet = new Set(nodes);
     var dummyCount = 0;
     var dummyFaceVerticesById = {};
-    var outerKey = faceKey(outerFace);
+    var outerIndex = findOuterFaceIndex(embedding.faces, outerFace);
 
     for (var i = 0; i < edges.length; i += 1) {
       edgeSet.add(canonicalUndirectedEdgeKey(edges[i][0], edges[i][1]));
@@ -438,7 +482,7 @@
       if (!face || face.length <= 3) {
         continue;
       }
-      if (outerKey && faceKey(face) === outerKey) {
+      if (i === outerIndex) {
         continue;
       }
 

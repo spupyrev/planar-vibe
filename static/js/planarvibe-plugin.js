@@ -1248,6 +1248,10 @@
       setLayoutEnabled('air', isEnabled);
     }
 
+    function setPPAGEnabled(isEnabled) {
+      setLayoutEnabled('ppag', isEnabled);
+    }
+
     function setFaceBalancerEnabled(isEnabled) {
       setLayoutEnabled('facebalancer', isEnabled);
     }
@@ -1287,6 +1291,7 @@
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
       setAirEnabled(false);
+      setPPAGEnabled(false);
       setFaceBalancerEnabled(false);
       setImPrEdEnabled(false);
       setCEG23BfsEnabled(false);
@@ -1336,6 +1341,7 @@
       });
       setTutteEnabled(isPlanar);
       setAirEnabled(isPlanar);
+      setPPAGEnabled(isPlanar);
       setFaceBalancerEnabled(isPlanar);
       setImPrEdEnabled(isPlanar);
       setCEG23BfsEnabled(isPlanar);
@@ -1492,6 +1498,7 @@
           buildMethodOptions: function () {
             var lastStatsIter = 0;
             return {
+              incremental: true,
               delayMs: 0,
               onIteration: function (progress) {
                 if (!progress) return;
@@ -1544,6 +1551,7 @@
           methodName: 'applyAirLayout',
           buildMethodOptions: function () {
             return {
+              incremental: true,
               interactive: true,
               delayMs: 0,
               renderEvery: 4,
@@ -1583,6 +1591,53 @@
         return;
       }
 
+      if (layoutName === 'ppag') {
+        normalizeLayoutScale();
+        runSpecialLayout({
+          layoutName: 'ppag',
+          disabledMessage: 'PPAG layout requires a planar graph',
+          missingMessage: 'PPAG layout module is missing',
+          module: global.PlanarVibePPAG,
+          methodName: 'applyPPAGLayout',
+          buildMethodOptions: function () {
+            return {
+              incremental: true,
+              interactive: true,
+              delayMs: 0,
+              renderEvery: 4,
+              onIteration: function (progress) {
+                if (!progress) return;
+                var parts = [];
+                parts.push('PPAG step ' + progress.iter + '/' + progress.maxIters);
+                if (Number.isFinite(progress.objective)) {
+                  parts.push('obj ' + progress.objective.toFixed(3));
+                }
+                if (Number.isFinite(progress.maxRelError)) {
+                  parts.push('face err ' + progress.maxRelError.toFixed(3));
+                }
+                if (Number.isFinite(progress.gradNorm)) {
+                  parts.push('grad ' + progress.gradNorm.toExponential(2));
+                }
+                if (Number.isFinite(progress.maxMove)) {
+                  parts.push('max move ' + progress.maxMove.toExponential(2));
+                }
+                if (Number.isFinite(progress.lineSearchSteps)) {
+                  parts.push('backtracks ' + progress.lineSearchSteps);
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            };
+          },
+          normalizeOnSuccess: false,
+          disableOtherButtonsWhileRunning: true
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
       if (layoutName === 'facebalancer') {
         normalizeLayoutScale();
         runSpecialLayout({
@@ -1593,8 +1648,11 @@
           methodName: 'applyFaceBalancerLayout',
           buildMethodOptions: function () {
             return {
-              interactive: false,
+              incremental: true,
+              interactive: true,
               delayMs: 0,
+              renderEvery: 2,
+              yieldEvery: 5,
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -1612,6 +1670,7 @@
               }
             };
           },
+          normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
         }, function () {
           if (temporaryStaticRun) {
@@ -1706,6 +1765,10 @@
           methodName: 'applyReweightTutteLayout',
           buildMethodOptions: function () {
             return {
+              incremental: true,
+              interactive: true,
+              renderEvery: 1,
+              yieldEvery: 1,
               onIteration: function (progress) {
                 if (!progress) {
                   return;
@@ -1725,6 +1788,7 @@
               }
             };
           },
+          normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
         }, function () {
           if (temporaryStaticRun) {
@@ -1744,6 +1808,7 @@
           methodName: 'applyFDUniformLayout',
           buildMethodOptions: function () {
             return {
+              incremental: true,
               interactive: true,
               delayMs: 0,
               renderEvery: 4,
@@ -1761,6 +1826,7 @@
               }
             };
           },
+          normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
         }, function () {
           if (temporaryStaticRun) {
@@ -1793,7 +1859,6 @@
 
     function runSpecialLayout(config, onDone) {
       var name = config.layoutName;
-      var shouldNormalizeOnSuccess = config.normalizeOnSuccess !== false;
       var shouldDisableOthers = !!config.disableOtherButtonsWhileRunning;
       if (global.$('.layout-btn[data-layout="' + name + '"]').prop('disabled')) {
         setStatus(config.disabledMessage, true);
@@ -1815,6 +1880,10 @@
       if (!methodOptions) {
         methodOptions = {};
       }
+      var hasNormalizeOverride = Object.prototype.hasOwnProperty.call(config, 'normalizeOnSuccess');
+      var shouldNormalizeOnSuccess = hasNormalizeOverride
+        ? config.normalizeOnSuccess !== false
+        : !methodOptions.incremental;
 
       var result = config.module[config.methodName](cy, methodOptions);
       if (result && typeof result.then === 'function') {

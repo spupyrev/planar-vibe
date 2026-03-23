@@ -86,9 +86,12 @@ function loadBrowserModules() {
     'static/js/planarity-test.js',
     'static/js/metrics.js',
     'static/js/planar-graph-core.js',
+    'static/js/layout-runtime.js',
+    'static/js/layout-planar-common.js',
     'static/js/layout-barycentric-core.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
+    'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
@@ -116,6 +119,7 @@ const PlanarGraphCore = modules.PlanarGraphCore;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
+const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const CEG23 = modules.PlanarVibeCEG23Bfs;
 const CEG23XY = modules.PlanarVibeCEG23Xy;
@@ -1038,6 +1042,85 @@ test('Air layout stays plane on 5 random planar graphs', async () => {
       positionsById[node.id()] = node._pos;
     }
     assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, `Air produced crossings for seed=${seed}`);
+  }
+});
+
+test('PPAG layout applies on planar sample and improves bounded face balance', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const baseline = Tutte.applyTutteLayout(cy);
+  assert.equal(baseline.ok, true, baseline.message || 'Tutte baseline failed');
+  const before = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+  assert.equal(before.ok, true, before.reason || 'Baseline face score failed');
+
+  const result = await PPAG.applyPPAGLayout(cy, { delayMs: 0, yieldEvery: 50 });
+  assert.equal(result.ok, true, result.message || 'PPAG failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  const after = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+  assert.equal(after.ok, true, after.reason || 'PPAG face score failed');
+  assert.ok(Number.isFinite(after.quality), 'PPAG face quality is not finite');
+  assert.ok(after.quality + 1e-6 >= before.quality, `PPAG worsened face balance: before=${before.quality}, after=${after.quality}`);
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing PPAG position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    positionsById[node.id()] = node._pos;
+  }
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'PPAG introduced crossings on sample1');
+});
+
+test('PPAG layout rejects non-planar graphs', async () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await PPAG.applyPPAGLayout(cy, { delayMs: 0 });
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /planar graph/i);
+});
+
+test('PPAG layout stays plane on 5 random planar graphs', async () => {
+  for (let seed = 1; seed <= 5; seed += 1) {
+    const text = Generator.randomPlanarGraphNM(25 + seed, 3 * (25 + seed) - 10, seed);
+    const graph = parseEdgeListText(text);
+    const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+    const result = await PPAG.applyPPAGLayout(cy, { delayMs: 0, yieldEvery: 50 });
+    assert.equal(result.ok, true, `PPAG failed for seed=${seed}: ${result.message || ''}`);
+
+    const positionsById = {};
+    for (const node of cy.nodes()) {
+      assert.equal(node._pos !== null, true, `missing PPAG position for node ${node.id()} seed=${seed}`);
+      positionsById[node.id()] = node._pos;
+    }
+    assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, `PPAG produced crossings for seed=${seed}`);
+  }
+});
+
+test('PPAG layout stops early on plateaued instances instead of exhausting maxIters', async () => {
+  for (const sampleName of ['grid4x20', 'sample4', 'randomplanar2']) {
+    const text = Generator.getSample(sampleName);
+    const graph = parseEdgeListText(text);
+    const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+    const baseline = Tutte.applyTutteLayout(cy);
+    assert.equal(baseline.ok, true, `Tutte baseline failed on ${sampleName}: ${baseline.message || ''}`);
+    const before = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+    assert.equal(before.ok, true, `Baseline face score failed on ${sampleName}: ${before.reason || ''}`);
+
+    const result = await PPAG.applyPPAGLayout(cy, { delayMs: 0, maxIters: 200 });
+    assert.equal(result.ok, true, `PPAG failed on ${sampleName}: ${result.message || ''}`);
+    assert.equal(result.status === 'stalled' || result.status === 'realized', true, `PPAG did not stop early on ${sampleName}: ${result.status}`);
+    assert.equal(result.iters < 200, true, `PPAG exhausted maxIters on ${sampleName}`);
+
+    const after = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+    assert.equal(after.ok, true, `PPAG face score failed on ${sampleName}: ${after.reason || ''}`);
+    assert.ok(after.quality + 1e-6 >= before.quality, `PPAG worsened face balance on ${sampleName}: before=${before.quality}, after=${after.quality}`);
   }
 });
 

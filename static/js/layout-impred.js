@@ -1,6 +1,8 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+
   function edgeKey(u, v) {
     var a = String(u);
     var b = String(v);
@@ -8,35 +10,19 @@
   }
 
   function collectGraphFromCy(cy) {
-    var nodeIds = cy.nodes().map(function (n) { return String(n.id()); });
-    var edgePairs = cy.edges().map(function (e) {
-      return [String(e.source().id()), String(e.target().id())];
-    });
-    return { nodeIds: nodeIds, edgePairs: edgePairs };
+    return PlanarCommon.graphFromCy(cy);
   }
 
   function currentPositionsFromCy(cy) {
-    var pos = {};
-    cy.nodes().forEach(function (n) {
-      var id = String(n.id());
-      var p = n.position();
-      pos[id] = { x: p.x, y: p.y };
-    });
-    return pos;
+    return PlanarCommon.currentPositionsFromCy(cy);
   }
 
   function buildAdjacency(nodeIds, edgePairs) {
+    var arrayAdj = PlanarCommon.buildAdjacency(nodeIds, edgePairs);
     var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adj[String(nodeIds[i])] = new Set();
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!adj[u]) adj[u] = new Set();
-      if (!adj[v]) adj[v] = new Set();
-      adj[u].add(v);
-      adj[v].add(u);
+    var ids = Object.keys(arrayAdj);
+    for (var i = 0; i < ids.length; i += 1) {
+      adj[ids[i]] = new Set(arrayAdj[ids[i]]);
     }
     return adj;
   }
@@ -382,23 +368,6 @@
     return limits;
   }
 
-  function waitForNextFrame(delayMs) {
-    return new Promise(function (resolve) {
-      var done = function () {
-        if (delayMs > 0) {
-          setTimeout(resolve, delayMs);
-        } else {
-          resolve();
-        }
-      };
-      if (typeof global.requestAnimationFrame === 'function') {
-        global.requestAnimationFrame(function () { done(); });
-      } else {
-        setTimeout(done, 0);
-      }
-    });
-  }
-
   function clonePositionsMap(posById) {
     var out = {};
     var keys = Object.keys(posById || {});
@@ -490,16 +459,12 @@
     };
   }
 
-  function applyPositionsToCy(cy, posById) {
-    cy.nodes().forEach(function (node) {
-      var id = String(node.id());
-      if (posById[id]) {
-        node.position({ x: posById[id].x, y: posById[id].y });
-      }
-    });
-  }
-
   async function applyImPrEdLayout(cy, options) {
+    var runtime = global.PlanarVibeLayoutRuntime;
+    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
+      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
+    }
+
     var opts = options || {};
     var g = collectGraphFromCy(cy);
     if (!g.nodeIds || g.nodeIds.length < 2) {
@@ -543,7 +508,7 @@
             posById = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
               ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(initSolve.pos, initOuter)
               : initSolve.pos;
-            applyPositionsToCy(cy, posById);
+            runtime.applyPositionsToCy(cy, g.nodeIds, posById);
           }
         }
       }
@@ -571,6 +536,9 @@
     var cNodeEdgeRep = Number.isFinite(opts.cNodeEdgeRep) ? opts.cNodeEdgeRep : 0.75;
     var nearbyFactor = Number.isFinite(opts.nearbyFactor) && opts.nearbyFactor > 0 ? opts.nearbyFactor : 6.0;
     var delayMs = Number.isFinite(opts.delayMs) ? Math.floor(opts.delayMs) : 0;
+    var interactive = opts.interactive !== false;
+    var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 1;
+    var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 1;
     var momentumBeta = Number.isFinite(opts.momentumBeta) ? Math.max(0, Math.min(0.98, opts.momentumBeta)) : 0.78;
     var rejectedVelocityDamp = Number.isFinite(opts.rejectedVelocityDamp) ? Math.max(0, Math.min(1, opts.rejectedVelocityDamp)) : 0.25;
     var rollbackVelocityDamp = Number.isFinite(opts.rollbackVelocityDamp) ? Math.max(0, Math.min(1, opts.rollbackVelocityDamp)) : 0.0;
@@ -590,6 +558,17 @@
     for (iter = 0; iter < g.nodeIds.length; iter += 1) {
       velocityById[g.nodeIds[iter]] = { x: 0, y: 0 };
     }
+    var renderer = runtime.createIncrementalRenderer({
+      cy: cy,
+      nodeIds: g.nodeIds,
+      getPositions: function () { return posById; },
+      interactive: interactive,
+      delayMs: delayMs,
+      renderEvery: renderEvery,
+      yieldEvery: yieldEvery,
+      fitPadding: 24
+    });
+    await renderer.begin();
 
     iter = 0;
     for (iter = 0; iter < maxIters; iter += 1) {
@@ -716,7 +695,10 @@
           stableIterLimit: movementStatus.stableIterLimit
         });
       }
-      applyPositionsToCy(cy, posById);
+      await renderer.onProgress({
+        iter: iter + 1,
+        maxIters: maxIters
+      }, { forceYield: true });
       if (lastStats.movedNodes === 0) {
         stopReason = 'no-movement';
         break;
@@ -725,15 +707,9 @@
         stopReason = movementStatus.reason || 'movement-converged';
         break;
       }
-      if (iter < maxIters - 1 && delayMs >= 0) {
-        await waitForNextFrame(delayMs);
-      }
     }
 
-    applyPositionsToCy(cy, posById);
-    if (opts.fit === true) {
-      cy.fit(undefined, 24);
-    }
+    renderer.finish();
 
     return {
       ok: true,

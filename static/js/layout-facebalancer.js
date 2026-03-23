@@ -2,77 +2,30 @@
   'use strict';
 
   var FACEBALANCER_REV = 'fb-edgeuniform-20260323';
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
 
   function faceKey(face) {
-    if (!face || face.length === 0) return '';
-    var arr = face.map(String);
-    var n = arr.length;
-    var best = null;
-    for (var i = 0; i < n; i += 1) {
-      var rot = arr.slice(i).concat(arr.slice(0, i)).join('|');
-      if (best === null || rot < best) best = rot;
-    }
-    var rev = arr.slice().reverse();
-    for (i = 0; i < n; i += 1) {
-      var rrot = rev.slice(i).concat(rev.slice(0, i)).join('|');
-      if (best === null || rrot < best) best = rrot;
-    }
-    return best || '';
+    return PlanarCommon.faceKey(face);
   }
 
   function graphFromCy(cy) {
-    return {
-      nodeIds: cy.nodes().map(function (n) { return String(n.id()); }),
-      edgePairs: cy.edges().map(function (e) {
-        return [String(e.source().id()), String(e.target().id())];
-      })
-    };
+    return PlanarCommon.graphFromCy(cy);
   }
 
   function buildAdjacency(nodeIds, edgePairs) {
-    var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adj[String(nodeIds[i])] = [];
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!adj[u]) adj[u] = [];
-      if (!adj[v]) adj[v] = [];
-      adj[u].push(v);
-      adj[v].push(u);
-    }
-    return adj;
+    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
   }
 
   function copyPositions(pos) {
-    var out = {};
-    var keys = Object.keys(pos || {});
-    for (var i = 0; i < keys.length; i += 1) {
-      var k = keys[i];
-      out[k] = { x: pos[k].x, y: pos[k].y };
-    }
-    return out;
+    return PlanarCommon.copyPositions(pos);
   }
 
   function polygonArea2(face, posById) {
-    if (!face || face.length < 3) return 0;
-    var sum = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      var b = posById[String(face[(i + 1) % face.length])];
-      if (!a || !b) return 0;
-      sum += a.x * b.y - b.x * a.y;
-    }
-    return sum;
+    return PlanarCommon.polygonArea2(face, posById);
   }
 
   function orientFaceCCW(face, posById) {
-    var out = face.slice().map(String);
-    if (polygonArea2(out, posById) < 0) {
-      out.reverse();
-    }
-    return out;
+    return PlanarCommon.orientFaceCCW(face, posById);
   }
 
   function dot(a, b) {
@@ -101,39 +54,6 @@
     var out = new Array(a.length);
     for (var i = 0; i < a.length; i += 1) out[i] = alpha * a[i];
     return out;
-  }
-
-  function applyPositionsToCy(cy, nodeIds, posById) {
-    var nodes = cy.nodes().toArray();
-    for (var i = 0; i < nodes.length; i += 1) {
-      var id = String(nodes[i].id());
-      if (posById[id]) {
-        nodes[i].position(posById[id]);
-      }
-    }
-  }
-
-  function waitForNextFrame(delayMs) {
-    var delay = Math.max(0, Number(delayMs) || 0);
-    return new Promise(function (resolve) {
-      var schedule = (typeof global.setTimeout === 'function')
-        ? global.setTimeout.bind(global)
-        : (typeof setTimeout === 'function' ? setTimeout : null);
-      if (!schedule) {
-        resolve();
-        return;
-      }
-      schedule(function () {
-        var raf = (typeof global.requestAnimationFrame === 'function')
-          ? global.requestAnimationFrame.bind(global)
-          : (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
-        if (raf) {
-          raf(function () { resolve(); });
-        } else {
-          resolve();
-        }
-      }, delay);
-    });
   }
 
   function buildInitialPositions(nodeIds, edgePairs, outerFace, cy) {
@@ -198,9 +118,7 @@
     }
 
     var adjacency = buildAdjacency(nodeIds, edgePairs);
-    var seedPos = global.PlanarVibeBarycentricCore.currentPositionsFromCy
-      ? global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy)
-      : {};
+    var seedPos = PlanarCommon.currentPositionsFromCy(cy);
     return solveExactWeightedBarycentricLayout({
       nodeIds: nodeIds,
       adjacency: adjacency,
@@ -213,40 +131,11 @@
   }
 
   function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace) {
-    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
-    if (!augmented || !augmented.ok) {
-      return { ok: false, reason: (augmented && augmented.reason) || 'FaceBalancer augmentation failed' };
-    }
-    var dummyFaceVerticesById = augmented.dummyFaceVerticesById || {};
-    var dummyFaceKeyById = {};
-    var dummyIds = Object.keys(dummyFaceVerticesById);
-    for (var i = 0; i < dummyIds.length; i += 1) {
-      dummyFaceKeyById[String(dummyIds[i])] = faceKey(dummyFaceVerticesById[dummyIds[i]]);
-    }
-    return {
-      ok: true,
-      nodeIds: augmented.nodeIds.map(String),
-      edgePairs: augmented.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
-      dummyCount: augmented.dummyCount || 0,
-      dummyFaceKeyById: dummyFaceKeyById,
-      dummyFaceVerticesById: dummyFaceVerticesById,
-      embedding: augmented.embedding
-    };
+    return PlanarCommon.prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, 'FaceBalancer');
   }
 
   function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds) {
-    var seen = seenDummyIds || new Set();
-    for (var i = 0; i < face.length; i += 1) {
-      var vertexId = String(face[i]);
-      if (dummyFaceVerticesById && Array.isArray(dummyFaceVerticesById[vertexId]) && !seen.has(vertexId)) {
-        seen.add(vertexId);
-        return originalFaceKeyForAugmentedFace(dummyFaceVerticesById[vertexId], dummyFaceKeyById, dummyFaceVerticesById, seen);
-      }
-      if (dummyFaceKeyById[vertexId]) {
-        return dummyFaceKeyById[vertexId];
-      }
-    }
-    return faceKey(face);
+    return PlanarCommon.originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds);
   }
 
   function softmaxInto(q, start, length, out) {
@@ -967,7 +856,7 @@
     return scaleVec(r, -1);
   }
 
-  function optimizeTheta(q0, data, opts) {
+  async function optimizeTheta(q0, data, opts) {
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 80;
     var gradTol = Number.isFinite(opts.gradTol) ? Math.max(0, opts.gradTol) : 1e-5;
     var stepTol = Number.isFinite(opts.stepTol) ? Math.max(0, opts.stepTol) : 1e-10;
@@ -1034,7 +923,7 @@
       }
 
       if (onIteration) {
-        onIteration({
+        await onIteration({
           iter: iter,
           maxIters: maxIters,
           objective: current.E,
@@ -1081,10 +970,16 @@
   }
 
   async function applyFaceBalancerLayout(cy, options) {
+    var runtime = global.PlanarVibeLayoutRuntime;
+    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
+      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
+    }
+
     var opts = options || {};
     var interactive = opts.interactive !== false;
     var delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0;
     var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 2;
+    var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5;
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 80;
 
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
@@ -1156,7 +1051,7 @@
       data.minOriginalEdgeLength2 = 0;
     }
     if (data.originalFaceKeys.length === 0) {
-      applyPositionsToCy(cy, g.nodeIds, initPos);
+      runtime.applyPositionsToCy(cy, g.nodeIds, initPos);
       cy.fit(undefined, 24);
       return { ok: true, message: 'Applied FaceBalancer (no bounded faces to balance)' };
     }
@@ -1177,38 +1072,38 @@
       : null;
 
     var iterationCount = 0;
-    var didFit = false;
-    if (interactive) {
-      applyPositionsToCy(cy, g.nodeIds, initPos);
-      cy.fit(undefined, 24);
-      didFit = true;
-      await waitForNextFrame(delayMs);
-    }
+    var livePositions = initPos;
+    var renderer = runtime.createIncrementalRenderer({
+      cy: cy,
+      nodeIds: g.nodeIds,
+      getPositions: function () { return livePositions; },
+      interactive: interactive,
+      delayMs: delayMs,
+      renderEvery: renderEvery,
+      yieldEvery: yieldEvery,
+      fitPadding: 24
+    });
+    await renderer.begin();
 
-    var result = optimizeTheta(q0, data, {
+    var result = await optimizeTheta(q0, data, {
       maxIters: maxIters,
       gradTol: Number.isFinite(opts.gradTol) ? Math.max(0, opts.gradTol) : 1e-5,
       stepTol: Number.isFinite(opts.stepTol) ? Math.max(0, opts.stepTol) : 1e-6,
       lbfgsMemory: Number.isFinite(opts.lbfgsMemory) ? Math.max(1, Math.floor(opts.lbfgsMemory)) : 10,
       movementTracker: movementTracker,
-      onIteration: function (progress) {
+      onIteration: async function (progress) {
         iterationCount = progress.iter;
+        livePositions = progress.positions || livePositions;
         if (typeof opts.onIteration === 'function') opts.onIteration(progress);
-        if (interactive && (progress.iter % renderEvery === 0 || progress.iter === 1)) {
-          applyPositionsToCy(cy, g.nodeIds, progress.positions);
-          if (!didFit) {
-            cy.fit(undefined, 24);
-            didFit = true;
-          }
-        }
+        await renderer.onProgress(progress, { forceYield: !!(opts.onIteration || delayMs > 0) });
       }
     });
     if (!result.ok) {
       return { ok: false, message: result.reason || 'FaceBalancer optimization failed' };
     }
 
-    applyPositionsToCy(cy, g.nodeIds, result.pos);
-    if (!didFit) cy.fit(undefined, 24);
+    livePositions = result.pos;
+    renderer.finish();
     var hasCrossings = global.PlanarVibeMetrics && typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function'
       ? global.PlanarVibeMetrics.hasCrossingsFromPositions(result.pos, g.edgePairs)
       : false;

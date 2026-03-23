@@ -1,6 +1,8 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+
   function edgeKey(u, v) {
     var a = String(u);
     var b = String(v);
@@ -8,20 +10,7 @@
   }
 
   function faceKey(face) {
-    if (!face || face.length === 0) return '';
-    var arr = face.map(String);
-    var n = arr.length;
-    var best = null;
-    for (var i = 0; i < n; i += 1) {
-      var rot = arr.slice(i).concat(arr.slice(0, i)).join('|');
-      if (best === null || rot < best) best = rot;
-    }
-    var rev = arr.slice().reverse();
-    for (i = 0; i < n; i += 1) {
-      var rrot = rev.slice(i).concat(rev.slice(0, i)).join('|');
-      if (best === null || rrot < best) best = rrot;
-    }
-    return best || '';
+    return PlanarCommon.faceKey(face);
   }
 
   function canonicalizeCycleOrder(face) {
@@ -106,38 +95,15 @@
   }
 
   function graphFromCy(cy) {
-    var nodeIds = cy.nodes().map(function (n) { return String(n.id()); });
-    var edgePairs = cy.edges().map(function (e) {
-      return [String(e.source().id()), String(e.target().id())];
-    });
-    return { nodeIds: nodeIds, edgePairs: edgePairs };
+    return PlanarCommon.graphFromCy(cy);
   }
 
   function buildAdjacency(nodeIds, edgePairs) {
-    var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) adj[String(nodeIds[i])] = [];
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!adj[u]) adj[u] = [];
-      if (!adj[v]) adj[v] = [];
-      adj[u].push(v);
-      adj[v].push(u);
-    }
-    return adj;
+    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
   }
 
   function currentPositionsFromCy(cy) {
-    var pos = {};
-    var nodes = cy.nodes().toArray();
-    for (var i = 0; i < nodes.length; i += 1) {
-      var id = String(nodes[i].id());
-      var p = nodes[i].position();
-      if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
-        pos[id] = { x: p.x, y: p.y };
-      }
-    }
-    return pos;
+    return PlanarCommon.currentPositionsFromCy(cy);
   }
 
   function initOuterCoords(nodeIds, outerFace, fixedOuterPos) {
@@ -157,10 +123,7 @@
         pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
       }
     }
-    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
-      return global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(pos, outerFace);
-    }
-    return pos;
+    return PlanarCommon.alignOuterFace(pos, outerFace);
   }
 
   function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, seedPos, fixedOuterPos) {
@@ -364,39 +327,6 @@
     return newWeights;
   }
 
-  function applyPositionsToCy(cy, posById) {
-    var nodes = cy.nodes().toArray();
-    for (var i = 0; i < nodes.length; i += 1) {
-      var id = String(nodes[i].id());
-      if (posById[id]) {
-        nodes[i].position(posById[id]);
-      }
-    }
-  }
-
-  function waitForNextFrame(delayMs) {
-    var delay = Math.max(0, Number(delayMs) || 0);
-    return new Promise(function (resolve) {
-      var schedule = (typeof global.setTimeout === 'function')
-        ? global.setTimeout.bind(global)
-        : (typeof setTimeout === 'function' ? setTimeout : null);
-      if (!schedule) {
-        resolve();
-        return;
-      }
-      schedule(function () {
-        var raf = (typeof global.requestAnimationFrame === 'function')
-          ? global.requestAnimationFrame.bind(global)
-          : (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
-        if (raf) {
-          raf(function () { resolve(); });
-        } else {
-          resolve();
-        }
-      }, delay);
-    });
-  }
-
   function computeFaceAreaIterationStats(faceAreas, boundedFaceIdx) {
     var values = [];
     for (var i = 0; i < boundedFaceIdx.length; i += 1) {
@@ -441,6 +371,11 @@
   }
 
   async function applyReweightTutteLayout(cy, options) {
+    var runtime = global.PlanarVibeLayoutRuntime;
+    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
+      return { ok: false, message: 'Layout runtime is missing' };
+    }
+
     var opts = options || {};
     var tuning = opts.tuning || {};
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
@@ -547,8 +482,20 @@
       })
       : null;
     var performedOuterIters = 0;
+    var interactive = opts.interactive !== false;
+    var livePositions = seedPos;
+    var renderer = runtime.createIncrementalRenderer({
+      cy: cy,
+      nodeIds: augmented.nodeIds,
+      getPositions: function () { return livePositions; },
+      interactive: interactive,
+      delayMs: DELAY_MS,
+      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 1,
+      yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 1,
+      fitPadding: 24
+    });
+    await renderer.begin();
 
-    var didFit = false;
     for (var iter = 0; iter < MAX_OUTER_ITERS; iter += 1) {
       var prevPos = seedPos;
       inner = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, INNER_ITERS, seedPos, fixedOuterPos);
@@ -556,13 +503,9 @@
       performedOuterIters = iter + 1;
 
       var pos = inner.pos;
-      applyPositionsToCy(cy, pos);
-      if (!didFit) {
-        cy.fit(undefined, 24);
-        didFit = true;
-      }
+      livePositions = pos;
       seedPos = pos;
-      await waitForNextFrame(DELAY_MS);
+      await renderer.onProgress({ iter: iter + 1, maxIters: MAX_OUTER_ITERS }, { forceYield: true });
       var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
         ? global.PlanarGraphCore.computePositionMoveStats(movableVertices, prevPos, pos, { moveTol: 1e-9 })
         : { movedVertices: 0, maxMove: 0, avgMove: 0 };
@@ -623,7 +566,8 @@
     totalInnerIters += finalLayout.iters;
     var finalPos = finalLayout.pos;
 
-    applyPositionsToCy(cy, finalPos);
+    livePositions = finalPos;
+    renderer.finish();
 
     return {
       ok: true,

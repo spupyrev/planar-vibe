@@ -1,6 +1,9 @@
 (function (global) {
   'use strict';
 
+  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
     var depth = {};
     var q = [];
@@ -147,7 +150,6 @@
       return { ok: false, message: 'Planarity utilities are missing' };
     }
     if (!global.PlanarGraphCore ||
-        typeof global.PlanarGraphCore.graphFromCy !== 'function' ||
         typeof global.PlanarGraphCore.chooseOuterFaceFromEmbedding !== 'function') {
       return { ok: false, message: 'PlanarGraphCore is missing. Check script load order' };
     }
@@ -160,18 +162,17 @@
       return { ok: false, message: 'CEG23-bfs requires at least 3 vertices' };
     }
 
-    var graph = global.PlanarGraphCore.graphFromCy(cy);
-    var nodeIds = graph.nodeIds.slice().map(String);
-    var edgePairs = cy.edges().map(function (e) {
-      return [String(e.source().id()), String(e.target().id())];
-    });
+    var graph = PlanarCommon.graphFromCy(cy);
+    var nodeIds = graph.nodeIds.slice();
+    var edgePairs = graph.edgePairs.slice();
+    var adjacency = PlanarCommon.buildAdjacency(nodeIds, edgePairs);
 
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb || !emb.ok) {
       return { ok: false, message: 'CEG23-bfs requires a planar graph' };
     }
 
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb) || graph.chooseOuterFace();
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
@@ -182,34 +183,36 @@
     var DEPTH_SOURCE = String(tuning.depthSource || 'outer-multi');
     var EDGE_DEPTH_MODE = String(tuning.edgeDepthMode || 'min');
 
-    var depthById = bfsDepthFromOuter(nodeIds, graph.adjacency, outerFace, DEPTH_SOURCE);
+    var depthById = bfsDepthFromOuter(nodeIds, adjacency, outerFace, DEPTH_SOURCE);
     var weights = buildDepthWeights(edgePairs, depthById, A, R, EDGE_DEPTH_MODE);
     var out = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
       nodeIds: nodeIds,
-      adjacency: graph.adjacency,
+      adjacency: adjacency,
       outerFace: outerFace,
       weights: weights,
       maxIters: MAX_ITERS,
       tolerance: 1e-8,
       initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
         useSeedOuter: false,
-        seedPos: global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy)
+        seedPos: PlanarCommon.currentPositionsFromCy(cy)
       })
     });
     if (!out.ok) {
       return { ok: false, message: out.message || 'CEG23-bfs solver failed' };
     }
-    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
-      out.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(out.pos, outerFace);
-    }
+    out.pos = PlanarCommon.alignOuterFace(out.pos, outerFace);
 
-    for (var i = 0; i < nodes.length; i += 1) {
-      var id = String(nodes[i].id());
-      if (out.pos[id]) {
-        nodes[i].position(out.pos[id]);
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, nodeIds, out.pos, 24);
+    } else {
+      for (var i = 0; i < nodes.length; i += 1) {
+        var id = String(nodes[i].id());
+        if (out.pos[id]) {
+          nodes[i].position(out.pos[id]);
+        }
       }
+      cy.fit(undefined, 24);
     }
-    cy.fit(undefined, 24);
 
     return {
       ok: true,
@@ -225,7 +228,6 @@
       return { ok: false, message: 'Planarity utilities are missing' };
     }
     if (!global.PlanarGraphCore ||
-        typeof global.PlanarGraphCore.graphFromCy !== 'function' ||
         typeof global.PlanarGraphCore.chooseOuterFaceFromEmbedding !== 'function') {
       return { ok: false, message: 'PlanarGraphCore is missing. Check script load order' };
     }
@@ -238,17 +240,16 @@
       return { ok: false, message: 'CEG23-xy requires at least 3 vertices' };
     }
 
-    var graph = global.PlanarGraphCore.graphFromCy(cy);
-    var nodeIds = graph.nodeIds.slice().map(String);
-    var edgePairs = cy.edges().map(function (e) {
-      return [String(e.source().id()), String(e.target().id())];
-    });
+    var graph = PlanarCommon.graphFromCy(cy);
+    var nodeIds = graph.nodeIds.slice();
+    var edgePairs = graph.edgePairs.slice();
+    var adjacency = PlanarCommon.buildAdjacency(nodeIds, edgePairs);
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb || !emb.ok) {
       return { ok: false, message: 'CEG23-xy requires a planar graph' };
     }
 
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb) || graph.chooseOuterFace();
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
@@ -258,11 +259,11 @@
     var beta = Number.isFinite(tuning.beta) ? tuning.beta : 1.0;
     var lambdaX = Number.isFinite(tuning.lambdaX) ? tuning.lambdaX : 0.5;
 
-    var seed = global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy);
+    var seed = PlanarCommon.currentPositionsFromCy(cy);
     var uniformWeights = global.PlanarVibeBarycentricCore.buildUniformWeights(edgePairs, 1);
     var base = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
       nodeIds: nodeIds,
-      adjacency: graph.adjacency,
+      adjacency: adjacency,
       outerFace: outerFace,
       weights: uniformWeights,
       maxIters: maxIters,
@@ -275,9 +276,7 @@
     if (!base.ok) {
       return { ok: false, message: base.message || 'CEG23-xy baseline solve failed' };
     }
-    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
-      base.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(base.pos, outerFace);
-    }
+    base.pos = PlanarCommon.alignOuterFace(base.pos, outerFace);
 
     var xRank = rankByAxis(nodeIds, base.pos, 'x');
     var yRank = rankByAxis(nodeIds, base.pos, 'y');
@@ -286,7 +285,7 @@
     var wxy = combineWeights(edgePairs, wx, wy, lambdaX);
     var xySolve = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
       nodeIds: nodeIds,
-      adjacency: graph.adjacency,
+      adjacency: adjacency,
       outerFace: outerFace,
       weights: wxy,
       maxIters: maxIters,
@@ -299,17 +298,19 @@
     if (!xySolve.ok) {
       return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };
     }
-    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
-      xySolve.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(xySolve.pos, outerFace);
-    }
+    xySolve.pos = PlanarCommon.alignOuterFace(xySolve.pos, outerFace);
 
-    for (var i = 0; i < nodes.length; i += 1) {
-      var id = String(nodes[i].id());
-      if (xySolve.pos[id]) {
-        nodes[i].position(xySolve.pos[id]);
+    if (typeof LayoutRuntime.applyAndFit === 'function') {
+      LayoutRuntime.applyAndFit(cy, nodeIds, xySolve.pos, 24);
+    } else {
+      for (var i = 0; i < nodes.length; i += 1) {
+        var id = String(nodes[i].id());
+        if (xySolve.pos[id]) {
+          nodes[i].position(xySolve.pos[id]);
+        }
       }
+      cy.fit(undefined, 24);
     }
-    cy.fit(undefined, 24);
 
     return {
       ok: true,
