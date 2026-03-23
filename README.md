@@ -67,6 +67,20 @@ npm test
 
 Requires Node.js 18+.
 
+## Benchmark report
+
+Cached benchmark data:
+
+```bash
+npm run report:data
+```
+
+Build `report.html` from the cached CSV without recomputing:
+
+```bash
+npm run report
+```
+
 ## License
 
 MIT (see `LICENSE`)

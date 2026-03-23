@@ -113,46 +113,6 @@
     return { nodeIds: nodeIds, edgePairs: edgePairs };
   }
 
-  function augmentExceptOuter(nodeIds, edgePairs, embedding, outerFace) {
-    var nodes = nodeIds.slice().map(String);
-    var edges = edgePairs.slice().map(function (e) { return [String(e[0]), String(e[1])]; });
-    var idSet = new Set(nodes);
-    var eSet = new Set();
-    var outerK = faceKey(outerFace);
-    var dummyCount = 0;
-
-    for (var i = 0; i < edges.length; i += 1) {
-      eSet.add(edgeKey(edges[i][0], edges[i][1]));
-    }
-
-    function nextDummy() {
-      var id;
-      do {
-        id = '@rw_dummy' + dummyCount;
-        dummyCount += 1;
-      } while (idSet.has(id));
-      idSet.add(id);
-      return id;
-    }
-
-    for (i = 0; i < embedding.faces.length; i += 1) {
-      var face = embedding.faces[i];
-      if (!face || face.length <= 3) continue;
-      if (faceKey(face) === outerK) continue;
-      var d = nextDummy();
-      nodes.push(d);
-      for (var j = 0; j < face.length; j += 1) {
-        var u = String(face[j]);
-        var k = edgeKey(d, u);
-        if (eSet.has(k)) continue;
-        eSet.add(k);
-        edges.push([d, u]);
-      }
-    }
-
-    return { nodeIds: nodes, edgePairs: edges, dummyCount: dummyCount };
-  }
-
   function buildAdjacency(nodeIds, edgePairs) {
     var adj = {};
     for (var i = 0; i < nodeIds.length; i += 1) adj[String(nodeIds[i])] = [];
@@ -180,59 +140,28 @@
     return pos;
   }
 
-  function initOuterCoords(nodeIds, outerFace, seedPos, fixedOuterPos) {
-    var pos = {};
-    var i;
-    for (i = 0; i < nodeIds.length; i += 1) {
-      pos[String(nodeIds[i])] = { x: 0, y: 0 };
-    }
-
-    if (fixedOuterPos) {
-      for (i = 0; i < outerFace.length; i += 1) {
-        var fv = String(outerFace[i]);
-        if (fixedOuterPos[fv] && Number.isFinite(fixedOuterPos[fv].x) && Number.isFinite(fixedOuterPos[fv].y)) {
-          pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
-        }
-      }
+  function initOuterCoords(nodeIds, outerFace, fixedOuterPos) {
+    var pos = global.PlanarVibeBarycentricCore.initOuterCoords(
+      nodeIds,
+      outerFace,
+      global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+        useSeedOuter: false
+      })
+    );
+    if (!fixedOuterPos) {
       return pos;
     }
-
-    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    var haveSeed = false;
-    if (seedPos) {
-      for (i = 0; i < nodeIds.length; i += 1) {
-        var nid = String(nodeIds[i]);
-        var sp = seedPos[nid];
-        if (!sp || !Number.isFinite(sp.x) || !Number.isFinite(sp.y)) continue;
-        haveSeed = true;
-        if (sp.x < minX) minX = sp.x;
-        if (sp.y < minY) minY = sp.y;
-        if (sp.x > maxX) maxX = sp.x;
-        if (sp.y > maxY) maxY = sp.y;
+    for (var i = 0; i < outerFace.length; i += 1) {
+      var fv = String(outerFace[i]);
+      if (fixedOuterPos[fv] && Number.isFinite(fixedOuterPos[fv].x) && Number.isFinite(fixedOuterPos[fv].y)) {
+        pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
       }
-    }
-
-    var cx = haveSeed ? (minX + maxX) / 2 : 2000;
-    var cy = haveSeed ? (minY + maxY) / 2 : 2000;
-    var spanX = haveSeed ? (maxX - minX) : 1200;
-    var spanY = haveSeed ? (maxY - minY) : 900;
-    var spanMin = Math.max(1, Math.min(spanX, spanY));
-    var R = Math.max(80, spanMin * 0.42);
-    var gamma = 2 * Math.PI / outerFace.length;
-
-    // Keep Tutte prerequisites: outer boundary must be convex.
-    for (i = 0; i < outerFace.length; i += 1) {
-      var v = String(outerFace[outerFace.length - i - 1]);
-      pos[v] = {
-        x: cx + R * Math.cos(gamma * (0.25 + i)),
-        y: cy + R * Math.sin(gamma * (0.25 + i))
-      };
     }
     return pos;
   }
 
   function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, seedPos, fixedOuterPos) {
-    var pos = initOuterCoords(nodeIds, outerFace, seedPos, fixedOuterPos);
+    var pos = initOuterCoords(nodeIds, outerFace, fixedOuterPos);
     var outerSet = new Set(outerFace.map(String));
     var iters = 0;
     var converged = false;
@@ -514,6 +443,9 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing' };
     }
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+      return { ok: false, message: 'Planar graph utilities are missing' };
+    }
 
     var g = graphFromCy(cy);
     if (g.nodeIds.length < 3) {
@@ -525,20 +457,22 @@
       return { ok: false, message: 'ReweightTutte++ requires a planar graph' };
     }
 
-    var outer = longestFace(emb.faces);
+    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(g.nodeIds, g.edgePairs, emb);
+    if (!augmented || !augmented.ok) {
+      return { ok: false, message: (augmented && augmented.reason) || 'Augmentation failed' };
+    }
+    var embAug = augmented.embedding;
+    var outer = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
     if (!outer || outer.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
-    outer = canonicalizeCycleOrder(outer);
-
-    var augmented = augmentExceptOuter(g.nodeIds, g.edgePairs, emb, outer);
-    var embAug = global.PlanarVibePlanarityTest.computePlanarEmbedding(augmented.nodeIds, augmented.edgePairs);
-    if (!embAug || !embAug.ok) {
-      return { ok: false, message: 'Augmentation failed' };
+    var outerFaceForEmbedding = longestFace(embAug.faces);
+    if (!outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
+      return { ok: false, message: 'Could not determine augmented outer face' };
     }
 
     var faces = embAug.faces || [];
-    var outerFaceIdx = findOuterFaceIndex(faces, outer);
+    var outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
     var boundedFaceIdx = [];
     for (var i = 0; i < faces.length; i += 1) {
       if (i !== outerFaceIdx) boundedFaceIdx.push(i);
@@ -577,28 +511,46 @@
     var totalInnerIters = 0;
     var seedPos = currentPositionsFromCy(cy);
     var fixedOuterPos = null;
+    var stopReason = 'max-iters';
 
-    var initPos = initOuterCoords(augmented.nodeIds, outer, seedPos, null);
+    var initPos = initOuterCoords(augmented.nodeIds, outer, null);
     fixedOuterPos = {};
     for (var oi = 0; oi < outer.length; oi += 1) {
       var ov = String(outer[oi]);
       fixedOuterPos[ov] = { x: initPos[ov].x, y: initPos[ov].y };
     }
-    var originalAdj = buildAdjacency(g.nodeIds, g.edgePairs);
-    var originalWeights = {};
-    for (i = 0; i < g.edgePairs.length; i += 1) {
-      originalWeights[edgeKey(g.edgePairs[i][0], g.edgePairs[i][1])] = 1;
-    }
-    // Warm-start on the original graph before augmented iterations.
-    var warm = barycentricLayoutWeighted(g.nodeIds, originalAdj, outer, originalWeights, WARM_ITERS, seedPos, fixedOuterPos);
+    // Warm-start directly on the augmented graph so all triangulating layouts use the
+    // same shared face-stellation preprocessing.
+    var warm = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, WARM_ITERS, seedPos, fixedOuterPos);
     totalInnerIters += warm.iters;
-    var warmSeed = fillMissingPositionsByNeighborAverage(augmented.nodeIds, adj, warm.pos, WARM_FILL_PASSES);
-    seedPos = warmSeed;
+    seedPos = fillMissingPositionsByNeighborAverage(augmented.nodeIds, adj, warm.pos, WARM_FILL_PASSES);
+    var movableVertices = [];
+    var outerSet = new Set(outer.map(String));
+    for (i = 0; i < augmented.nodeIds.length; i += 1) {
+      var movableId = String(augmented.nodeIds[i]);
+      if (!outerSet.has(movableId)) {
+        movableVertices.push(movableId);
+      }
+    }
+    var movementScale = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computeDrawingDiameter === 'function')
+      ? global.PlanarGraphCore.computeDrawingDiameter(augmented.nodeIds, seedPos)
+      : 1;
+    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
+      ? global.PlanarGraphCore.createMovementConvergenceTracker({
+        minItersBeforeStop: Number.isFinite(tuning.minItersBeforeStop) ? Math.max(1, Math.floor(tuning.minItersBeforeStop)) : 8,
+        stableIterLimit: Number.isFinite(tuning.stableIterLimit) ? Math.max(1, Math.floor(tuning.stableIterLimit)) : 4,
+        maxMoveTol: Number.isFinite(tuning.movementStopTol) && tuning.movementStopTol >= 0 ? tuning.movementStopTol : 1e-4 * movementScale,
+        avgMoveTol: Number.isFinite(tuning.avgMovementStopTol) && tuning.avgMovementStopTol >= 0 ? tuning.avgMovementStopTol : 2e-5 * movementScale
+      })
+      : null;
+    var performedOuterIters = 0;
 
     var didFit = false;
     for (var iter = 0; iter < MAX_OUTER_ITERS; iter += 1) {
+      var prevPos = seedPos;
       inner = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, INNER_ITERS, seedPos, fixedOuterPos);
       totalInnerIters += inner.iters;
+      performedOuterIters = iter + 1;
 
       var pos = inner.pos;
       applyPositionsToCy(cy, pos);
@@ -608,6 +560,13 @@
       }
       seedPos = pos;
       await waitForNextFrame(DELAY_MS);
+      var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
+        ? global.PlanarGraphCore.computePositionMoveStats(movableVertices, prevPos, pos, { moveTol: 1e-9 })
+        : { movedVertices: 0, maxMove: 0, avgMove: 0 };
+      var movementStatus = movementTracker ? movementTracker.update({
+        maxMove: moveStats.maxMove,
+        avgMove: moveStats.avgMove
+      }, iter + 1) : { stableIterations: 0, stableIterLimit: 0, converged: false };
 
       var outerArea = polygonAreaAbs(outer, pos);
       if (!(outerArea > 1e-12)) outerArea = 1;
@@ -643,8 +602,17 @@
           faceAreaScore: iterStats ? iterStats.score : null,
           faceAreaMinRatio: iterStats ? iterStats.minRatio : null,
           faceAreaMaxRatio: iterStats ? iterStats.maxRatio : null,
-          boundedFaceCount: iterStats ? iterStats.faceCount : boundedFaceIdx.length
+          boundedFaceCount: iterStats ? iterStats.faceCount : boundedFaceIdx.length,
+          movedVertices: moveStats.movedVertices,
+          maxMove: moveStats.maxMove,
+          avgMove: moveStats.avgMove,
+          stableIterCount: movementStatus.stableIterations,
+          stableIterLimit: movementStatus.stableIterLimit
         });
+      }
+      if (movementStatus.converged) {
+        stopReason = movementStatus.reason || 'movement-converged';
+        break;
       }
     }
 
@@ -656,7 +624,8 @@
 
     return {
       ok: true,
-      message: 'Applied ReweightTutte (' + outer.length + '-vertex outer face, +' + augmented.dummyCount + ' dummy, ' + totalInnerIters + ' iters, ' + MAX_OUTER_ITERS + ' steps)'
+      stopReason: stopReason,
+      message: 'Applied ReweightTutte (' + outer.length + '-vertex outer face, +' + augmented.dummyCount + ' dummy, ' + totalInnerIters + ' iters, ' + performedOuterIters + ' steps, ' + stopReason + ')'
     };
   }
 

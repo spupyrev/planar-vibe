@@ -1244,6 +1244,10 @@
       setLayoutEnabled('tutte', isEnabled);
     }
 
+    function setAirEnabled(isEnabled) {
+      setLayoutEnabled('air', isEnabled);
+    }
+
     function setImPrEdEnabled(isEnabled) {
       setLayoutEnabled('impred', isEnabled);
     }
@@ -1278,6 +1282,7 @@
 
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
+      setAirEnabled(false);
       setImPrEdEnabled(false);
       setCEG23BfsEnabled(false);
       setCEG23XyEnabled(false);
@@ -1325,6 +1330,7 @@
         isPlanar3Tree: isPlanar3Tree
       });
       setTutteEnabled(isPlanar);
+      setAirEnabled(isPlanar);
       setImPrEdEnabled(isPlanar);
       setCEG23BfsEnabled(isPlanar);
       setCEG23XyEnabled(isPlanar);
@@ -1485,7 +1491,8 @@
                 if (!progress) return;
                 var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
                   ' | moved ' + progress.movedNodes +
-                  ' | max move ' + progress.maxMove.toFixed(2);
+                  ' | actual move ' + progress.maxActualMove.toFixed(2) +
+                  ' | cap ' + progress.maxMove.toFixed(2);
                 setStatus(msg, false);
                 var shouldRefreshStats = (progress.iter % 10 === 0) || (progress.iter === progress.maxIters);
                 if (shouldRefreshStats && progress.iter !== lastStatsIter && cy) {
@@ -1513,6 +1520,45 @@
           missingMessage: 'Tutte layout module is missing',
           module: global.PlanarVibeTutte,
           methodName: 'applyTutteLayout'
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'air') {
+        normalizeLayoutScale();
+        runSpecialLayout({
+          layoutName: 'air',
+          disabledMessage: 'Air layout requires a planar graph',
+          missingMessage: 'Air layout module is missing',
+          module: global.PlanarVibeAir,
+          methodName: 'applyAirLayout',
+          buildMethodOptions: function () {
+            return {
+              interactive: true,
+              delayMs: 0,
+              renderEvery: 4,
+              onIteration: function (progress) {
+                if (!progress) return;
+                var parts = [];
+                parts.push('Air sweep ' + progress.iter + '/' + progress.maxIters);
+                if (Number.isFinite(progress.maxRelError)) {
+                  parts.push('face err ' + progress.maxRelError.toFixed(3));
+                }
+                if (Number.isFinite(progress.maxForce)) {
+                  parts.push('max force ' + progress.maxForce.toExponential(2));
+                }
+                if (Number.isFinite(progress.boundedFaceCount)) {
+                  parts.push('faces ' + progress.boundedFaceCount);
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            };
+          },
+          disableOtherButtonsWhileRunning: true
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -1625,7 +1671,6 @@
               }
             };
           },
-          normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
         }, function () {
           if (temporaryStaticRun) {
@@ -1662,7 +1707,6 @@
               }
             };
           },
-          normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
         }, function () {
           if (temporaryStaticRun) {

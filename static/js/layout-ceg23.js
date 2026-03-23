@@ -1,23 +1,6 @@
 (function (global) {
   'use strict';
 
-  function chooseLongestEmbeddingFace(embeddingFaces) {
-    if (!Array.isArray(embeddingFaces) || embeddingFaces.length === 0) {
-      return null;
-    }
-    var best = null;
-    for (var i = 0; i < embeddingFaces.length; i += 1) {
-      var face = embeddingFaces[i];
-      if (!Array.isArray(face) || face.length < 3) {
-        continue;
-      }
-      if (!best || face.length > best.length) {
-        best = face.slice().map(String);
-      }
-    }
-    return best;
-  }
-
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
     var depth = {};
     var q = [];
@@ -163,7 +146,9 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing' };
     }
-    if (!global.PlanarGraphCore || typeof global.PlanarGraphCore.graphFromCy !== 'function') {
+    if (!global.PlanarGraphCore ||
+        typeof global.PlanarGraphCore.graphFromCy !== 'function' ||
+        typeof global.PlanarGraphCore.chooseOuterFaceFromEmbedding !== 'function') {
       return { ok: false, message: 'PlanarGraphCore is missing. Check script load order' };
     }
     if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout) {
@@ -186,7 +171,7 @@
       return { ok: false, message: 'CEG23-bfs requires a planar graph' };
     }
 
-    var outerFace = chooseLongestEmbeddingFace(emb.faces) || graph.chooseOuterFace();
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb) || graph.chooseOuterFace();
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
@@ -206,10 +191,10 @@
       weights: weights,
       maxIters: MAX_ITERS,
       tolerance: 1e-8,
-      initOptions: {
+      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
         useSeedOuter: false,
         seedPos: global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy)
-      }
+      })
     });
     if (!out.ok) {
       return { ok: false, message: out.message || 'CEG23-bfs solver failed' };
@@ -236,7 +221,9 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing' };
     }
-    if (!global.PlanarGraphCore || typeof global.PlanarGraphCore.graphFromCy !== 'function') {
+    if (!global.PlanarGraphCore ||
+        typeof global.PlanarGraphCore.graphFromCy !== 'function' ||
+        typeof global.PlanarGraphCore.chooseOuterFaceFromEmbedding !== 'function') {
       return { ok: false, message: 'PlanarGraphCore is missing. Check script load order' };
     }
     if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout) {
@@ -258,7 +245,7 @@
       return { ok: false, message: 'CEG23-xy requires a planar graph' };
     }
 
-    var outerFace = chooseLongestEmbeddingFace(emb.faces) || graph.chooseOuterFace();
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb) || graph.chooseOuterFace();
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
@@ -277,10 +264,10 @@
       weights: uniformWeights,
       maxIters: maxIters,
       tolerance: 1e-8,
-      initOptions: {
+      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
         useSeedOuter: false,
         seedPos: seed
-      }
+      })
     });
     if (!base.ok) {
       return { ok: false, message: base.message || 'CEG23-xy baseline solve failed' };
@@ -298,10 +285,10 @@
       weights: wxy,
       maxIters: maxIters,
       tolerance: 1e-8,
-      initOptions: {
+      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
         useSeedOuter: false,
         seedPos: base.pos
-      }
+      })
     });
     if (!xySolve.ok) {
       return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };

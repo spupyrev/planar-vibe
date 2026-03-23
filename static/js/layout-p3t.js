@@ -69,8 +69,8 @@
     for (i = 0; i < outer.length; i += 1) {
       var ov = outer[outer.length - i - 1];
       coord[ov] = {
-        x: R * Math.cos(gamma * (0.25 + i)) + 2.0 * R,
-        y: R * Math.sin(gamma * (0.25 + i)) + 2.0 * R
+        x: R * Math.cos(gamma * i) + 2.0 * R,
+        y: R * Math.sin(gamma * i) + 2.0 * R
       };
     }
 

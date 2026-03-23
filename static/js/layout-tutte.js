@@ -17,19 +17,6 @@
     return adj;
   }
 
-  function longestFace(faces) {
-    if (!faces || faces.length === 0) {
-      return null;
-    }
-    var best = faces[0];
-    for (var i = 1; i < faces.length; i += 1) {
-      if (faces[i].length > best.length) {
-        best = faces[i];
-      }
-    }
-    return best ? best.slice() : null;
-  }
-
   function applyTutteLayout(cy) {
     var nodes = cy.nodes().toArray();
     if (nodes.length < 3) {
@@ -45,7 +32,7 @@
         message: 'Planarity utilities are missing. Check script load order'
       };
     }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.augmentByFaceStellation) {
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
       return {
         ok: false,
         message: 'PlanarGraphCore is missing. Check script load order'
@@ -71,23 +58,23 @@
       };
     }
 
-    var outerFace = (embedding.outerFace && embedding.outerFace.length >= 3)
-      ? embedding.outerFace.slice().map(String)
-      : longestFace(embedding.faces);
+    var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding);
+    if (!prepared || !prepared.ok) {
+      return {
+        ok: false,
+        message: (prepared && prepared.reason) || 'Could not build a triangulated embedding for Tutte'
+      };
+    }
+    var solveNodeIds = prepared.nodeIds.map(String);
+    var solveEdgePairs = prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; });
+    var solveEmbedding = prepared.embedding;
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
     if (!outerFace || outerFace.length < 3) {
       return {
         ok: false,
         message: 'Could not determine outer face for Tutte'
       };
     }
-
-    // Stabilize Tutte on weakly connected/non-triangulated instances by solving on
-    // a face-stellated augmentation while keeping the original outer face fixed.
-    var augmented = global.PlanarGraphCore.augmentByFaceStellation(nodeIds, edgePairs, embedding);
-    var solveNodeIds = (augmented && augmented.nodeIds) ? augmented.nodeIds.map(String) : nodeIds.slice();
-    var solveEdgePairs = (augmented && augmented.edgePairs)
-      ? augmented.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; })
-      : edgePairs.slice();
     var solveAdj = buildAdjacency(solveNodeIds, solveEdgePairs);
     var weights = global.PlanarVibeBarycentricCore.buildUniformWeights(solveEdgePairs, 1);
 
@@ -98,12 +85,9 @@
       weights: weights,
       maxIters: 1000,
       tolerance: 1e-6,
-      initOptions: {
-        useSeedOuter: false,
-        defaultCenterX: 2000,
-        defaultCenterY: 2000,
-        defaultRadius: 1000
-      }
+      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+        useSeedOuter: false
+      })
     });
     if (!out.ok) {
       return {

@@ -275,7 +275,6 @@
     var collisionBoost = Number.isFinite(opts.collisionBoost) ? Math.max(0, opts.collisionBoost) : 6.0;
     var kNearest = Number.isFinite(opts.kNearest) ? Math.max(1, Math.floor(opts.kNearest)) : 4;
     var interactive = !!opts.interactive;
-    var useSeedOuter = (typeof opts.useSeedOuter === 'boolean') ? opts.useSeedOuter : true;
     var evalEvery = Number.isFinite(opts.evalEvery) ? Math.max(1, Math.floor(opts.evalEvery)) : 10;
     var delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, Math.floor(opts.delayMs)) : 0;
     var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 5;
@@ -304,19 +303,23 @@
       return { ok: false, message: 'FD-uniform requires a planar graph' };
     }
 
-    var outerFace = (emb.outerFace && emb.outerFace.length >= 3) ? emb.outerFace.slice().map(String) : null;
-    if (!outerFace) {
-      return { ok: false, message: 'Could not determine outer face' };
-    }
-
     var augmentedNodeIds = nodeIds.slice();
     var augmentedEdgePairs = edgePairs.slice();
-    if (global.PlanarGraphCore && global.PlanarGraphCore.augmentByFaceStellation) {
-      var aug = global.PlanarGraphCore.augmentByFaceStellation(nodeIds, edgePairs, emb);
-      if (aug && aug.nodeIds && aug.edgePairs) {
-        augmentedNodeIds = aug.nodeIds.map(String);
-        augmentedEdgePairs = aug.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; });
+    if (global.PlanarGraphCore && global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+      var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, emb);
+      if (!prepared || !prepared.ok) {
+        return { ok: false, message: (prepared && prepared.reason) || 'Could not build a triangulated embedding' };
       }
+      augmentedNodeIds = prepared.nodeIds.map(String);
+      augmentedEdgePairs = prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; });
+    }
+    var embAug = global.PlanarVibePlanarityTest.computePlanarEmbedding(augmentedNodeIds, augmentedEdgePairs);
+    if (!embAug || !embAug.ok) {
+      return { ok: false, message: 'Could not build a triangulated embedding' };
+    }
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
+    if (!outerFace) {
+      return { ok: false, message: 'Could not determine outer face' };
     }
 
     var adjacencyAug = buildAdjacency(augmentedNodeIds, augmentedEdgePairs);
@@ -331,13 +334,10 @@
       weights: uniformWeights,
       maxIters: Number.isFinite(opts.initMaxIters) ? Math.max(10, Math.floor(opts.initMaxIters)) : 1200,
       tolerance: Number.isFinite(opts.initTolerance) ? Math.max(1e-10, opts.initTolerance) : 1e-7,
-      initOptions: {
-        useSeedOuter: useSeedOuter,
-        seedPos: seedPos,
-        defaultCenterX: 2000,
-        defaultCenterY: 2000,
-        defaultRadius: 1000
-      }
+      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+        useSeedOuter: false,
+        seedPos: seedPos
+      })
     });
     if (!initial || !initial.ok || !initial.pos) {
       return { ok: false, message: 'Initial barycentric embedding failed' };
@@ -381,6 +381,14 @@
     var diameter = computeDrawingDiameter(nodeIds, pos);
     var h = Number.isFinite(opts.initialStep) ? Math.max(1e-8, opts.initialStep) : 0.02 * diameter;
     var hMin = Number.isFinite(opts.minStep) ? Math.max(1e-10, opts.minStep) : 1e-5 * diameter;
+    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
+      ? global.PlanarGraphCore.createMovementConvergenceTracker({
+        minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 30,
+        stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 8,
+        maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-4 * diameter,
+        avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-5 * diameter
+      })
+      : null;
 
     var acceptedTotal = 0;
     var rejectedTotal = 0;
@@ -388,6 +396,7 @@
     var didFit = false;
     var bestScore = -Infinity;
     var bestPos = null;
+    var stopReason = 'max-iters';
 
     function runIteration(iter) {
       performedIters = iter;
@@ -555,23 +564,37 @@
       }
       return {
         ok: true,
-        message: 'Applied FD-uniform (' + performedIters + ' iters, accepted ' + acceptedTotal + ', rejected ' + rejectedTotal + ')'
+        stopReason: stopReason,
+        message: 'Applied FD-uniform (' + performedIters + ' iters, accepted ' + acceptedTotal + ', rejected ' + rejectedTotal + ', ' + stopReason + ')'
       };
     }
 
     if (!interactive) {
       for (var iter = 1; iter <= maxIters; iter += 1) {
+        var prevPos = copyPositions(pos);
         var step = runIteration(iter);
         var accepted = step.accepted;
         var rejected = step.rejected;
         acceptedTotal += accepted;
         rejectedTotal += rejected;
+        var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
+          ? global.PlanarGraphCore.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
+          : { maxMove: 0, avgMove: 0 };
+        var movementStatus = movementTracker ? movementTracker.update({
+          maxMove: moveStats.maxMove,
+          avgMove: moveStats.avgMove
+        }, iter) : { stableIterations: 0, stableIterLimit: 0, converged: false };
 
         if (movable.length > 0 && rejected > movable.length * 0.5) {
           h *= gamma;
           if (h < hMin) {
+            stopReason = 'step-too-small';
             break;
           }
+        }
+        if (movementStatus.converged) {
+          stopReason = movementStatus.reason || 'movement-converged';
+          break;
         }
 
         if (iter % alphaGrowEvery === 0 && alpha < alphaCap) {
@@ -598,16 +621,29 @@
 
       for (var iter = 1; iter <= maxIters; iter += 1) {
         if (h < hMin) {
+          stopReason = 'step-too-small';
           break;
         }
+        var prevPos = copyPositions(pos);
         var step = runIteration(iter);
         var accepted = step.accepted;
         var rejected = step.rejected;
         acceptedTotal += accepted;
         rejectedTotal += rejected;
+        var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
+          ? global.PlanarGraphCore.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
+          : { maxMove: 0, avgMove: 0 };
+        var movementStatus = movementTracker ? movementTracker.update({
+          maxMove: moveStats.maxMove,
+          avgMove: moveStats.avgMove
+        }, iter) : { stableIterations: 0, stableIterLimit: 0, converged: false };
 
         if (movable.length > 0 && rejected > movable.length * 0.5) {
           h *= gamma;
+        }
+        if (movementStatus.converged) {
+          stopReason = movementStatus.reason || 'movement-converged';
+          break;
         }
         if (iter % alphaGrowEvery === 0 && alpha < alphaCap) {
           alpha = Math.min(alphaCap, alpha * alphaGrowFactor);

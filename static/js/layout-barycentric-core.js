@@ -31,6 +31,20 @@
     return weights;
   }
 
+  function defaultOuterInitOptions(overrides) {
+    var out = {
+      defaultCenterX: 450,
+      defaultCenterY: 310,
+      defaultRadius: 300
+    };
+    var extra = overrides || {};
+    var keys = Object.keys(extra);
+    for (var i = 0; i < keys.length; i += 1) {
+      out[keys[i]] = extra[keys[i]];
+    }
+    return out;
+  }
+
   function initOuterCoords(nodeIds, outerFace, options) {
     var opts = options || {};
     var pos = {};
@@ -81,8 +95,8 @@
     for (i = 0; i < outerFace.length; i += 1) {
       var v = String(outerFace[outerFace.length - i - 1]);
       pos[v] = {
-        x: cx + R * Math.cos(gamma * (0.25 + i)),
-        y: cy + R * Math.sin(gamma * (0.25 + i))
+        x: cx + R * Math.cos(gamma * i),
+        y: cy + R * Math.sin(gamma * i)
       };
     }
     return pos;
@@ -93,6 +107,7 @@
     var adjacency = (input && input.adjacency) ? input.adjacency : {};
     var outerFace = (input && input.outerFace) ? input.outerFace.map(String) : [];
     var weights = (input && input.weights) ? input.weights : {};
+    var rowWeights = (input && input.rowWeights) ? input.rowWeights : null;
     var maxIters = Number.isFinite(input && input.maxIters) ? Math.max(1, Math.floor(input.maxIters)) : 1000;
     var tol = Number.isFinite(input && input.tolerance) ? Math.max(0, input.tolerance) : 1e-6;
     var initOptions = input && input.initOptions ? input.initOptions : {};
@@ -127,7 +142,10 @@
         var sw = 0;
         for (var j = 0; j < ngh.length; j += 1) {
           var u = String(ngh[j]);
-          var w = weights[edgeKey(v, u)];
+          var w = rowWeights && rowWeights[v] ? rowWeights[v][u] : undefined;
+          if (!Number.isFinite(w) || w <= 0) {
+            w = weights[edgeKey(v, u)];
+          }
           if (!Number.isFinite(w) || w <= 0) {
             w = 1;
           }
@@ -154,6 +172,8 @@
     edgeKey: edgeKey,
     currentPositionsFromCy: currentPositionsFromCy,
     buildUniformWeights: buildUniformWeights,
+    defaultOuterInitOptions: defaultOuterInitOptions,
+    initOuterCoords: initOuterCoords,
     solveWeightedBarycentricLayout: solveWeightedBarycentricLayout
   };
 })(window);

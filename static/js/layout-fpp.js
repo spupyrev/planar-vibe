@@ -21,7 +21,9 @@
         reason: 'Planarity utilities are missing'
       };
     }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.isTriangulatedEmbedding || !global.PlanarGraphCore.augmentByFaceStellation || !global.PlanarGraphCore.cloneEdgePairs) {
+    if (!global.PlanarGraphCore ||
+        !global.PlanarGraphCore.isTriangulatedEmbedding ||
+        !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
       return {
         ok: false,
         reason: 'Planar graph utilities are missing'
@@ -38,46 +40,23 @@
 
     var augmented = {
       nodeIds: nodeIds.map(String),
-      edgePairs: global.PlanarGraphCore.cloneEdgePairs(edgePairs),
+      edgePairs: edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
       dummyCount: 0
     };
     if (!global.PlanarGraphCore.isTriangulatedEmbedding(embedding)) {
-      var maxAugPasses = 12;
-      var pass = 0;
-      while (!global.PlanarGraphCore.isTriangulatedEmbedding(embedding) && pass < maxAugPasses) {
-        var step = global.PlanarGraphCore.augmentByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding);
-        if (!step || !Array.isArray(step.nodeIds) || !Array.isArray(step.edgePairs)) {
-          return {
-            ok: false,
-            reason: 'Augmentation failed: invalid augmentation result'
-          };
-        }
-        if (!(step.dummyCount > 0)) {
-          return {
-            ok: false,
-            reason: 'Augmentation failed to triangulate all faces'
-          };
-        }
-        augmented = {
-          nodeIds: step.nodeIds.map(String),
-          edgePairs: global.PlanarGraphCore.cloneEdgePairs(step.edgePairs),
-          dummyCount: augmented.dummyCount + step.dummyCount
-        };
-        embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(augmented.nodeIds, augmented.edgePairs);
-        if (!embedding.ok) {
-          return {
-            ok: false,
-            reason: 'Augmentation failed: resulting graph is not planar'
-          };
-        }
-        pass += 1;
-      }
-      if (!global.PlanarGraphCore.isTriangulatedEmbedding(embedding)) {
+      var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding);
+      if (!prepared || !prepared.ok) {
         return {
           ok: false,
-          reason: 'Augmentation failed to triangulate all faces'
+          reason: (prepared && prepared.reason) || 'Augmentation failed to triangulate all faces'
         };
       }
+      augmented = {
+        nodeIds: prepared.nodeIds.map(String),
+        edgePairs: prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
+        dummyCount: prepared.dummyCount || 0
+      };
+      embedding = prepared.embedding;
     }
 
     return {

@@ -2,6 +2,8 @@
   "name": "planar-vibe",
   "private": true,
   "scripts": {
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "report:data": "node scripts/compute-report-data.mjs",
+    "report": "node scripts/generate-report.mjs"
   }
 }

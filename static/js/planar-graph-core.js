@@ -126,6 +126,29 @@
     return null;
   }
 
+  function chooseOuterFaceFromEmbedding(embedding) {
+    if (!embedding) {
+      return null;
+    }
+    if (Array.isArray(embedding.outerFace) && embedding.outerFace.length >= 3) {
+      return embedding.outerFace.slice().map(String);
+    }
+    if (Array.isArray(embedding.faces) && embedding.faces.length > 0) {
+      var best = null;
+      for (var i = 0; i < embedding.faces.length; i += 1) {
+        var face = embedding.faces[i];
+        if (!Array.isArray(face) || face.length < 3) {
+          continue;
+        }
+        if (!best || face.length > best.length) {
+          best = face.slice().map(String);
+        }
+      }
+      return best;
+    }
+    return null;
+  }
+
   function canonicalUndirectedEdgeKey(u, v) {
     return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
   }
@@ -156,12 +179,96 @@
     });
   }
 
+  function computeDrawingDiameter(nodeIds, posById) {
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      var p = posById ? posById[id] : null;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return 1;
+    }
+    var dx = maxX - minX;
+    var dy = maxY - minY;
+    var d = Math.sqrt(dx * dx + dy * dy);
+    return d > 1e-9 ? d : 1;
+  }
+
+  function computePositionMoveStats(nodeIds, prevPosById, nextPosById, options) {
+    var opts = options || {};
+    var moveTol = Number.isFinite(opts.moveTol) && opts.moveTol >= 0 ? opts.moveTol : 1e-9;
+    var movedVertices = 0;
+    var totalMove = 0;
+    var maxMove = 0;
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      var prev = prevPosById ? prevPosById[id] : null;
+      var next = nextPosById ? nextPosById[id] : null;
+      if (!prev || !next || !Number.isFinite(prev.x) || !Number.isFinite(prev.y) || !Number.isFinite(next.x) || !Number.isFinite(next.y)) {
+        continue;
+      }
+      var dist = Math.hypot(next.x - prev.x, next.y - prev.y);
+      totalMove += dist;
+      if (dist > maxMove) {
+        maxMove = dist;
+      }
+      if (dist > moveTol) {
+        movedVertices += 1;
+      }
+    }
+    return {
+      movedVertices: movedVertices,
+      totalMove: totalMove,
+      avgMove: nodeIds.length > 0 ? (totalMove / nodeIds.length) : 0,
+      maxMove: maxMove
+    };
+  }
+
+  function createMovementConvergenceTracker(options) {
+    var opts = options || {};
+    var minItersBeforeStop = Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 20;
+    var stableIterLimit = Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 5;
+    var maxMoveTol = Number.isFinite(opts.maxMoveTol) && opts.maxMoveTol >= 0 ? opts.maxMoveTol : 1e-3;
+    var avgMoveTol = Number.isFinite(opts.avgMoveTol) && opts.avgMoveTol >= 0 ? opts.avgMoveTol : maxMoveTol;
+    var stableIterations = 0;
+
+    return {
+      update: function (stats, iter) {
+        var stable = !!stats &&
+          Number.isFinite(stats.maxMove) &&
+          Number.isFinite(stats.avgMove) &&
+          stats.maxMove <= maxMoveTol &&
+          stats.avgMove <= avgMoveTol;
+        stableIterations = stable ? (stableIterations + 1) : 0;
+        var ready = iter >= minItersBeforeStop && stableIterations >= stableIterLimit;
+        return {
+          stable: stable,
+          stableIterations: stableIterations,
+          stableIterLimit: stableIterLimit,
+          converged: ready,
+          reason: ready ? 'movement-converged' : null
+        };
+      }
+    };
+  }
+
   function augmentByFaceStellation(nodeIds, edgePairs, embedding) {
     var nodes = nodeIds.map(String);
     var edges = cloneEdgePairs(edgePairs);
     var edgeSet = new Set();
     var idSet = new Set(nodes);
     var dummyCount = 0;
+    var dummyFaceVerticesById = {};
 
     for (var i = 0; i < edges.length; i += 1) {
       edgeSet.add(canonicalUndirectedEdgeKey(edges[i][0], edges[i][1]));
@@ -185,6 +292,7 @@
 
       var dummy = nextDummyId();
       nodes.push(dummy);
+      dummyFaceVerticesById[dummy] = face.slice().map(String);
       for (var j = 0; j < face.length; j += 1) {
         var u = String(face[j]);
         var key = canonicalUndirectedEdgeKey(dummy, u);
@@ -199,7 +307,83 @@
     return {
       nodeIds: nodes,
       edgePairs: edges,
-      dummyCount: dummyCount
+      dummyCount: dummyCount,
+      dummyFaceVerticesById: dummyFaceVerticesById
+    };
+  }
+
+  function prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding) {
+    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
+      return {
+        ok: false,
+        reason: 'Planarity utilities are missing'
+      };
+    }
+
+    var nodes = nodeIds.map(String);
+    var edges = cloneEdgePairs(edgePairs);
+    var emb = embedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
+    if (!emb || !emb.ok) {
+      return {
+        ok: false,
+        reason: 'Graph is not planar'
+      };
+    }
+
+    var totalDummyCount = 0;
+    var dummyFaceVerticesById = {};
+    var round = 0;
+    var maxRounds = 1000;
+
+    while (!isTriangulatedEmbedding(emb)) {
+      if (round >= maxRounds) {
+        return {
+          ok: false,
+          reason: 'Augmentation failed to triangulate all faces'
+        };
+      }
+
+      var step = augmentByFaceStellation(nodes, edges, emb);
+      if (!step || !Array.isArray(step.nodeIds) || !Array.isArray(step.edgePairs)) {
+        return {
+          ok: false,
+          reason: 'Augmentation failed: invalid augmentation result'
+        };
+      }
+      if (!(step.dummyCount > 0)) {
+        return {
+          ok: false,
+          reason: 'Augmentation failed to triangulate all faces'
+        };
+      }
+
+      nodes = step.nodeIds.map(String);
+      edges = cloneEdgePairs(step.edgePairs);
+      totalDummyCount += step.dummyCount || 0;
+      var stepDummyFaceVerticesById = step.dummyFaceVerticesById || {};
+      var dummyIds = Object.keys(stepDummyFaceVerticesById);
+      for (var i = 0; i < dummyIds.length; i += 1) {
+        var dummyId = String(dummyIds[i]);
+        dummyFaceVerticesById[dummyId] = (stepDummyFaceVerticesById[dummyId] || []).map(String);
+      }
+
+      emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
+      if (!emb || !emb.ok) {
+        return {
+          ok: false,
+          reason: 'Augmentation failed: resulting graph is not planar'
+        };
+      }
+      round += 1;
+    }
+
+    return {
+      ok: true,
+      nodeIds: nodes,
+      edgePairs: edges,
+      dummyCount: totalDummyCount,
+      dummyFaceVerticesById: dummyFaceVerticesById,
+      embedding: emb
     };
   }
 
@@ -372,9 +556,14 @@
     PlanarGraph: PlanarGraph,
     graphFromCy: graphFromCy,
     cloneEdgePairs: cloneEdgePairs,
+    computeDrawingDiameter: computeDrawingDiameter,
+    computePositionMoveStats: computePositionMoveStats,
+    createMovementConvergenceTracker: createMovementConvergenceTracker,
     isTriangulatedEmbedding: isTriangulatedEmbedding,
     augmentByFaceStellation: augmentByFaceStellation,
+    prepareTriangulatedByFaceStellation: prepareTriangulatedByFaceStellation,
     detectCycleFromAdjacency: detectCycleFromAdjacency,
-    chooseOuterFace: chooseOuterFace
+    chooseOuterFace: chooseOuterFace,
+    chooseOuterFaceFromEmbedding: chooseOuterFaceFromEmbedding
   };
 })(window);

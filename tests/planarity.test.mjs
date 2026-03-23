@@ -88,6 +88,7 @@ function loadBrowserModules() {
     'static/js/planar-graph-core.js',
     'static/js/layout-barycentric-core.js',
     'static/js/layout-tutte.js',
+    'static/js/layout-air.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -110,8 +111,10 @@ function loadBrowserModules() {
 const modules = loadBrowserModules();
 const Generator = modules.PlanarVibeGraphGenerator;
 const Planarity = modules.PlanarVibePlanarityTest;
+const PlanarGraphCore = modules.PlanarGraphCore;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
+const Air = modules.PlanarVibeAir;
 const CEG23 = modules.PlanarVibeCEG23Bfs;
 const CEG23XY = modules.PlanarVibeCEG23Xy;
 const ImPrEd = modules.PlanarVibeImPrEd;
@@ -395,6 +398,99 @@ test('planar augmentation triangulates non-triangular planar faces', () => {
   }
 });
 
+test('face stellation adds one dummy vertex for every non-triangular face including the outer face', () => {
+  const text = Generator.cycleGraph(8);
+  const graph = parseEdgeListText(text);
+  const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+
+  assert.equal(embedding.ok, true);
+
+  const augmented = PlanarGraphCore.augmentByFaceStellation(graph.nodeIds, graph.edgePairs, embedding);
+  const dummyIds = Object.keys(augmented.dummyFaceVerticesById || {});
+
+  assert.equal(augmented.dummyCount, 2);
+  assert.equal(dummyIds.length, 2);
+  for (const dummyId of dummyIds) {
+    const face = augmented.dummyFaceVerticesById[dummyId];
+    assert.equal(face.length, 8);
+    for (const v of face) {
+      assert.equal(
+        augmented.edgePairs.some(([a, b]) =>
+          (String(a) === String(dummyId) && String(b) === String(v)) ||
+          (String(a) === String(v) && String(b) === String(dummyId))
+        ),
+        true,
+        `missing stellation edge ${dummyId}-${v}`
+      );
+    }
+  }
+});
+
+test('common outer-face helper prefers embedding.outerFace and otherwise falls back to the longest face', () => {
+  const explicit = PlanarGraphCore.chooseOuterFaceFromEmbedding({
+    outerFace: ['a', 'b', 'c'],
+    faces: [['x', 'y', 'z', 'w']]
+  });
+  assert.deepEqual(explicit, ['a', 'b', 'c']);
+
+  const fallback = PlanarGraphCore.chooseOuterFaceFromEmbedding({
+    faces: [['1', '2', '3'], ['4', '5', '6', '7'], ['8', '9', '10']]
+  });
+  assert.deepEqual(fallback, ['4', '5', '6', '7']);
+});
+
+test('shared movement convergence helper stops after enough stable iterations', () => {
+  const prev = {
+    a: { x: 0, y: 0 },
+    b: { x: 10, y: 0 }
+  };
+  const next = {
+    a: { x: 0.001, y: 0 },
+    b: { x: 10.001, y: 0 }
+  };
+  const stats = PlanarGraphCore.computePositionMoveStats(['a', 'b'], prev, next, { moveTol: 1e-4 });
+  assert.ok(stats.maxMove > 0, 'expected non-zero movement');
+  assert.equal(stats.movedVertices, 2);
+
+  const tracker = PlanarGraphCore.createMovementConvergenceTracker({
+    minItersBeforeStop: 3,
+    stableIterLimit: 2,
+    maxMoveTol: 0.01,
+    avgMoveTol: 0.01
+  });
+  const s1 = tracker.update({ maxMove: stats.maxMove, avgMove: stats.avgMove }, 1);
+  const s2 = tracker.update({ maxMove: stats.maxMove, avgMove: stats.avgMove }, 2);
+  const s3 = tracker.update({ maxMove: stats.maxMove, avgMove: stats.avgMove }, 3);
+  assert.equal(s1.converged, false);
+  assert.equal(s2.converged, false);
+  assert.equal(s3.converged, true);
+  assert.equal(s3.reason, 'movement-converged');
+});
+
+test('shared outer-face positioning ignores seed positions when useSeedOuter is false', () => {
+  const nodeIds = ['1', '2', '3', '4'];
+  const outerFace = ['1', '2', '3', '4'];
+  const baseline = modules.PlanarVibeBarycentricCore.initOuterCoords(nodeIds, outerFace, {
+    useSeedOuter: false,
+    defaultCenterX: 2000,
+    defaultCenterY: 2000,
+    defaultRadius: 1000
+  });
+  const withSeed = modules.PlanarVibeBarycentricCore.initOuterCoords(nodeIds, outerFace, {
+    useSeedOuter: false,
+    seedPos: {
+      '1': { x: 0, y: 0 },
+      '2': { x: 10, y: 0 },
+      '3': { x: 10, y: 10 },
+      '4': { x: 0, y: 10 }
+    },
+    defaultCenterX: 2000,
+    defaultCenterY: 2000,
+    defaultRadius: 1000
+  });
+  assert.deepEqual(withSeed, baseline);
+});
+
 test('canonical ordering works on 10 random planar 3-trees (100 vertices)', () => {
   for (let seed = 1; seed <= 10; seed += 1) {
     const text = Generator.maximalPlanar3Tree(100 + seed);
@@ -495,6 +591,21 @@ test('Schnyder layout applies on planar sample and assigns finite positions', ()
 
   for (const node of cy.nodes()) {
     assert.equal(node._pos !== null, true, `missing Schnyder position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('Schnyder layout applies on a non-triangulated cycle graph', () => {
+  const text = Generator.cycleGraph(8);
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = Schnyder.applySchnyderLayout(cy);
+  assert.equal(result.ok, true, result.message || 'Schnyder failed on cycle graph');
+
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing Schnyder position for cycle node ${node.id()}`);
     assert.equal(Number.isFinite(node._pos.x), true);
     assert.equal(Number.isFinite(node._pos.y), true);
   }
@@ -714,6 +825,34 @@ test('ReweightTutte keeps outer-face coordinates fixed across iterations', async
   }
 });
 
+test('ReweightTutte uses the same outer-face coordinates as Tutte', async () => {
+  const text = Generator.planarStellationGraph(40, 8, 7);
+  const graph = parseEdgeListText(text);
+  const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  assert.equal(emb && emb.ok, true);
+  const outer = PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
+
+  const cyTutte = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const tutte = Tutte.applyTutteLayout(cyTutte);
+  assert.equal(tutte.ok, true, tutte.message || 'Tutte failed');
+
+  const cyReweight = buildMockCy(graph.nodeIds, graph.edgePairs);
+  for (let i = 0; i < graph.nodeIds.length; i += 1) {
+    const id = graph.nodeIds[i];
+    const node = cyReweight.nodes().find((n) => n.id() === id);
+    node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
+  }
+  const reweight = await Reweight.applyReweightTutteLayout(cyReweight, { tuning: { delayMs: 0 } });
+  assert.equal(reweight.ok, true, reweight.message || 'Reweight failed');
+
+  for (const v of outer) {
+    const pT = cyTutte.nodes().find((n) => n.id() === String(v))._pos;
+    const pR = cyReweight.nodes().find((n) => n.id() === String(v))._pos;
+    assert.ok(Math.abs(pT.x - pR.x) < 1e-9, `outer x mismatch for vertex ${v}`);
+    assert.ok(Math.abs(pT.y - pR.y) < 1e-9, `outer y mismatch for vertex ${v}`);
+  }
+});
+
 test('ReweightTutte on sample1 computes Face Areas Score', async () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
@@ -748,6 +887,63 @@ test('Tutte layout applies on planar sample and assigns finite positions', () =>
     assert.equal(node._pos !== null, true, `missing Tutte position for node ${node.id()}`);
     assert.equal(Number.isFinite(node._pos.x), true);
     assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
+test('Air layout applies on planar sample and improves bounded face balance', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const baseline = Tutte.applyTutteLayout(cy);
+  assert.equal(baseline.ok, true, baseline.message || 'Tutte baseline failed');
+  const before = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+  assert.equal(before.ok, true, before.reason || 'Baseline face score failed');
+
+  const result = await Air.applyAirLayout(cy, { delayMs: 0, yieldEvery: 50 });
+  assert.equal(result.ok, true, result.message || 'Air failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  const after = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+  assert.equal(after.ok, true, after.reason || 'Air face score failed');
+  assert.ok(Number.isFinite(after.quality), 'Air face quality is not finite');
+  assert.ok(after.quality + 1e-6 >= before.quality, `Air worsened face balance: before=${before.quality}, after=${after.quality}`);
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing Air position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    positionsById[node.id()] = node._pos;
+  }
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'Air introduced crossings on sample1');
+});
+
+test('Air layout rejects non-planar graphs', async () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await Air.applyAirLayout(cy, { delayMs: 0 });
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /planar graph/i);
+});
+
+test('Air layout stays plane on 5 random planar graphs', async () => {
+  for (let seed = 1; seed <= 5; seed += 1) {
+    const text = Generator.randomPlanarGraphNM(25 + seed, 3 * (25 + seed) - 10, seed);
+    const graph = parseEdgeListText(text);
+    const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+    const result = await Air.applyAirLayout(cy, { delayMs: 0, yieldEvery: 50 });
+    assert.equal(result.ok, true, `Air failed for seed=${seed}: ${result.message || ''}`);
+
+    const positionsById = {};
+    for (const node of cy.nodes()) {
+      assert.equal(node._pos !== null, true, `missing Air position for node ${node.id()} seed=${seed}`);
+      positionsById[node.id()] = node._pos;
+    }
+    assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, `Air produced crossings for seed=${seed}`);
   }
 });
 
@@ -953,6 +1149,42 @@ test('ImPrEd keeps drawing plane after every iteration on sample1 coordinates', 
   });
   assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
   assert.ok(seenIterations > 0, 'ImPrEd did not report iterations');
+});
+
+test('ImPrEd default iteration budget exceeds legacy short run length', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  let reportedMaxIters = null;
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, {
+    delayMs: -1,
+    onIteration(progress) {
+      if (progress && reportedMaxIters === null) {
+        reportedMaxIters = progress.maxIters;
+      }
+    }
+  });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
+  assert.ok(reportedMaxIters > 120, `expected default maxIters to exceed 120, got ${reportedMaxIters}`);
+});
+
+test('ImPrEd stops early when movements become insignificant', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, {
+    maxIters: 500,
+    minItersBeforeStop: 1,
+    stableIterLimit: 1,
+    movementStopTol: 1e9,
+    avgMovementStopTol: 1e9,
+    delayMs: -1
+  });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
+  assert.notEqual(result.stopReason, 'max-iters');
+  assert.ok(result.iterations < 500, `expected early convergence stop, got ${result.iterations} iterations`);
 });
 
 test('CEG23-bfs parameter sweep on sample1/sample2 tunes Face Areas score', () => {

@@ -535,7 +535,9 @@
             weights: global.PlanarVibeBarycentricCore.buildUniformWeights(g.edgePairs, 1),
             maxIters: 4000,
             tolerance: 1e-8,
-            initOptions: { useSeedOuter: false }
+            initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+              useSeedOuter: false
+            })
           });
           if (initSolve && initSolve.ok && initSolve.pos) {
             posById = initSolve.pos;
@@ -553,21 +555,35 @@
       }
     }
     var delta = Number.isFinite(opts.delta) && opts.delta > 0 ? opts.delta : estimateDelta(g.edgePairs, posById);
-    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 120;
+    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 600;
     var startMaxMove = Number.isFinite(opts.maxMove) && opts.maxMove > 0 ? opts.maxMove : 3 * delta;
     var minMaxMove = Number.isFinite(opts.minMaxMove) && opts.minMaxMove >= 0 ? opts.minMaxMove : 0.05 * delta;
+    var minItersBeforeStop = Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 60;
+    var stableIterLimit = Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 16;
+    var movementStopTol = Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 0.008 * delta;
+    var avgMovementStopTol = Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 0.0015 * delta;
     var sectorCount = 8;
-    var forceScale = Number.isFinite(opts.forceScale) && opts.forceScale > 0 ? opts.forceScale : 0.05;
+    var forceScale = Number.isFinite(opts.forceScale) && opts.forceScale > 0 ? opts.forceScale : 0.04;
     var cNodeRep = Number.isFinite(opts.cNodeRep) ? opts.cNodeRep : 1.0;
     var cEdgeAttr = Number.isFinite(opts.cEdgeAttr) ? opts.cEdgeAttr : 1.0;
-    var cNodeEdgeRep = Number.isFinite(opts.cNodeEdgeRep) ? opts.cNodeEdgeRep : 0.7;
+    var cNodeEdgeRep = Number.isFinite(opts.cNodeEdgeRep) ? opts.cNodeEdgeRep : 0.75;
     var nearbyFactor = Number.isFinite(opts.nearbyFactor) && opts.nearbyFactor > 0 ? opts.nearbyFactor : 6.0;
     var delayMs = Number.isFinite(opts.delayMs) ? Math.floor(opts.delayMs) : 0;
-    var momentumBeta = Number.isFinite(opts.momentumBeta) ? Math.max(0, Math.min(0.98, opts.momentumBeta)) : 0.75;
+    var momentumBeta = Number.isFinite(opts.momentumBeta) ? Math.max(0, Math.min(0.98, opts.momentumBeta)) : 0.78;
     var rejectedVelocityDamp = Number.isFinite(opts.rejectedVelocityDamp) ? Math.max(0, Math.min(1, opts.rejectedVelocityDamp)) : 0.25;
     var rollbackVelocityDamp = Number.isFinite(opts.rollbackVelocityDamp) ? Math.max(0, Math.min(1, opts.rollbackVelocityDamp)) : 0.0;
     var fullRollbackVelocityDamp = Number.isFinite(opts.fullRollbackVelocityDamp) ? Math.max(0, Math.min(1, opts.fullRollbackVelocityDamp)) : 0.5;
     var iter;
+    var stopReason = 'max-iters';
+    var lastStats = { movedNodes: 0, totalMove: 0, avgActualMove: 0, maxActualMove: 0 };
+    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
+      ? global.PlanarGraphCore.createMovementConvergenceTracker({
+        minItersBeforeStop: minItersBeforeStop,
+        stableIterLimit: stableIterLimit,
+        maxMoveTol: movementStopTol,
+        avgMoveTol: avgMovementStopTol
+      })
+      : null;
     var velocityById = {};
     for (iter = 0; iter < g.nodeIds.length; iter += 1) {
       velocityById[g.nodeIds[iter]] = { x: 0, y: 0 };
@@ -586,8 +602,6 @@
         nearbyFactor: nearbyFactor
       });
       var limits = computeMovementLimits(g.nodeIds, g.edgePairs, posById, maxMove, sectorCount);
-      var moved = 0;
-
       for (var i = 0; i < g.nodeIds.length; i += 1) {
         var v = g.nodeIds[i];
         if (fixedOuter.has(v)) {
@@ -637,7 +651,6 @@
         if (Math.hypot(movedDx, movedDy) > 1e-6) {
           posById[v] = newP;
           velocityById[v] = { x: movedDx, y: movedDy };
-          moved += 1;
         } else {
           velocityById[v].x *= rejectedVelocityDamp;
           velocityById[v].y *= rejectedVelocityDamp;
@@ -659,7 +672,6 @@
             velocityById[vid].x *= fullRollbackVelocityDamp;
             velocityById[vid].y *= fullRollbackVelocityDamp;
           }
-          moved = 0;
           hasCrossings = false;
         } else if (global.PlanarVibeMetrics && global.PlanarVibeMetrics.hasCrossingsFromPositions) {
           rollbackResult.rolledBack.forEach(function (rv) {
@@ -674,17 +686,41 @@
         }
       }
 
+      var rawMoveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
+        ? global.PlanarGraphCore.computePositionMoveStats(g.nodeIds, prevPosById, posById, { moveTol: 1e-6 })
+        : { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
+      lastStats = {
+        movedNodes: rawMoveStats.movedVertices,
+        totalMove: rawMoveStats.totalMove,
+        avgActualMove: rawMoveStats.avgMove,
+        maxActualMove: rawMoveStats.maxMove
+      };
+      var movementStatus = movementTracker ? movementTracker.update({
+        maxMove: lastStats.maxActualMove,
+        avgMove: lastStats.avgActualMove
+      }, iter + 1) : { stableIterations: 0, stableIterLimit: stableIterLimit, converged: false };
+
       if (typeof opts.onIteration === 'function') {
         opts.onIteration({
           iter: iter + 1,
           maxIters: maxIters,
-          movedNodes: moved,
+          movedNodes: lastStats.movedNodes,
           maxMove: maxMove,
-          hasCrossings: hasCrossings
+          maxActualMove: lastStats.maxActualMove,
+          avgActualMove: lastStats.avgActualMove,
+          totalMove: lastStats.totalMove,
+          hasCrossings: hasCrossings,
+          stableIterCount: movementStatus.stableIterations,
+          stableIterLimit: movementStatus.stableIterLimit
         });
       }
       applyPositionsToCy(cy, posById);
-      if (moved === 0) {
+      if (lastStats.movedNodes === 0) {
+        stopReason = 'no-movement';
+        break;
+      }
+      if (movementStatus.converged) {
+        stopReason = movementStatus.reason || 'movement-converged';
         break;
       }
       if (iter < maxIters - 1 && delayMs >= 0) {
@@ -699,7 +735,11 @@
 
     return {
       ok: true,
-      message: 'Applied ImPrEd (' + g.nodeIds.length + ' vertices, ' + (iter + 1) + ' iters)'
+      iterations: iter + 1,
+      stopReason: stopReason,
+      maxActualMove: lastStats.maxActualMove,
+      avgActualMove: lastStats.avgActualMove,
+      message: 'Applied ImPrEd (' + g.nodeIds.length + ' vertices, ' + (iter + 1) + ' iters, ' + stopReason + ')'
     };
   }
 

@@ -54,71 +54,48 @@
     return out;
   }
 
-  function triangulateByFaceDiagonals(nodeIds, edgePairs) {
+  function prepareTriangulatedByFaceStellation(nodeIds, edgePairs) {
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, reason: 'Planarity utilities are missing' };
     }
-    var nodes = nodeIds.map(String);
-    var edges = uniqueEdgePairs(edgePairs);
-    var set = new Set(edges.map(function (e) { return edgeKey(e[0], e[1]); }));
-    var maxAdditions = Math.max(1, 4 * nodes.length);
-
-    for (var added = 0; added <= maxAdditions; added += 1) {
-      var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
-      if (!emb || !emb.ok) {
-        return { ok: false, reason: 'Graph is not planar' };
-      }
-
-      var nonTriFace = null;
-      for (var fi = 0; fi < emb.faces.length; fi += 1) {
-        if ((emb.faces[fi] || []).length > 3) {
-          nonTriFace = emb.faces[fi];
-          break;
-        }
-      }
-      if (!nonTriFace) {
-        return {
-          ok: true,
-          nodeIds: nodes,
-          edgePairs: edges,
-          embedding: emb
-        };
-      }
-
-      var inserted = false;
-      var m = nonTriFace.length;
-      for (var i = 0; i < m && !inserted; i += 1) {
-        for (var j = i + 2; j < m && !inserted; j += 1) {
-          if (i === 0 && j === m - 1) {
-            continue; // adjacent on cycle
-          }
-          var u = String(nonTriFace[i]);
-          var v = String(nonTriFace[j]);
-          if (u === v) {
-            continue;
-          }
-          var k = edgeKey(u, v);
-          if (set.has(k)) {
-            continue;
-          }
-          var trialEdges = edges.slice();
-          trialEdges.push([u, v]);
-          var trialEmb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, trialEdges);
-          if (!trialEmb || !trialEmb.ok) {
-            continue;
-          }
-          edges = trialEdges;
-          set.add(k);
-          inserted = true;
-        }
-      }
-
-      if (!inserted) {
-        return { ok: false, reason: 'Could not triangulate all faces' };
-      }
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+      return { ok: false, reason: 'Planar graph utilities are missing' };
     }
 
-    return { ok: false, reason: 'Triangulation exceeded iteration budget' };
+    var nodes = nodeIds.map(String);
+    var edges = uniqueEdgePairs(edgePairs);
+    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
+    if (!emb || !emb.ok) {
+      return { ok: false, reason: 'Graph is not planar' };
+    }
+    if (!hasNonTriangularFace(emb.faces)) {
+      return {
+        ok: true,
+        nodeIds: nodes,
+        edgePairs: edges,
+        embedding: emb
+      };
+    }
+
+    var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodes, edges, emb);
+    if (!prepared || !prepared.ok) {
+      return { ok: false, reason: (prepared && prepared.reason) || 'Augmentation failed' };
+    }
+    return {
+      ok: true,
+      nodeIds: prepared.nodeIds.map(String),
+      edgePairs: prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
+      embedding: prepared.embedding
+    };
+  }
+
+  function hasNonTriangularFace(faces) {
+    for (var i = 0; i < (faces || []).length; i += 1) {
+      if ((faces[i] || []).length > 3) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function buildRotationById(embedding) {
@@ -619,6 +596,9 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing' };
     }
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+      return { ok: false, message: 'Planar graph utilities are missing' };
+    }
     var g = collectGraphFromCy(cy);
     if (g.nodeIds.length < 3) {
       if (g.nodeIds.length === 2) {
@@ -631,7 +611,7 @@
       return { ok: true, message: 'Applied Schnyder layout (' + String(g.nodeIds.length) + ' vertices)' };
     }
 
-    var triangulated = triangulateByFaceDiagonals(g.nodeIds, g.edgePairs);
+    var triangulated = prepareTriangulatedByFaceStellation(g.nodeIds, g.edgePairs);
     if (!triangulated.ok) {
       return { ok: false, message: triangulated.reason || 'Schnyder triangulation failed' };
     }
