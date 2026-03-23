@@ -17,6 +17,17 @@
     return adj;
   }
 
+  function extractOriginalPositions(posById, nodeIds) {
+    var out = {};
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      if (posById[id]) {
+        out[id] = { x: posById[id].x, y: posById[id].y };
+      }
+    }
+    return out;
+  }
+
   function applyTutteLayout(cy) {
     var nodes = cy.nodes().toArray();
     if (nodes.length < 3) {
@@ -58,7 +69,14 @@
       };
     }
 
-    var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding);
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
+    if (!outerFace || outerFace.length < 3) {
+      return {
+        ok: false,
+        message: 'Could not determine outer face for Tutte'
+      };
+    }
+    var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
     if (!prepared || !prepared.ok) {
       return {
         ok: false,
@@ -68,31 +86,54 @@
     var solveNodeIds = prepared.nodeIds.map(String);
     var solveEdgePairs = prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; });
     var solveEmbedding = prepared.embedding;
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
-    if (!outerFace || outerFace.length < 3) {
-      return {
-        ok: false,
-        message: 'Could not determine outer face for Tutte'
-      };
-    }
     var solveAdj = buildAdjacency(solveNodeIds, solveEdgePairs);
     var weights = global.PlanarVibeBarycentricCore.buildUniformWeights(solveEdgePairs, 1);
-
-    var out = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-      nodeIds: solveNodeIds,
-      adjacency: solveAdj,
-      outerFace: outerFace,
-      weights: weights,
-      maxIters: 1000,
-      tolerance: 1e-6,
-      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-        useSeedOuter: false
-      })
-    });
+    var attempts = [
+      { maxIters: 1000, tolerance: 1e-6 },
+      { maxIters: 1000, tolerance: 1e-7 },
+      { maxIters: 2000, tolerance: 1e-8 }
+    ];
+    var out = null;
+    var hasCrossings = false;
+    for (var ai = 0; ai < attempts.length; ai += 1) {
+      var attempt = attempts[ai];
+      out = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
+        nodeIds: solveNodeIds,
+        adjacency: solveAdj,
+        outerFace: outerFace,
+        weights: weights,
+        maxIters: attempt.maxIters,
+        tolerance: attempt.tolerance,
+        initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+          useSeedOuter: false
+        })
+      });
+      if (!out.ok) {
+        break;
+      }
+      hasCrossings = !!(global.PlanarVibeMetrics &&
+        typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
+        global.PlanarVibeMetrics.hasCrossingsFromPositions(
+          extractOriginalPositions(out.pos, nodeIds),
+          edgePairs
+        ));
+      if (!hasCrossings) {
+        break;
+      }
+    }
     if (!out.ok) {
       return {
         ok: false,
         message: out.message || 'Tutte solver failed'
+      };
+    }
+    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
+      out.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(out.pos, outerFace);
+    }
+    if (hasCrossings) {
+      return {
+        ok: false,
+        message: 'Tutte produced a non-plane drawing'
       };
     }
 

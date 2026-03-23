@@ -199,6 +199,9 @@
     if (!out.ok) {
       return { ok: false, message: out.message || 'CEG23-bfs solver failed' };
     }
+    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
+      out.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(out.pos, outerFace);
+    }
 
     for (var i = 0; i < nodes.length; i += 1) {
       var id = String(nodes[i].id());
@@ -272,6 +275,9 @@
     if (!base.ok) {
       return { ok: false, message: base.message || 'CEG23-xy baseline solve failed' };
     }
+    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
+      base.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(base.pos, outerFace);
+    }
 
     var xRank = rankByAxis(nodeIds, base.pos, 'x');
     var yRank = rankByAxis(nodeIds, base.pos, 'y');
@@ -292,6 +298,9 @@
     });
     if (!xySolve.ok) {
       return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };
+    }
+    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
+      xySolve.pos = global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(xySolve.pos, outerFace);
     }
 
     for (var i = 0; i < nodes.length; i += 1) {

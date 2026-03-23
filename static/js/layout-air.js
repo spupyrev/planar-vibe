@@ -121,8 +121,32 @@
     return Math.sqrt(dot(p, p));
   }
 
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding) {
-    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding);
+  function outerFaceDiameter(posById, outerFace) {
+    var face = Array.isArray(outerFace) ? outerFace : [];
+    var diameter = 0;
+    for (var i = 0; i < face.length; i += 1) {
+      var vi = posById[String(face[i])];
+      if (!vi || !Number.isFinite(vi.x) || !Number.isFinite(vi.y)) {
+        continue;
+      }
+      for (var j = i + 1; j < face.length; j += 1) {
+        var vj = posById[String(face[j])];
+        if (!vj || !Number.isFinite(vj.x) || !Number.isFinite(vj.y)) {
+          continue;
+        }
+        var dx = vi.x - vj.x;
+        var dy = vi.y - vj.y;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > diameter) {
+          diameter = dist;
+        }
+      }
+    }
+    return diameter > 1e-12 ? diameter : 1;
+  }
+
+  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace) {
+    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
     if (!augmented || !augmented.ok) {
       return { ok: false, reason: (augmented && augmented.reason) || 'Air augmentation failed' };
     }
@@ -154,7 +178,7 @@
       outerFace: outerFace,
       weights: weights,
       maxIters: 1000,
-      tolerance: 1e-6,
+      tolerance: 1e-7,
       initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
         useSeedOuter: false,
         seedPos: seedPos
@@ -202,14 +226,17 @@
 
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
-      if (!face || face.length !== 3) {
-        return { ok: false, reason: 'Air requires a fully triangulated augmentation' };
+      if (!face || face.length < 3) {
+        return { ok: false, reason: 'Air requires a valid triangulated augmentation' };
       }
 
       var oriented = orientFaceCCW(face, posById);
       var originalKey = originalFaceKeyForAugmentedFace(oriented, dummyFaceKeyById, dummyFaceVerticesById);
       if (originalKey === outerOriginalKey) {
         continue;
+      }
+      if (face.length !== 3) {
+        return { ok: false, reason: 'Air requires all non-outer augmented faces to be triangles' };
       }
       if (!originalFaceSet.has(originalKey)) {
         return { ok: false, reason: 'Air face mapping failed for face ' + oriented.join(',') };
@@ -477,23 +504,44 @@
     });
   }
 
-  async function applyAirLayout(cy, options) {
-    var opts = options || {};
-    var interactive = opts.interactive !== false;
-    var maxSweeps = Number.isFinite(opts.maxSweeps) ? Math.max(1, Math.floor(opts.maxSweeps)) : 250;
-    var maxNewtonIter = Number.isFinite(opts.maxNewtonIter) ? Math.max(1, Math.floor(opts.maxNewtonIter)) : 40;
-    var tolForceGlobal = Number.isFinite(opts.tolForceGlobal) ? Math.max(0, opts.tolForceGlobal) : 1e-8;
-    var tolForceVertex = Number.isFinite(opts.tolForceVertex) ? Math.max(0, opts.tolForceVertex) : 1e-10;
-    var tolAreaGlobal = Number.isFinite(opts.tolAreaGlobal) ? Math.max(0, opts.tolAreaGlobal) : 1e-5;
-    var tolAreaPositive = Number.isFinite(opts.tolAreaPositive) ? Math.max(0, opts.tolAreaPositive) : 1e-12;
-    var tolMove = Number.isFinite(opts.tolMove) ? Math.max(0, opts.tolMove) : 1e-12;
-    var armijo = Number.isFinite(opts.armijo) ? Math.max(0, opts.armijo) : 1e-4;
-    var minStep = Number.isFinite(opts.minStep) && opts.minStep > 0 ? opts.minStep : Math.pow(2, -40);
-    var delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0;
-    var onIteration = typeof opts.onIteration === 'function' ? opts.onIteration : null;
-    var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5;
-    var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 4;
+  function originalDrawingHasCrossings(posById, edgePairs) {
+    return !!(global.PlanarVibeMetrics &&
+      typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
+      global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs));
+  }
 
+  function normalizeAirOptions(options) {
+    var opts = options || {};
+    return {
+      interactive: opts.interactive !== false,
+      maxSweeps: Number.isFinite(opts.maxSweeps) ? Math.max(1, Math.floor(opts.maxSweeps)) : 200,
+      maxNewtonIter: Number.isFinite(opts.maxNewtonIter) ? Math.max(1, Math.floor(opts.maxNewtonIter)) : 40,
+      tolForceGlobal: Number.isFinite(opts.tolForceGlobal) ? Math.max(0, opts.tolForceGlobal) : 1e-8,
+      tolForceVertex: Number.isFinite(opts.tolForceVertex) ? Math.max(0, opts.tolForceVertex) : 1e-10,
+      tolAreaGlobal: Number.isFinite(opts.tolAreaGlobal) ? Math.max(0, opts.tolAreaGlobal) : 1e-3,
+      tolAreaPositive: Number.isFinite(opts.tolAreaPositive) ? Math.max(0, opts.tolAreaPositive) : 1e-15,
+      tolMove: Number.isFinite(opts.tolMove) ? Math.max(0, opts.tolMove) : 1e-12,
+      armijo: Number.isFinite(opts.armijo) ? Math.max(0, opts.armijo) : 1e-4,
+      minStep: Number.isFinite(opts.minStep) && opts.minStep > 0 ? opts.minStep : Math.pow(2, -40),
+      delayMs: Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0,
+      onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
+      yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
+      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 4,
+      moveTolRel: Number.isFinite(opts.moveTolRel) && opts.moveTolRel >= 0 ? opts.moveTolRel : 1e-5,
+      moveTolAbs: Number.isFinite(opts.moveTolAbs) && opts.moveTolAbs >= 0 ? opts.moveTolAbs : 1e-12,
+      errTolRel: Number.isFinite(opts.errTolRel) && opts.errTolRel >= 0 ? opts.errTolRel : 1e-4,
+      patience: Number.isFinite(opts.patience) ? Math.max(1, Math.floor(opts.patience)) : 2,
+      deadlockPatience: Number.isFinite(opts.deadlockPatience) ? Math.max(1, Math.floor(opts.deadlockPatience)) : 2,
+      plateauWindow: Number.isFinite(opts.plateauWindow) ? Math.max(2, Math.floor(opts.plateauWindow)) : 12,
+      plateauPatience: Number.isFinite(opts.plateauPatience) ? Math.max(1, Math.floor(opts.plateauPatience)) : 1,
+      plateauErrTolAbs: Number.isFinite(opts.plateauErrTolAbs) && opts.plateauErrTolAbs >= 0 ? opts.plateauErrTolAbs : null,
+      plateauErrTolRel: Number.isFinite(opts.plateauErrTolRel) && opts.plateauErrTolRel >= 0 ? opts.plateauErrTolRel : null,
+      plateauErrGuardFactor: Number.isFinite(opts.plateauErrGuardFactor) && opts.plateauErrGuardFactor > 0 ? opts.plateauErrGuardFactor : 20
+    };
+  }
+
+  function prepareAirFromGeneralPlaneGraph(cy, options) {
+    var opts = normalizeAirOptions(options);
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
     }
@@ -517,13 +565,13 @@
       return { ok: false, message: 'Air layout requires a planar graph' };
     }
 
-    var augmented = prepareAugmentedTriangulation(g.nodeIds, g.edgePairs, baseEmbedding);
-    if (!augmented.ok) {
-      return { ok: false, message: augmented.reason || 'Air augmentation failed' };
-    }
     var originalOuterFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
     if (!originalOuterFace || originalOuterFace.length < 3) {
       return { ok: false, message: 'Could not determine outer boundary for Air layout' };
+    }
+    var augmented = prepareAugmentedTriangulation(g.nodeIds, g.edgePairs, baseEmbedding, originalOuterFace);
+    if (!augmented.ok) {
+      return { ok: false, message: augmented.reason || 'Air augmentation failed' };
     }
 
     var init = buildInitialPositions(augmented.nodeIds, augmented.edgePairs, originalOuterFace, cy);
@@ -531,22 +579,32 @@
       return { ok: false, message: (init && init.message) || 'Air initialization failed' };
     }
 
-    var posById = copyPositions(init.pos);
+    var posById = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
+      ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(init.pos, originalOuterFace)
+      : copyPositions(init.pos);
     var airData = buildAirData(baseEmbedding, augmented.embedding, originalOuterFace, augmented.dummyFaceKeyById, augmented.dummyFaceVerticesById, posById);
     if (!airData.ok) {
       return { ok: false, message: airData.reason || 'Air setup failed' };
     }
 
     if (airData.originalFaceKeys.length === 0) {
-      applyPositionsToCy(cy, g.nodeIds, posById);
-      cy.fit(undefined, 24);
-      return { ok: true, message: 'Applied Air (no bounded faces to balance)' };
+      return {
+        ok: true,
+        opts: opts,
+        graph: g,
+        baseEmbedding: baseEmbedding,
+        outerFace: originalOuterFace,
+        augmented: augmented,
+        posById: posById,
+        airData: airData,
+        movableVertices: []
+      };
     }
 
     for (var fi = 0; fi < airData.triangles.length; fi += 1) {
       var tri = airData.triangles[fi];
       var area = Math.abs(triangleArea2(posById[tri.vertices[0]], posById[tri.vertices[1]], posById[tri.vertices[2]])) / 2;
-      if (!(area > tolAreaPositive)) {
+      if (!(area > opts.tolAreaPositive)) {
         return { ok: false, message: 'Air initialization failed: degenerate augmented triangle' };
       }
     }
@@ -560,121 +618,300 @@
       }
     }
 
-    var movementScale = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computeDrawingDiameter === 'function')
-      ? global.PlanarGraphCore.computeDrawingDiameter(augmented.nodeIds, posById)
-      : 1;
-    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
-      ? global.PlanarGraphCore.createMovementConvergenceTracker({
-        minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 8,
-        stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 4,
-        maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-4 * movementScale,
-        avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-5 * movementScale
-      })
-      : null;
+    return {
+      ok: true,
+      opts: opts,
+      graph: g,
+      baseEmbedding: baseEmbedding,
+      outerFace: originalOuterFace,
+      augmented: augmented,
+      posById: posById,
+      airData: airData,
+      movableVertices: movableVertices
+    };
+  }
 
+  async function solveAirTriangulation(prepared, options) {
+    var opts = Object.assign({}, prepared && prepared.opts ? prepared.opts : {}, options || {});
+    var g = prepared.graph;
+    var posById = prepared.posById;
+    var airData = prepared.airData;
+    var movableVertices = prepared.movableVertices || [];
     var status = 'max_sweeps';
-    var lastStats = computeAirStats(airData, posById, movableVertices, tolAreaPositive);
-    var didFit = false;
-    if (interactive) {
-      applyPositionsToCy(cy, g.nodeIds, posById);
-      cy.fit(undefined, 24);
-      didFit = true;
-      await waitForNextFrame(delayMs);
+    var lastStats = computeAirStats(airData, posById, movableVertices, opts.tolAreaPositive);
+    var outerDiameter = outerFaceDiameter(posById, airData.outerFace || prepared.outerFace || []);
+    var moveTol = opts.moveTolAbs + opts.moveTolRel * outerDiameter;
+    var avgMoveTol = 0.25 * moveTol;
+    var plateauErrTolAbs = opts.plateauErrTolAbs !== null ? opts.plateauErrTolAbs : opts.tolAreaGlobal;
+    var plateauErrTolRel = opts.plateauErrTolRel !== null ? opts.plateauErrTolRel : 5 * opts.errTolRel;
+    var plateauErrGuard = opts.plateauErrGuardFactor * opts.tolAreaGlobal;
+    var prevMaxRelErr = lastStats.maxRelError;
+    var stalledSweeps = 0;
+    var deadSweeps = 0;
+    var plateauSweeps = 0;
+    var errWindow = [prevMaxRelErr];
+    var lastMoveStats = { movedVertices: 0, avgMove: 0, maxMove: 0, acceptedCount: 0 };
+
+    if (prevMaxRelErr <= opts.tolAreaGlobal) {
+      lastStats.maxMove = 0;
+      lastStats.avgMove = 0;
+      lastStats.acceptedCount = 0;
+      lastStats.sweeps = 0;
+      return {
+        ok: !originalDrawingHasCrossings(posById, g.edgePairs),
+        status: 'realized',
+        positions: posById,
+        stats: lastStats,
+        moveStats: lastMoveStats,
+        boundedFaceCount: airData.originalFaceKeys.length,
+        dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
+        hasCrossings: originalDrawingHasCrossings(posById, g.edgePairs)
+      };
     }
-    for (var sweep = 1; sweep <= maxSweeps; sweep += 1) {
+
+    for (var sweep = 1; sweep <= opts.maxSweeps; sweep += 1) {
       var prevSweepPos = copyPositions(posById);
+      var acceptedCount = 0;
+      var sumMove = 0;
+      var maxMove = 0;
 
       for (var vi = 0; vi < movableVertices.length; vi += 1) {
         var v = movableVertices[vi];
-        var currentState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, posById[v], tolAreaPositive);
+        var currentState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, posById[v], opts.tolAreaPositive);
         var currentForce = currentState.feasible ? norm(currentState.force) : Infinity;
-        if (currentForce <= tolForceGlobal) {
+        if (currentForce <= opts.tolForceGlobal) {
           continue;
         }
 
         var solved = solveBalancedPosition(v, airData, posById, {
-          maxNewtonIter: maxNewtonIter,
-          tolForceVertex: tolForceVertex,
-          tolAreaPositive: tolAreaPositive,
-          armijo: armijo,
-          minStep: minStep
+          maxNewtonIter: opts.maxNewtonIter,
+          tolForceVertex: opts.tolForceVertex,
+          tolAreaPositive: opts.tolAreaPositive,
+          armijo: opts.armijo,
+          minStep: opts.minStep
         });
         if (!solved || !solved.pos) {
           continue;
         }
-        var dx = solved.pos.x - posById[v].x;
-        var dy = solved.pos.y - posById[v].y;
-        var move = Math.sqrt(dx * dx + dy * dy);
-        posById[v] = { x: solved.pos.x, y: solved.pos.y };
+        var basePos = { x: posById[v].x, y: posById[v].y };
+        var dx = solved.pos.x - basePos.x;
+        var dy = solved.pos.y - basePos.y;
+        var acceptedPos = null;
+        var stepScale = 1;
+        while (stepScale >= opts.minStep) {
+          var candidate = {
+            x: basePos.x + stepScale * dx,
+            y: basePos.y + stepScale * dy
+          };
+          var candidateState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, candidate, opts.tolAreaPositive);
+          if (candidateState.feasible) {
+            posById[v] = candidate;
+            if (!originalDrawingHasCrossings(posById, g.edgePairs)) {
+              acceptedPos = candidate;
+              break;
+            }
+          }
+          posById[v] = basePos;
+          stepScale *= 0.5;
+        }
+        if (acceptedPos) {
+          posById[v] = acceptedPos;
+          var moveDx = acceptedPos.x - basePos.x;
+          var moveDy = acceptedPos.y - basePos.y;
+          var move = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
+          if (move > maxMove) {
+            maxMove = move;
+          }
+          sumMove += move;
+          acceptedCount += 1;
+        } else {
+          posById[v] = basePos;
+        }
       }
 
-      var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
-        ? global.PlanarGraphCore.computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: tolMove })
+      lastMoveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
+        ? global.PlanarGraphCore.computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: opts.tolMove })
         : { movedVertices: 0, avgMove: 0, maxMove: 0 };
-      var movementStatus = movementTracker ? movementTracker.update({
-        maxMove: moveStats.maxMove,
-        avgMove: moveStats.avgMove
-      }, sweep) : { stableIterations: 0, stableIterLimit: 0, converged: false };
-      lastStats = computeAirStats(airData, posById, movableVertices, tolAreaPositive);
-      if (onIteration) {
-        onIteration({
+      lastMoveStats.maxMove = maxMove;
+      lastMoveStats.avgMove = acceptedCount > 0 ? (sumMove / acceptedCount) : 0;
+      lastMoveStats.acceptedCount = acceptedCount;
+      lastStats = computeAirStats(airData, posById, movableVertices, opts.tolAreaPositive);
+      var maxRelErr = lastStats.maxRelError;
+      var improvement = prevMaxRelErr - maxRelErr;
+      var relImprovement = improvement / Math.max(1, prevMaxRelErr);
+      errWindow.push(maxRelErr);
+      if (errWindow.length > opts.plateauWindow + 1) {
+        errWindow.shift();
+      }
+      var plateauWindowImprovementAbs = null;
+      var plateauWindowImprovementRel = null;
+      if (errWindow.length >= opts.plateauWindow + 1) {
+        plateauWindowImprovementAbs = errWindow[0] - maxRelErr;
+        plateauWindowImprovementRel = plateauWindowImprovementAbs / Math.max(1, errWindow[0]);
+      }
+      lastStats.maxMove = lastMoveStats.maxMove;
+      lastStats.avgMove = lastMoveStats.avgMove;
+      lastStats.acceptedCount = acceptedCount;
+      lastStats.sweeps = sweep;
+      lastStats.plateauSweepCount = plateauSweeps;
+      lastStats.plateauWindowImprovementAbs = plateauWindowImprovementAbs;
+      lastStats.plateauWindowImprovementRel = plateauWindowImprovementRel;
+      if (opts.onIteration) {
+        opts.onIteration({
           iter: sweep,
-          maxIters: maxSweeps,
-          maxRelError: lastStats.maxRelError,
+          maxIters: opts.maxSweeps,
+          maxRelError: maxRelErr,
           maxForce: lastStats.maxForce,
           balancedCount: lastStats.balancedCount,
           positions: posById,
-          movedVertices: moveStats.movedVertices,
-          maxMove: moveStats.maxMove,
-          avgMove: moveStats.avgMove,
-          stableIterCount: movementStatus.stableIterations,
-          stableIterLimit: movementStatus.stableIterLimit,
+          movedVertices: acceptedCount,
+          maxMove: lastMoveStats.maxMove,
+          avgMove: lastMoveStats.avgMove,
+          stableIterCount: stalledSweeps,
+          stableIterLimit: opts.patience,
+          acceptedCount: acceptedCount,
+          deadSweepCount: deadSweeps,
+          plateauSweepCount: plateauSweeps,
+          plateauPatience: opts.plateauPatience,
+          plateauWindow: opts.plateauWindow,
+          plateauWindowImprovementAbs: plateauWindowImprovementAbs,
+          plateauWindowImprovementRel: plateauWindowImprovementRel,
           boundedFaceCount: lastStats.boundedFaceCount
         });
       }
-      if (interactive && (sweep % renderEvery === 0 || sweep === 1 || sweep === maxSweeps)) {
-        applyPositionsToCy(cy, g.nodeIds, posById);
-        if (!didFit) {
-          cy.fit(undefined, 24);
-          didFit = true;
-        }
-        await waitForNextFrame(delayMs);
-      } else if ((onIteration || delayMs > 0) && (sweep % yieldEvery === 0 || sweep === maxSweeps)) {
-        await waitForNextFrame(delayMs);
+      if (typeof opts.onSweepComplete === 'function') {
+        await opts.onSweepComplete({
+          iter: sweep,
+          maxIters: opts.maxSweeps,
+          status: status,
+          positions: posById,
+          stats: lastStats,
+          moveStats: lastMoveStats,
+          acceptedCount: acceptedCount,
+          plateauSweepCount: plateauSweeps,
+          boundedFaceCount: lastStats.boundedFaceCount
+        });
       }
 
-      if (lastStats.maxRelError <= tolAreaGlobal) {
+      if (maxRelErr <= opts.tolAreaGlobal) {
         status = 'realized';
         break;
       }
-      if (lastStats.maxForce <= tolForceGlobal) {
+
+      if (acceptedCount === 0) {
+        deadSweeps += 1;
+      } else {
+        deadSweeps = 0;
+      }
+      if (deadSweeps >= opts.deadlockPatience) {
         status = 'deadlock';
         break;
       }
-      if (movementStatus.converged) {
-        status = movementStatus.reason || 'movement-converged';
-        break;
+
+      if (lastMoveStats.maxMove <= moveTol &&
+          lastMoveStats.avgMove <= avgMoveTol &&
+          relImprovement <= opts.errTolRel) {
+        stalledSweeps += 1;
+      } else {
+        stalledSweeps = 0;
       }
-      if (moveStats.movedVertices === 0) {
+      if (stalledSweeps >= opts.patience) {
         status = 'stalled';
         break;
       }
+
+      if (plateauWindowImprovementAbs !== null &&
+          maxRelErr <= plateauErrGuard &&
+          plateauWindowImprovementAbs <= plateauErrTolAbs &&
+          plateauWindowImprovementRel <= plateauErrTolRel) {
+        plateauSweeps += 1;
+      } else {
+        plateauSweeps = 0;
+      }
+      if (plateauSweeps >= opts.plateauPatience) {
+        status = 'stalled';
+        break;
+      }
+
+      prevMaxRelErr = maxRelErr;
     }
 
-    applyPositionsToCy(cy, g.nodeIds, posById);
+    return {
+      ok: !originalDrawingHasCrossings(posById, g.edgePairs),
+      status: status,
+      positions: posById,
+      stats: lastStats,
+      moveStats: lastMoveStats,
+      boundedFaceCount: airData.originalFaceKeys.length,
+      dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
+      hasCrossings: originalDrawingHasCrossings(posById, g.edgePairs)
+    };
+  }
+
+  async function applyAirLayout(cy, options) {
+    var prepared = prepareAirFromGeneralPlaneGraph(cy, options);
+    if (!prepared || !prepared.ok) {
+      return prepared || { ok: false, message: 'Air setup failed' };
+    }
+
+    if (prepared.airData.originalFaceKeys.length === 0) {
+      applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
+      cy.fit(undefined, 24);
+      return { ok: true, message: 'Applied Air (no bounded faces to balance)' };
+    }
+
+    var opts = prepared.opts;
+    var didFit = false;
+    if (opts.interactive) {
+      applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
+      cy.fit(undefined, 24);
+      didFit = true;
+      await waitForNextFrame(opts.delayMs);
+    }
+
+    var solveResult = await solveAirTriangulation(prepared, Object.assign({}, opts, {
+      onSweepComplete: async function (event) {
+        if (opts.interactive &&
+            (event.iter % opts.renderEvery === 0 || event.iter === 1 || event.iter === event.maxIters)) {
+          applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
+          if (!didFit) {
+            cy.fit(undefined, 24);
+            didFit = true;
+          }
+          await waitForNextFrame(opts.delayMs);
+        } else if ((opts.onIteration || opts.delayMs > 0) &&
+            (event.iter % opts.yieldEvery === 0 || event.iter === event.maxIters)) {
+          await waitForNextFrame(opts.delayMs);
+        }
+      }
+    }));
+    var status = solveResult.status;
+    var lastStats = solveResult.stats;
+
+    applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
     if (!didFit) {
       cy.fit(undefined, 24);
+    }
+    if (solveResult.hasCrossings) {
+      return {
+        ok: false,
+        status: status,
+        message: 'Air produced a non-plane drawing',
+        maxRelError: lastStats ? lastStats.maxRelError : null,
+        boundedFaceCount: prepared.airData.originalFaceKeys.length,
+        dummyCount: prepared.augmented.dummyCount
+      };
     }
 
     var faceScore = null;
     if (global.PlanarVibeMetrics && global.PlanarVibeMetrics.computeUniformFaceAreaScore) {
-      faceScore = global.PlanarVibeMetrics.computeUniformFaceAreaScore(g.nodeIds, g.edgePairs, posById);
+      faceScore = global.PlanarVibeMetrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
     }
 
-    var message = 'Applied Air (' + airData.originalFaceKeys.length + ' bounded faces, ' +
-      airData.triangles.length + ' triangles';
-    if (augmented.dummyCount > 0) {
-      message += ', +' + augmented.dummyCount + ' dummy';
+    var message = 'Applied Air (' + prepared.airData.originalFaceKeys.length + ' bounded faces, ' +
+      prepared.airData.triangles.length + ' triangles';
+    if (prepared.augmented.dummyCount > 0) {
+      message += ', +' + prepared.augmented.dummyCount + ' dummy';
     }
     message += ', status ' + status;
     if (lastStats && Number.isFinite(lastStats.maxRelError)) {
@@ -691,12 +928,14 @@
       message: message,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: lastStats ? lastStats.maxRelError : null,
-      boundedFaceCount: airData.originalFaceKeys.length,
-      dummyCount: augmented.dummyCount
+      boundedFaceCount: prepared.airData.originalFaceKeys.length,
+      dummyCount: prepared.augmented.dummyCount
     };
   }
 
   global.PlanarVibeAir = {
+    prepareAirFromGeneralPlaneGraph: prepareAirFromGeneralPlaneGraph,
+    solveAirTriangulation: solveAirTriangulation,
     applyAirLayout: applyAirLayout
   };
 })(window);

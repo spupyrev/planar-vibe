@@ -137,18 +137,74 @@
   }
 
   function buildInitialPositions(nodeIds, edgePairs, outerFace, cy) {
+    function solveExactWeightedBarycentricLayout(input) {
+      var ids = (input && input.nodeIds) ? input.nodeIds.map(String) : [];
+      var adjacency = (input && input.adjacency) ? input.adjacency : {};
+      var face = (input && input.outerFace) ? input.outerFace.map(String) : [];
+      var initOptions = input && input.initOptions ? input.initOptions : {};
+      var pos = global.PlanarVibeBarycentricCore.initOuterCoords(ids, face, initOptions);
+      var outerSet = new Set(face);
+      var interiorIds = [];
+      var interiorIndexById = {};
+      var i;
+      var j;
+
+      for (i = 0; i < ids.length; i += 1) {
+        var id = String(ids[i]);
+        if (!outerSet.has(id)) {
+          interiorIndexById[id] = interiorIds.length;
+          interiorIds.push(id);
+        }
+      }
+      if (interiorIds.length === 0) {
+        return { ok: true, pos: pos, iters: 0 };
+      }
+
+      var L = new Array(interiorIds.length);
+      var bx = createZeroVector(interiorIds.length);
+      var by = createZeroVector(interiorIds.length);
+      for (i = 0; i < interiorIds.length; i += 1) {
+        L[i] = createZeroVector(interiorIds.length);
+        L[i][i] = 1;
+        var neighbors = adjacency[interiorIds[i]] || [];
+        if (neighbors.length === 0) {
+          continue;
+        }
+        var weight = 1 / neighbors.length;
+        for (j = 0; j < neighbors.length; j += 1) {
+          var neighborId = String(neighbors[j]);
+          var interiorIdx = interiorIndexById[neighborId];
+          if (interiorIdx === undefined) {
+            bx[i] += weight * pos[neighborId].x;
+            by[i] += weight * pos[neighborId].y;
+          } else {
+            L[i][interiorIdx] -= weight;
+          }
+        }
+      }
+
+      var factor = luFactorize(L);
+      if (!factor) {
+        return { ok: false, message: 'Exact barycentric solve failed' };
+      }
+      var solved = solveLUWithTwoRhs(factor, bx, by);
+      if (!solved) {
+        return { ok: false, message: 'Exact barycentric solve failed' };
+      }
+      for (i = 0; i < interiorIds.length; i += 1) {
+        pos[interiorIds[i]] = { x: solved.x1[i], y: solved.x2[i] };
+      }
+      return { ok: true, pos: pos, iters: 1 };
+    }
+
     var adjacency = buildAdjacency(nodeIds, edgePairs);
-    var weights = global.PlanarVibeBarycentricCore.buildUniformWeights(edgePairs, 1);
     var seedPos = global.PlanarVibeBarycentricCore.currentPositionsFromCy
       ? global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy)
       : {};
-    return global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
+    return solveExactWeightedBarycentricLayout({
       nodeIds: nodeIds,
       adjacency: adjacency,
       outerFace: outerFace,
-      weights: weights,
-      maxIters: 1000,
-      tolerance: 1e-6,
       initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
         useSeedOuter: false,
         seedPos: seedPos
@@ -156,8 +212,8 @@
     });
   }
 
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding) {
-    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding);
+  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace) {
+    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
     if (!augmented || !augmented.ok) {
       return { ok: false, reason: (augmented && augmented.reason) || 'FaceBalancer augmentation failed' };
     }
@@ -403,12 +459,15 @@
     var triangles = [];
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
-      if (!face || face.length !== 3) {
-        return { ok: false, reason: 'FaceBalancer requires a fully triangulated augmentation' };
+      if (!face || face.length < 3) {
+        return { ok: false, reason: 'FaceBalancer requires a valid triangulated augmentation' };
       }
       var oriented = orientFaceCCW(face, initPos);
       var originalKey = originalFaceKeyForAugmentedFace(oriented, dummyFaceKeyById, dummyFaceVerticesById);
       if (originalKey === outerOriginalKey) continue;
+      if (face.length !== 3) {
+        return { ok: false, reason: 'FaceBalancer requires all non-outer augmented faces to be triangles' };
+      }
       var faceIdx = originalFaceIndexByKey[originalKey];
       if (faceIdx === undefined) {
         return { ok: false, reason: 'FaceBalancer face mapping failed for face ' + oriented.join(',') };
@@ -645,6 +704,7 @@
   }
 
   function evaluateObjectiveAndGradient(q, data) {
+    var triangleSlack = Math.max(data.areaTol, 1e-12);
     var nI = data.interiorAugIndices.length;
     var lambda = createZeroVector(data.qSize);
     var L = new Array(nI);
@@ -691,10 +751,10 @@
       var b = tri[1];
       var c = tri[2];
       var area = 0.5 * ((x[b] - x[a]) * (y[c] - y[a]) - (x[c] - x[a]) * (y[b] - y[a]));
-      if (!(area > data.areaTol)) {
+      if (!(area > -triangleSlack)) {
         return { ok: false, reason: 'invalid-triangulation-step' };
       }
-      faceAreas[tri[3]] += area;
+      faceAreas[tri[3]] += area > triangleSlack ? area : triangleSlack;
     }
     for (i = 0; i < faceAreas.length; i += 1) {
       if (!(faceAreas[i] > data.minOriginalFaceArea)) {
@@ -1049,20 +1109,22 @@
       return { ok: false, message: 'FaceBalancer requires a planar graph' };
     }
 
-    var augmented = prepareAugmentedTriangulation(g.nodeIds, g.edgePairs, baseEmbedding);
-    if (!augmented.ok) {
-      return { ok: false, message: augmented.reason || 'FaceBalancer augmentation failed' };
-    }
     var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer boundary for FaceBalancer layout' };
+    }
+    var augmented = prepareAugmentedTriangulation(g.nodeIds, g.edgePairs, baseEmbedding, outerFace);
+    if (!augmented.ok) {
+      return { ok: false, message: augmented.reason || 'FaceBalancer augmentation failed' };
     }
     var init = buildInitialPositions(augmented.nodeIds, augmented.edgePairs, outerFace, cy);
     if (!init || !init.ok || !init.pos) {
       return { ok: false, message: (init && init.message) || 'FaceBalancer initialization failed' };
     }
 
-    var initPos = copyPositions(init.pos);
+    var initPos = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
+      ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(init.pos, outerFace)
+      : copyPositions(init.pos);
     var areaTol = Number.isFinite(opts.areaTol) && opts.areaTol >= 0
       ? opts.areaTol
       : 1e-15;
@@ -1091,7 +1153,7 @@
       data.minOriginalFaceArea = Math.max(0, 0.25 * data.initialMinOriginalFaceArea);
     }
     if (!(Number.isFinite(opts.minOriginalEdgeLength2) && opts.minOriginalEdgeLength2 >= 0)) {
-      data.minOriginalEdgeLength2 = Math.max(0, 0.25 * data.initialMinOriginalEdgeLength2);
+      data.minOriginalEdgeLength2 = 0;
     }
     if (data.originalFaceKeys.length === 0) {
       applyPositionsToCy(cy, g.nodeIds, initPos);

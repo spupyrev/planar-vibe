@@ -302,11 +302,15 @@
     if (!emb || !emb.ok) {
       return { ok: false, message: 'FD-uniform requires a planar graph' };
     }
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
+    if (!outerFace) {
+      return { ok: false, message: 'Could not determine outer face' };
+    }
 
     var augmentedNodeIds = nodeIds.slice();
     var augmentedEdgePairs = edgePairs.slice();
     if (global.PlanarGraphCore && global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
-      var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, emb);
+      var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, emb, outerFace);
       if (!prepared || !prepared.ok) {
         return { ok: false, message: (prepared && prepared.reason) || 'Could not build a triangulated embedding' };
       }
@@ -317,11 +321,6 @@
     if (!embAug || !embAug.ok) {
       return { ok: false, message: 'Could not build a triangulated embedding' };
     }
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
-    if (!outerFace) {
-      return { ok: false, message: 'Could not determine outer face' };
-    }
-
     var adjacencyAug = buildAdjacency(augmentedNodeIds, augmentedEdgePairs);
     var uniformWeights = global.PlanarVibeBarycentricCore.buildUniformWeights(augmentedEdgePairs, 1);
     var seedPos = (global.PlanarVibeBarycentricCore && global.PlanarVibeBarycentricCore.currentPositionsFromCy)
@@ -343,7 +342,9 @@
       return { ok: false, message: 'Initial barycentric embedding failed' };
     }
 
-    var pos = copyPositions(initial.pos);
+    var pos = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
+      ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(initial.pos, outerFace)
+      : copyPositions(initial.pos);
     var adjOrig = buildAdjacency(nodeIds, edgePairs);
     var outerSet = new Set(outerFace.map(String));
     var movable = [];

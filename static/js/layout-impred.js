@@ -540,7 +540,9 @@
             })
           });
           if (initSolve && initSolve.ok && initSolve.pos) {
-            posById = initSolve.pos;
+            posById = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
+              ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(initSolve.pos, initOuter)
+              : initSolve.pos;
             applyPositionsToCy(cy, posById);
           }
         }

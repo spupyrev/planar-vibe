@@ -23,7 +23,7 @@
     }
     if (!global.PlanarGraphCore ||
         !global.PlanarGraphCore.isTriangulatedEmbedding ||
-        !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+        !global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation) {
       return {
         ok: false,
         reason: 'Planar graph utilities are missing'
@@ -37,6 +37,13 @@
         reason: 'Graph is not planar'
       };
     }
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
+    if (!outerFace || outerFace.length < 3) {
+      return {
+        ok: false,
+        reason: 'Could not determine outer face'
+      };
+    }
 
     var augmented = {
       nodeIds: nodeIds.map(String),
@@ -44,7 +51,7 @@
       dummyCount: 0
     };
     if (!global.PlanarGraphCore.isTriangulatedEmbedding(embedding)) {
-      var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding);
+      var prepared = global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding, outerFace);
       if (!prepared || !prepared.ok) {
         return {
           ok: false,

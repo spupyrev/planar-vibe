@@ -58,7 +58,7 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, reason: 'Planarity utilities are missing' };
     }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation) {
       return { ok: false, reason: 'Planar graph utilities are missing' };
     }
 
@@ -68,7 +68,12 @@
     if (!emb || !emb.ok) {
       return { ok: false, reason: 'Graph is not planar' };
     }
-    if (!hasNonTriangularFace(emb.faces)) {
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
+    if (!outerFace || outerFace.length < 3) {
+      return { ok: false, reason: 'Could not determine outer face' };
+    }
+    if (global.PlanarGraphCore.isTriangulatedEmbedding && global.PlanarGraphCore.isTriangulatedEmbedding(emb)) {
+      emb.outerFace = outerFace.slice();
       return {
         ok: true,
         nodeIds: nodes,
@@ -77,7 +82,7 @@
       };
     }
 
-    var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodes, edges, emb);
+    var prepared = global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation(nodes, edges, emb, outerFace);
     if (!prepared || !prepared.ok) {
       return { ok: false, reason: (prepared && prepared.reason) || 'Augmentation failed' };
     }
@@ -87,15 +92,6 @@
       edgePairs: prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
       embedding: prepared.embedding
     };
-  }
-
-  function hasNonTriangularFace(faces) {
-    for (var i = 0; i < (faces || []).length; i += 1) {
-      if ((faces[i] || []).length > 3) {
-        return true;
-      }
-    }
-    return false;
   }
 
   function buildRotationById(embedding) {

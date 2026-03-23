@@ -194,15 +194,13 @@
     }
     var edgeSet = buildEdgeSet(edgePairs || []);
     var best = null;
-    var fallback = null;
     for (var i = 0; i < faces.length; i += 1) {
       var face = faces[i];
       if (!Array.isArray(face) || face.length < 3) continue;
-      if (!fallback || face.length > fallback.length) fallback = face;
       if (faceHasChord(face, edgeSet)) continue;
       if (!best || face.length > best.length) best = face;
     }
-    return (best || fallback || null).slice();
+    return best ? best.slice() : null;
   }
 
   function LRPlanarity(n, edges) {

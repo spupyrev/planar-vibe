@@ -1557,6 +1557,16 @@
                 if (Number.isFinite(progress.maxForce)) {
                   parts.push('max force ' + progress.maxForce.toExponential(2));
                 }
+                if (Number.isFinite(progress.maxMove)) {
+                  parts.push('max move ' + progress.maxMove.toExponential(2));
+                }
+                if (Number.isFinite(progress.acceptedCount)) {
+                  parts.push('accepted ' + progress.acceptedCount);
+                }
+                if (Number.isFinite(progress.plateauWindowImprovementAbs) &&
+                    Number.isFinite(progress.plateauWindow)) {
+                  parts.push('dErr[' + progress.plateauWindow + '] ' + progress.plateauWindowImprovementAbs.toExponential(2));
+                }
                 if (Number.isFinite(progress.boundedFaceCount)) {
                   parts.push('faces ' + progress.boundedFaceCount);
                 }

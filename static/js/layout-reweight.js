@@ -157,6 +157,9 @@
         pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
       }
     }
+    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
+      return global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(pos, outerFace);
+    }
     return pos;
   }
 
@@ -457,15 +460,15 @@
       return { ok: false, message: 'ReweightTutte++ requires a planar graph' };
     }
 
-    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(g.nodeIds, g.edgePairs, emb);
-    if (!augmented || !augmented.ok) {
-      return { ok: false, message: (augmented && augmented.reason) || 'Augmentation failed' };
-    }
-    var embAug = augmented.embedding;
     var outer = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
     if (!outer || outer.length < 3) {
       return { ok: false, message: 'Could not determine outer face' };
     }
+    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(g.nodeIds, g.edgePairs, emb, outer);
+    if (!augmented || !augmented.ok) {
+      return { ok: false, message: (augmented && augmented.reason) || 'Augmentation failed' };
+    }
+    var embAug = augmented.embedding;
     var outerFaceForEmbedding = longestFace(embAug.faces);
     if (!outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
       return { ok: false, message: 'Could not determine augmented outer face' };
