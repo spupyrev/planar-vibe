@@ -139,6 +139,7 @@
       edgePairs: augmented.edgePairs,
       dummyCount: augmented.dummyCount,
       dummyFaceKeyById: dummyFaceKeyById,
+      dummyFaceVerticesById: dummyFaceVerticesById,
       embedding: embAug
     };
   }
@@ -161,9 +162,14 @@
     });
   }
 
-  function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById) {
+  function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds) {
+    var seen = seenDummyIds || new Set();
     for (var i = 0; i < face.length; i += 1) {
       var vertexId = String(face[i]);
+      if (dummyFaceVerticesById && Array.isArray(dummyFaceVerticesById[vertexId]) && !seen.has(vertexId)) {
+        seen.add(vertexId);
+        return originalFaceKeyForAugmentedFace(dummyFaceVerticesById[vertexId], dummyFaceKeyById, dummyFaceVerticesById, seen);
+      }
       if (dummyFaceKeyById[vertexId]) {
         return dummyFaceKeyById[vertexId];
       }
@@ -171,8 +177,8 @@
     return faceKey(face);
   }
 
-  function buildAirData(baseEmbedding, augmentedEmbedding, outerFace, dummyFaceKeyById, posById) {
-    var outerOriginalKey = originalFaceKeyForAugmentedFace(outerFace, dummyFaceKeyById);
+  function buildAirData(baseEmbedding, augmentedEmbedding, outerFace, dummyFaceKeyById, dummyFaceVerticesById, posById) {
+    var outerOriginalKey = originalFaceKeyForAugmentedFace(outerFace, dummyFaceKeyById, dummyFaceVerticesById);
     var originalFaceKeys = [];
     var originalFaceSet = new Set();
     var i;
@@ -201,7 +207,7 @@
       }
 
       var oriented = orientFaceCCW(face, posById);
-      var originalKey = originalFaceKeyForAugmentedFace(oriented, dummyFaceKeyById);
+      var originalKey = originalFaceKeyForAugmentedFace(oriented, dummyFaceKeyById, dummyFaceVerticesById);
       if (originalKey === outerOriginalKey) {
         continue;
       }
@@ -526,7 +532,7 @@
     }
 
     var posById = copyPositions(init.pos);
-    var airData = buildAirData(baseEmbedding, augmented.embedding, originalOuterFace, augmented.dummyFaceKeyById, posById);
+    var airData = buildAirData(baseEmbedding, augmented.embedding, originalOuterFace, augmented.dummyFaceKeyById, augmented.dummyFaceVerticesById, posById);
     if (!airData.ok) {
       return { ok: false, message: airData.reason || 'Air setup failed' };
     }

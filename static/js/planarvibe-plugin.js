@@ -1248,6 +1248,10 @@
       setLayoutEnabled('air', isEnabled);
     }
 
+    function setFaceBalancerEnabled(isEnabled) {
+      setLayoutEnabled('facebalancer', isEnabled);
+    }
+
     function setImPrEdEnabled(isEnabled) {
       setLayoutEnabled('impred', isEnabled);
     }
@@ -1283,6 +1287,7 @@
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
       setAirEnabled(false);
+      setFaceBalancerEnabled(false);
       setImPrEdEnabled(false);
       setCEG23BfsEnabled(false);
       setCEG23XyEnabled(false);
@@ -1331,6 +1336,7 @@
       });
       setTutteEnabled(isPlanar);
       setAirEnabled(isPlanar);
+      setFaceBalancerEnabled(isPlanar);
       setImPrEdEnabled(isPlanar);
       setCEG23BfsEnabled(isPlanar);
       setCEG23XyEnabled(isPlanar);
@@ -1553,6 +1559,44 @@
                 }
                 if (Number.isFinite(progress.boundedFaceCount)) {
                   parts.push('faces ' + progress.boundedFaceCount);
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            };
+          },
+          disableOtherButtonsWhileRunning: true
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'facebalancer') {
+        normalizeLayoutScale();
+        runSpecialLayout({
+          layoutName: 'facebalancer',
+          disabledMessage: 'FaceBalancer layout requires a planar graph',
+          missingMessage: 'FaceBalancer layout module is missing',
+          module: global.PlanarVibeFaceBalancer,
+          methodName: 'applyFaceBalancerLayout',
+          buildMethodOptions: function () {
+            return {
+              interactive: false,
+              delayMs: 0,
+              onIteration: function (progress) {
+                if (!progress) return;
+                var parts = [];
+                parts.push('FaceBalancer step ' + progress.iter + '/' + progress.maxIters);
+                if (Number.isFinite(progress.objective)) {
+                  parts.push('obj ' + progress.objective.toFixed(3));
+                }
+                if (Number.isFinite(progress.gradNorm)) {
+                  parts.push('grad ' + progress.gradNorm.toExponential(2));
+                }
+                if (Number.isFinite(progress.maxRelError)) {
+                  parts.push('face err ' + progress.maxRelError.toFixed(3));
                 }
                 setStatus(parts.join(' | '), false);
               }

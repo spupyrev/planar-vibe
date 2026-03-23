@@ -89,6 +89,7 @@ function loadBrowserModules() {
     'static/js/layout-barycentric-core.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
+    'static/js/layout-facebalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -115,6 +116,7 @@ const PlanarGraphCore = modules.PlanarGraphCore;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
+const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const CEG23 = modules.PlanarVibeCEG23Bfs;
 const CEG23XY = modules.PlanarVibeCEG23Xy;
 const ImPrEd = modules.PlanarVibeImPrEd;
@@ -251,6 +253,80 @@ function hasEdgeCrossing(nodeIds, edgePairs, positionsById) {
     }
   }
   return false;
+}
+
+function faceCanonicalKeyForTest(face) {
+  if (!face || face.length === 0) {
+    return '';
+  }
+  const arr = face.map(String);
+  const n = arr.length;
+  let best = null;
+  for (let i = 0; i < n; i += 1) {
+    const rot = arr.slice(i).concat(arr.slice(0, i)).join('|');
+    if (best === null || rot < best) {
+      best = rot;
+    }
+  }
+  const rev = arr.slice().reverse();
+  for (let i = 0; i < n; i += 1) {
+    const rot = rev.slice(i).concat(rev.slice(0, i)).join('|');
+    if (best === null || rot < best) {
+      best = rot;
+    }
+  }
+  return best || '';
+}
+
+function polygonAreaAbs(face, positionsById) {
+  let sum = 0;
+  for (let i = 0; i < face.length; i += 1) {
+    const a = positionsById[String(face[i])];
+    const b = positionsById[String(face[(i + 1) % face.length])];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}
+
+function minBoundedFaceArea(graph, positionsById) {
+  const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  if (!embedding || !embedding.ok) {
+    return null;
+  }
+  const outerKey = faceCanonicalKeyForTest(PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding) || []);
+  let minArea = Infinity;
+  for (const face of embedding.faces || []) {
+    if (faceCanonicalKeyForTest(face) === outerKey) {
+      continue;
+    }
+    const area = polygonAreaAbs(face, positionsById);
+    if (area < minArea) {
+      minArea = area;
+    }
+  }
+  return Number.isFinite(minArea) ? minArea : null;
+}
+
+function edgeLengthRatio(edgePairs, positionsById) {
+  let minLen = Infinity;
+  let maxLen = 0;
+  for (const [u, v] of edgePairs) {
+    const pu = positionsById[String(u)];
+    const pv = positionsById[String(v)];
+    const dx = pu.x - pv.x;
+    const dy = pu.y - pv.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < minLen) {
+      minLen = len;
+    }
+    if (len > maxLen) {
+      maxLen = len;
+    }
+  }
+  if (!(minLen >= 0) || !(maxLen > 0)) {
+    return null;
+  }
+  return minLen / maxLen;
 }
 
 function seedGridPositions(cy, nodeIds) {
@@ -426,17 +502,35 @@ test('face stellation adds one dummy vertex for every non-triangular face includ
   }
 });
 
-test('common outer-face helper prefers embedding.outerFace and otherwise falls back to the longest face', () => {
+test('common outer-face helper prefers a chordless explicit outer face and otherwise falls back to the longest chordless face', () => {
   const explicit = PlanarGraphCore.chooseOuterFaceFromEmbedding({
     outerFace: ['a', 'b', 'c'],
+    edges: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['x', 'y'], ['y', 'z'], ['z', 'w'], ['w', 'x']],
     faces: [['x', 'y', 'z', 'w']]
   });
   assert.deepEqual(explicit, ['a', 'b', 'c']);
 
   const fallback = PlanarGraphCore.chooseOuterFaceFromEmbedding({
-    faces: [['1', '2', '3'], ['4', '5', '6', '7'], ['8', '9', '10']]
+    edges: [
+      ['1', '2'], ['2', '3'], ['3', '1'],
+      ['4', '5'], ['5', '6'], ['6', '7'], ['7', '4'], ['4', '6'],
+      ['8', '9'], ['9', '10'], ['10', '11'], ['11', '12'], ['12', '8']
+    ],
+    faces: [['1', '2', '3'], ['4', '5', '6', '7'], ['8', '9', '10', '11', '12']]
   });
-  assert.deepEqual(fallback, ['4', '5', '6', '7']);
+  assert.deepEqual(fallback, ['8', '9', '10', '11', '12']);
+});
+
+test('common outer-face helper ignores an explicit outer face when it contains a chord', () => {
+  const chosen = PlanarGraphCore.chooseOuterFaceFromEmbedding({
+    outerFace: ['1', '2', '3', '4'],
+    edges: [
+      ['1', '2'], ['2', '3'], ['3', '4'], ['4', '1'], ['1', '3'],
+      ['5', '6'], ['6', '7'], ['7', '8'], ['8', '9'], ['9', '5']
+    ],
+    faces: [['1', '2', '3', '4'], ['5', '6', '7', '8', '9']]
+  });
+  assert.deepEqual(chosen, ['5', '6', '7', '8', '9']);
 });
 
 test('shared movement convergence helper stops after enough stable iterations', () => {
@@ -945,6 +1039,92 @@ test('Air layout stays plane on 5 random planar graphs', async () => {
     }
     assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, `Air produced crossings for seed=${seed}`);
   }
+});
+
+test('FaceBalancer layout applies on planar sample and improves bounded face balance', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const baseline = Tutte.applyTutteLayout(cy);
+  assert.equal(baseline.ok, true, baseline.message || 'Tutte baseline failed');
+  const before = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+  assert.equal(before.ok, true, before.reason || 'Baseline face score failed');
+
+  const result = await FaceBalancer.applyFaceBalancerLayout(cy, { delayMs: 0, maxIters: 25 });
+  assert.equal(result.ok, true, result.message || 'FaceBalancer failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  const after = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
+  assert.equal(after.ok, true, after.reason || 'FaceBalancer face score failed');
+  assert.ok(Number.isFinite(after.quality), 'FaceBalancer face quality is not finite');
+  assert.ok(after.quality + 1e-6 >= before.quality, `FaceBalancer worsened face balance: before=${before.quality}, after=${after.quality}`);
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing FaceBalancer position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    positionsById[node.id()] = node._pos;
+  }
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'FaceBalancer introduced crossings on sample1');
+});
+
+test('FaceBalancer layout rejects non-planar graphs', async () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await FaceBalancer.applyFaceBalancerLayout(cy, { delayMs: 0 });
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /planar graph/i);
+});
+
+test('FaceBalancer handles randomplanar4 without failing', async () => {
+  const text = Generator.getSample('randomplanar4');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await FaceBalancer.applyFaceBalancerLayout(cy, { delayMs: 0, maxIters: 20 });
+  assert.equal(result.ok, true, result.message || 'FaceBalancer failed on randomplanar4');
+});
+
+test('FaceBalancer preserves a plane drawing on planar3tree100', async () => {
+  const text = Generator.getSample('planar3tree100');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await FaceBalancer.applyFaceBalancerLayout(cy, { delayMs: 0, maxIters: 40 });
+  assert.equal(result.ok, true, result.message || 'FaceBalancer failed on planar3tree100');
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing FaceBalancer position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    positionsById[node.id()] = node._pos;
+  }
+
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'FaceBalancer introduced crossings on planar3tree100');
+});
+
+test('FaceBalancer avoids severe edge and face collapse on planar3tree30', async () => {
+  const text = Generator.getSample('planar3tree30');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await FaceBalancer.applyFaceBalancerLayout(cy, { delayMs: 0, maxIters: 40 });
+  assert.equal(result.ok, true, result.message || 'FaceBalancer failed on planar3tree30');
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing FaceBalancer position for node ${node.id()}`);
+    positionsById[node.id()] = node._pos;
+  }
+
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'FaceBalancer introduced crossings on planar3tree30');
+  assert.ok((edgeLengthRatio(graph.edgePairs, positionsById) || 0) > 1e-6, 'FaceBalancer still collapses an original edge on planar3tree30');
+  assert.ok((minBoundedFaceArea(graph, positionsById) || 0) > 1e-4, 'FaceBalancer still collapses a bounded face on planar3tree30');
 });
 
 test('CEG23-bfs layout applies on planar sample and assigns finite positions', () => {
