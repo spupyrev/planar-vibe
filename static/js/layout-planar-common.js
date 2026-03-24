@@ -134,6 +134,18 @@
     });
   }
 
+  function collectMovableVertices(nodeIds, outerFace) {
+    var outerSet = new Set((outerFace || []).map(String));
+    var movableVertices = [];
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var nodeId = String(nodeIds[i]);
+      if (!outerSet.has(nodeId)) {
+        movableVertices.push(nodeId);
+      }
+    }
+    return movableVertices;
+  }
+
   function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel) {
     var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
     var label = failureLabel || 'layout';
@@ -172,6 +184,76 @@
     return faceKey(face);
   }
 
+  function prepareTriangulatedLayoutContext(cy, config) {
+    var cfg = config || {};
+    var label = String(cfg.failureLabel || 'Layout');
+    var minNodeCount = Number.isFinite(cfg.minNodeCount) ? Math.max(1, Math.floor(cfg.minNodeCount)) : 3;
+    var usesDefaultSeed = typeof cfg.initPositions !== 'function';
+    var initPositions = usesDefaultSeed
+      ? function (nodeIds, edgePairs, outerFace, localCy) {
+        return buildUniformBarycentricSeed(nodeIds, edgePairs, outerFace, localCy, cfg.seedOptions || {
+          maxIters: 1000,
+          tolerance: 1e-7,
+          useSeedOuter: false
+        });
+      }
+      : cfg.initPositions;
+
+    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
+      return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
+    }
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+      return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
+    }
+    if (usesDefaultSeed && (!global.PlanarVibeBarycentricCore ||
+        !global.PlanarVibeBarycentricCore.buildUniformWeights ||
+        !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout ||
+        !global.PlanarVibeBarycentricCore.currentPositionsFromCy)) {
+      return { ok: false, message: 'Barycentric core is missing. Check script load order' };
+    }
+
+    var graph = graphFromCy(cy);
+    if (graph.nodeIds.length < minNodeCount) {
+      return { ok: false, message: label + ' requires at least ' + minNodeCount + ' vertices' };
+    }
+
+    var baseEmbedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+    if (!baseEmbedding || !baseEmbedding.ok) {
+      return { ok: false, message: label + ' requires a planar graph' };
+    }
+
+    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
+    if (!outerFace || outerFace.length < 3) {
+      return { ok: false, message: 'Could not determine outer boundary for ' + label };
+    }
+
+    var augmented = prepareAugmentedTriangulation(graph.nodeIds, graph.edgePairs, baseEmbedding, outerFace, label);
+    if (!augmented.ok) {
+      return { ok: false, message: augmented.reason || (label + ' augmentation failed') };
+    }
+
+    var init = initPositions(augmented.nodeIds, augmented.edgePairs, outerFace, cy, {
+      graph: graph,
+      baseEmbedding: baseEmbedding,
+      augmented: augmented,
+      outerFace: outerFace,
+      config: cfg
+    });
+    if (!init || !init.ok || !init.pos) {
+      return { ok: false, message: (init && init.message) || (label + ' initialization failed') };
+    }
+
+    return {
+      ok: true,
+      graph: graph,
+      baseEmbedding: baseEmbedding,
+      outerFace: outerFace,
+      augmented: augmented,
+      posById: alignOuterFace(init.pos, outerFace),
+      movableVertices: collectMovableVertices(augmented.nodeIds, outerFace)
+    };
+  }
+
   global.PlanarVibePlanarCommon = {
     faceKey: faceKey,
     graphFromCy: graphFromCy,
@@ -183,7 +265,9 @@
     alignOuterFace: alignOuterFace,
     outerFaceDiameter: outerFaceDiameter,
     buildUniformBarycentricSeed: buildUniformBarycentricSeed,
+    collectMovableVertices: collectMovableVertices,
     prepareAugmentedTriangulation: prepareAugmentedTriangulation,
-    originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace
+    originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
+    prepareTriangulatedLayoutContext: prepareTriangulatedLayoutContext
   };
 })(window);

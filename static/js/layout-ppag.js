@@ -4,99 +4,77 @@
   var PPAG_REV = 'ppag-20260323';
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
 
-  function faceKey(face) {
-    return PlanarCommon.faceKey(face);
-  }
-
-  function graphFromCy(cy) {
-    return PlanarCommon.graphFromCy(cy);
-  }
-
-  function buildAdjacency(nodeIds, edgePairs) {
-    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
-  }
-
   function triangleArea2(a, b, c) {
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   }
 
-  function polygonArea2(face, posById) {
-    return PlanarCommon.polygonArea2(face, posById);
+  function sameCyclicDirection(a, b) {
+    if (!a || !b || a.length !== b.length || a.length === 0) return false;
+    var arrA = a.map(String);
+    var arrB = b.map(String);
+    var n = arrA.length;
+    var start = -1;
+    for (var i = 0; i < n; i += 1) {
+      if (arrB[i] === arrA[0]) {
+        start = i;
+        break;
+      }
+    }
+    if (start < 0) return false;
+    for (i = 0; i < n; i += 1) {
+      if (arrA[i] !== arrB[(start + i) % n]) {
+        return false;
+      }
+    }
+    return true;
   }
 
-  function orientFaceCCW(face, posById) {
-    return PlanarCommon.orientFaceCCW(face, posById);
+  function sameCyclicEitherDirection(a, b) {
+    if (sameCyclicDirection(a, b)) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    return sameCyclicDirection(a, b.slice().reverse());
   }
 
-  function copyPositions(posById) {
-    return PlanarCommon.copyPositions(posById);
+  function findOuterFaceIndex(faces, outerFace) {
+    if (!Array.isArray(faces) || !Array.isArray(outerFace) || outerFace.length === 0) {
+      return -1;
+    }
+    for (var i = 0; i < faces.length; i += 1) {
+      if (sameCyclicDirection(outerFace, faces[i])) {
+        return i;
+      }
+    }
+    for (i = 0; i < faces.length; i += 1) {
+      if (sameCyclicEitherDirection(outerFace, faces[i])) {
+        return i;
+      }
+    }
+    return -1;
   }
 
-  function outerFaceDiameter(posById, outerFace) {
-    return PlanarCommon.outerFaceDiameter(posById, outerFace);
-  }
-
-  function buildInitialPositions(nodeIds, edgePairs, outerFace, cy) {
-    return PlanarCommon.buildUniformBarycentricSeed(nodeIds, edgePairs, outerFace, cy, {
-      maxIters: 1000,
-      tolerance: 1e-7,
-      useSeedOuter: false
-    });
-  }
-
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace) {
-    return PlanarCommon.prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, 'PPAG');
-  }
-
-  function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds) {
-    return PlanarCommon.originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds);
-  }
-
-  function buildPPAGData(baseEmbedding, augmentedEmbedding, outerFace, dummyFaceKeyById, dummyFaceVerticesById, posById) {
-    var outerOriginalKey = originalFaceKeyForAugmentedFace(outerFace, dummyFaceKeyById, dummyFaceVerticesById);
-    var originalFaceKeys = [];
-    var originalFaceSet = new Set();
-    var faceTrianglesByKey = {};
+  function buildPPAGData(augmentedEmbedding, outerFace, posById) {
     var incidentTrianglesByVertex = {};
     var triangles = [];
     var i;
-
     for (i = 0; i < augmentedEmbedding.idByIndex.length; i += 1) {
       incidentTrianglesByVertex[String(augmentedEmbedding.idByIndex[i])] = [];
     }
 
-    for (i = 0; i < baseEmbedding.faces.length; i += 1) {
-      var baseKey = faceKey(baseEmbedding.faces[i]);
-      if (baseKey === outerOriginalKey) continue;
-      if (!originalFaceSet.has(baseKey)) {
-        originalFaceSet.add(baseKey);
-        originalFaceKeys.push(baseKey);
-        faceTrianglesByKey[baseKey] = [];
-      }
-    }
-
+    var outerIndex = findOuterFaceIndex(augmentedEmbedding.faces || [], outerFace);
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
       if (!face || face.length < 3) {
         return { ok: false, reason: 'PPAG requires a valid triangulated augmentation' };
       }
-      var oriented = orientFaceCCW(face, posById);
-      var originalKey = originalFaceKeyForAugmentedFace(oriented, dummyFaceKeyById, dummyFaceVerticesById);
-      if (originalKey === outerOriginalKey) {
+      if (i === outerIndex) {
         continue;
       }
+      var oriented = PlanarCommon.orientFaceCCW(face, posById);
       if (oriented.length !== 3) {
-        return { ok: false, reason: 'PPAG requires all non-outer augmented faces to be triangles' };
-      }
-      if (!originalFaceSet.has(originalKey)) {
-        return { ok: false, reason: 'PPAG face mapping failed for face ' + oriented.join(',') };
+        return { ok: false, reason: 'PPAG requires all bounded faces of H to be triangles' };
       }
       var triangleIndex = triangles.length;
-      triangles.push({
-        vertices: oriented,
-        originalKey: originalKey
-      });
-      faceTrianglesByKey[originalKey].push(triangleIndex);
+      triangles.push({ vertices: oriented });
       for (var j = 0; j < 3; j += 1) {
         var vertexId = String(oriented[j]);
         if (!incidentTrianglesByVertex[vertexId]) {
@@ -109,19 +87,17 @@
       }
     }
 
-    if (originalFaceKeys.length === 0 || triangles.length === 0) {
+    if (triangles.length === 0) {
       return {
         ok: true,
         outerFace: outerFace.slice().map(String),
-        originalFaceKeys: [],
-        faceTrianglesByKey: faceTrianglesByKey,
         incidentTrianglesByVertex: incidentTrianglesByVertex,
         triangles: triangles,
-        desiredOriginalArea: 0
+        targetTriangleArea: 0
       };
     }
 
-    var outerArea = Math.abs(polygonArea2(outerFace, posById)) / 2;
+    var outerArea = Math.abs(PlanarCommon.polygonArea2(outerFace, posById)) / 2;
     if (!(outerArea > 1e-12)) {
       return { ok: false, reason: 'PPAG initialization failed: outer face has zero area' };
     }
@@ -129,30 +105,10 @@
     return {
       ok: true,
       outerFace: outerFace.slice().map(String),
-      originalFaceKeys: originalFaceKeys,
-      faceTrianglesByKey: faceTrianglesByKey,
       incidentTrianglesByVertex: incidentTrianglesByVertex,
       triangles: triangles,
-      desiredOriginalArea: outerArea / originalFaceKeys.length
+      targetTriangleArea: outerArea / triangles.length
     };
-  }
-
-  function computeAverageEdgeLength2(edgePairs, posById) {
-    var sum = 0;
-    var count = 0;
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var u = posById[String(edgePairs[i][0])];
-      var v = posById[String(edgePairs[i][1])];
-      if (!u || !v) continue;
-      var dx = u.x - v.x;
-      var dy = u.y - v.y;
-      var len2 = dx * dx + dy * dy;
-      if (len2 > 1e-18) {
-        sum += len2;
-        count += 1;
-      }
-    }
-    return count > 0 ? (sum / count) : 1;
   }
 
   function createGradientMap(movableVertices) {
@@ -161,19 +117,6 @@
       gradient[movableVertices[i]] = { x: 0, y: 0 };
     }
     return gradient;
-  }
-
-  function buildIncidentEdgeMap(edgePairs) {
-    var map = {};
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!map[u]) map[u] = [];
-      if (!map[v]) map[v] = [];
-      map[u].push(v);
-      map[v].push(u);
-    }
-    return map;
   }
 
   function addTriangleGradientForSlot(grad, slot, a, b, c, coeff) {
@@ -190,45 +133,6 @@
       grad.x += coeff * 0.5 * (a.y - b.y);
       grad.y += coeff * 0.5 * (b.x - a.x);
     }
-  }
-
-  function computeLocalGradient(vertexId, ppagData, posById, faceCoeff, incidentEdgesByVertex, targetEdgeLength2, opts) {
-    var grad = { x: 0, y: 0 };
-    var entries = ppagData.incidentTrianglesByVertex[vertexId] || [];
-    for (var i = 0; i < entries.length; i += 1) {
-      var entry = entries[i];
-      var tri = ppagData.triangles[entry.triangleIndex];
-      var coeff = faceCoeff[tri.originalKey] || 0;
-      if (coeff === 0) {
-        continue;
-      }
-      var a = posById[tri.vertices[0]];
-      var b = posById[tri.vertices[1]];
-      var c = posById[tri.vertices[2]];
-      if (!a || !b || !c) {
-        continue;
-      }
-      addTriangleGradientForSlot(grad, entry.slot, a, b, c, coeff);
-    }
-
-    if (opts.edgeWeight > 0 && incidentEdgesByVertex && targetEdgeLength2 > 1e-18) {
-      var neighbors = incidentEdgesByVertex[vertexId] || [];
-      var p = posById[vertexId];
-      if (p) {
-        for (i = 0; i < neighbors.length; i += 1) {
-          var q = posById[String(neighbors[i])];
-          if (!q) continue;
-          var dx = p.x - q.x;
-          var dy = p.y - q.y;
-          var len2 = dx * dx + dy * dy;
-          var edgeRel = len2 / targetEdgeLength2 - 1;
-          var edgeCoeff = opts.edgeWeight * (4 * edgeRel / targetEdgeLength2);
-          grad.x += edgeCoeff * dx;
-          grad.y += edgeCoeff * dy;
-        }
-      }
-    }
-    return grad;
   }
 
   function incidentTrianglesStayPositive(vertexId, ppagData, posById, tolAreaPositive) {
@@ -248,19 +152,14 @@
     return true;
   }
 
-  function computePPAGState(ppagData, posById, movableVertices, regularizationEdges, targetEdgeLength2, opts, withGradient) {
-    var tolAreaPositive = opts.tolAreaPositive;
+  function computeTriangleResiduals(ppagData, posById, tolAreaPositive) {
     var triangles = ppagData.triangles || [];
-    var faceAreas = {};
-    var faceCoeff = {};
-    var gradient = withGradient ? createGradientMap(movableVertices) : null;
-    var i;
-
-    for (i = 0; i < ppagData.originalFaceKeys.length; i += 1) {
-      faceAreas[ppagData.originalFaceKeys[i]] = 0;
-    }
-
-    for (i = 0; i < triangles.length; i += 1) {
+    var residuals = new Array(triangles.length);
+    var areas = new Array(triangles.length);
+    var areaEnergy = 0;
+    var maxRelError = 0;
+    var targetArea = ppagData.targetTriangleArea;
+    for (var i = 0; i < triangles.length; i += 1) {
       var tri = triangles[i];
       var a = posById[tri.vertices[0]];
       var b = posById[tri.vertices[1]];
@@ -268,88 +167,52 @@
       if (!a || !b || !c) {
         return { ok: false, reason: 'missing_triangle_vertex' };
       }
-      var signedArea = triangleArea2(a, b, c) / 2;
-      if (!(signedArea > tolAreaPositive)) {
+      var area = triangleArea2(a, b, c) / 2;
+      if (!(area > tolAreaPositive)) {
         return { ok: false, reason: 'triangle_nonpositive' };
       }
-      faceAreas[tri.originalKey] = (faceAreas[tri.originalKey] || 0) + signedArea;
-    }
-
-    var targetArea = ppagData.desiredOriginalArea;
-    var areaEnergy = 0;
-    var maxRelError = 0;
-    for (i = 0; i < ppagData.originalFaceKeys.length; i += 1) {
-      var key = ppagData.originalFaceKeys[i];
-      var area = faceAreas[key] || 0;
       var rel = area / targetArea - 1;
-      var absRel = Math.abs(rel);
-      if (absRel > maxRelError) {
-        maxRelError = absRel;
-      }
+      residuals[i] = rel;
+      areas[i] = area;
       areaEnergy += rel * rel;
-      faceCoeff[key] = 2 * rel / targetArea;
+      if (Math.abs(rel) > maxRelError) {
+        maxRelError = Math.abs(rel);
+      }
     }
+    return {
+      ok: true,
+      residuals: residuals,
+      areas: areas,
+      areaEnergy: areaEnergy,
+      maxRelError: maxRelError
+    };
+  }
 
+  function computePPAGState(ppagData, posById, movableVertices, opts, withGradient) {
+    var residualState = computeTriangleResiduals(ppagData, posById, opts.tolAreaPositive);
+    if (!residualState.ok) {
+      return residualState;
+    }
+    var gradient = withGradient ? createGradientMap(movableVertices) : null;
+    var maxGradNorm = 0;
     if (withGradient) {
-      for (i = 0; i < triangles.length; i += 1) {
-        tri = triangles[i];
-        var coeff = faceCoeff[tri.originalKey] || 0;
-        if (coeff === 0) continue;
-
-        a = posById[tri.vertices[0]];
-        b = posById[tri.vertices[1]];
-        c = posById[tri.vertices[2]];
-
+      var invTargetArea = 1 / Math.max(ppagData.targetTriangleArea, 1e-18);
+      for (var i = 0; i < ppagData.triangles.length; i += 1) {
+        var tri = ppagData.triangles[i];
+        var coeff = 2 * residualState.residuals[i] * invTargetArea;
+        if (!(coeff !== 0)) {
+          continue;
+        }
+        var a = posById[tri.vertices[0]];
+        var b = posById[tri.vertices[1]];
+        var c = posById[tri.vertices[2]];
         var gradA = gradient[tri.vertices[0]];
         var gradB = gradient[tri.vertices[1]];
         var gradC = gradient[tri.vertices[2]];
-
-        if (gradA) {
-          gradA.x += coeff * 0.5 * (b.y - c.y);
-          gradA.y += coeff * 0.5 * (c.x - b.x);
-        }
-        if (gradB) {
-          gradB.x += coeff * 0.5 * (c.y - a.y);
-          gradB.y += coeff * 0.5 * (a.x - c.x);
-        }
-        if (gradC) {
-          gradC.x += coeff * 0.5 * (a.y - b.y);
-          gradC.y += coeff * 0.5 * (b.x - a.x);
-        }
+        if (gradA) addTriangleGradientForSlot(gradA, 0, a, b, c, coeff);
+        if (gradB) addTriangleGradientForSlot(gradB, 1, a, b, c, coeff);
+        if (gradC) addTriangleGradientForSlot(gradC, 2, a, b, c, coeff);
       }
-    }
-
-    var edgeEnergy = 0;
-    if (opts.edgeWeight > 0 && Array.isArray(regularizationEdges) && regularizationEdges.length > 0 && targetEdgeLength2 > 1e-18) {
-      for (i = 0; i < regularizationEdges.length; i += 1) {
-        var uId = String(regularizationEdges[i][0]);
-        var vId = String(regularizationEdges[i][1]);
-        var u = posById[uId];
-        var v = posById[vId];
-        if (!u || !v) continue;
-        var dx = u.x - v.x;
-        var dy = u.y - v.y;
-        var len2 = dx * dx + dy * dy;
-        var edgeRel = len2 / targetEdgeLength2 - 1;
-        edgeEnergy += edgeRel * edgeRel;
-        if (withGradient) {
-          var edgeCoeff = opts.edgeWeight * (4 * edgeRel / targetEdgeLength2);
-          var gradU = gradient[uId];
-          var gradV = gradient[vId];
-          if (gradU) {
-            gradU.x += edgeCoeff * dx;
-            gradU.y += edgeCoeff * dy;
-          }
-          if (gradV) {
-            gradV.x -= edgeCoeff * dx;
-            gradV.y -= edgeCoeff * dy;
-          }
-        }
-      }
-    }
-
-    var maxGradNorm = 0;
-    if (withGradient) {
       for (i = 0; i < movableVertices.length; i += 1) {
         var grad = gradient[movableVertices[i]];
         if (!grad) continue;
@@ -362,28 +225,29 @@
 
     return {
       ok: true,
-      objective: areaEnergy + opts.edgeWeight * edgeEnergy,
-      areaEnergy: areaEnergy,
-      edgeEnergy: edgeEnergy,
-      faceAreas: faceAreas,
-      faceCoeff: faceCoeff,
-      maxRelError: maxRelError,
+      objective: residualState.areaEnergy,
+      areaEnergy: residualState.areaEnergy,
+      residuals: residualState.residuals,
+      maxRelError: residualState.maxRelError,
+      rmsRelError: ppagData.triangles.length > 0
+        ? Math.sqrt(residualState.areaEnergy / ppagData.triangles.length)
+        : 0,
       gradient: gradient,
       maxGradNorm: maxGradNorm
     };
   }
 
-  function buildVertexTrialPosition(posById, vertexId, gradient, stepSize) {
-    var trial = copyPositions(posById);
+  function buildVertexTrialPosition(posById, vertexId, delta, stepSize) {
+    var trial = PlanarCommon.copyPositions(posById);
     var base = trial[vertexId];
-    if (!base || !gradient) {
+    if (!base || !delta) {
       return {
         posById: trial,
         move: 0
       };
     }
-    var dx = -stepSize * gradient.x;
-    var dy = -stepSize * gradient.y;
+    var dx = stepSize * delta.x;
+    var dy = stepSize * delta.y;
     trial[vertexId] = {
       x: base.x + dx,
       y: base.y + dy
@@ -394,47 +258,53 @@
     };
   }
 
-  function buildGlobalTrialPosition(posById, movableVertices, gradientMap, stepSize) {
-    var trial = copyPositions(posById);
-    var maxMove = 0;
-    for (var i = 0; i < movableVertices.length; i += 1) {
-      var vertexId = movableVertices[i];
-      var gradient = gradientMap ? gradientMap[vertexId] : null;
-      var base = trial[vertexId];
-      if (!gradient || !base) {
-        continue;
-      }
-      var dx = -stepSize * gradient.x;
-      var dy = -stepSize * gradient.y;
-      trial[vertexId] = {
-        x: base.x + dx,
-        y: base.y + dy
-      };
-      var move = Math.hypot(dx, dy);
-      if (move > maxMove) {
-        maxMove = move;
-      }
+  function computeLocalDelta(vertexId, ppagData, posById, residuals, opts) {
+    var entries = ppagData.incidentTrianglesByVertex[vertexId] || [];
+    if (entries.length === 0) {
+      return { x: 0, y: 0, norm: 0 };
     }
-    return {
-      posById: trial,
-      maxMove: maxMove
-    };
-  }
+    var h00 = opts.localDamping;
+    var h01 = 0;
+    var h11 = opts.localDamping;
+    var b0 = 0;
+    var b1 = 0;
+    var invTargetArea = 1 / Math.max(ppagData.targetTriangleArea, 1e-18);
 
-  function allTrianglesStayPositive(ppagData, posById, tolAreaPositive) {
-    for (var i = 0; i < ppagData.triangles.length; i += 1) {
-      var tri = ppagData.triangles[i];
+    for (var i = 0; i < entries.length; i += 1) {
+      var entry = entries[i];
+      var tri = ppagData.triangles[entry.triangleIndex];
       var a = posById[tri.vertices[0]];
       var b = posById[tri.vertices[1]];
       var c = posById[tri.vertices[2]];
       if (!a || !b || !c) {
-        return false;
+        continue;
       }
-      if (!(triangleArea2(a, b, c) / 2 > tolAreaPositive)) {
-        return false;
-      }
+      var localGrad = { x: 0, y: 0 };
+      addTriangleGradientForSlot(localGrad, entry.slot, a, b, c, invTargetArea);
+      var gx = localGrad.x;
+      var gy = localGrad.y;
+      var r = residuals[entry.triangleIndex] || 0;
+      h00 += gx * gx;
+      h01 += gx * gy;
+      h11 += gy * gy;
+      b0 += -r * gx;
+      b1 += -r * gy;
     }
-    return true;
+
+    var det = h00 * h11 - h01 * h01;
+    if (!(det > 1e-18)) {
+      return { x: 0, y: 0, norm: 0 };
+    }
+    var dx = (h11 * b0 - h01 * b1) / det;
+    var dy = (h00 * b1 - h01 * b0) / det;
+    var norm = Math.hypot(dx, dy);
+    if (norm > opts.maxVertexMove && opts.maxVertexMove > 0) {
+      var scale = opts.maxVertexMove / norm;
+      dx *= scale;
+      dy *= scale;
+      norm = opts.maxVertexMove;
+    }
+    return { x: dx, y: dy, norm: norm };
   }
 
   function originalDrawingHasCrossings(posById, edgePairs) {
@@ -448,12 +318,14 @@
     return {
       interactive: opts.interactive !== false,
       maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 200,
-      edgeWeight: Number.isFinite(opts.edgeWeight) ? Math.max(0, opts.edgeWeight) : 0.003,
       initialMoveRel: Number.isFinite(opts.initialMoveRel) && opts.initialMoveRel > 0 ? opts.initialMoveRel : 0.08,
+      maxVertexMoveRel: Number.isFinite(opts.maxVertexMoveRel) && opts.maxVertexMoveRel > 0 ? opts.maxVertexMoveRel : 0.08,
+      localDamping: Number.isFinite(opts.localDamping) && opts.localDamping > 0 ? opts.localDamping : 1e-3,
       stepShrink: Number.isFinite(opts.stepShrink) && opts.stepShrink > 0 && opts.stepShrink < 1 ? opts.stepShrink : 0.5,
       minStepScale: Number.isFinite(opts.minStepScale) && opts.minStepScale > 0 ? opts.minStepScale : Math.pow(2, -20),
       tolAreaPositive: Number.isFinite(opts.tolAreaPositive) ? Math.max(0, opts.tolAreaPositive) : 1e-12,
       tolAreaGlobal: Number.isFinite(opts.tolAreaGlobal) ? Math.max(0, opts.tolAreaGlobal) : 1e-3,
+      tolAreaRms: Number.isFinite(opts.tolAreaRms) ? Math.max(0, opts.tolAreaRms) : 0.10,
       tolGrad: Number.isFinite(opts.tolGrad) ? Math.max(0, opts.tolGrad) : 1e-8,
       moveTolRel: Number.isFinite(opts.moveTolRel) && opts.moveTolRel >= 0 ? opts.moveTolRel : 1e-5,
       moveTolAbs: Number.isFinite(opts.moveTolAbs) && opts.moveTolAbs >= 0 ? opts.moveTolAbs : 1e-9,
@@ -461,13 +333,10 @@
       energyTolAbs: Number.isFinite(opts.energyTolAbs) && opts.energyTolAbs >= 0 ? opts.energyTolAbs : 1e-10,
       acceptanceTol: Number.isFinite(opts.acceptanceTol) && opts.acceptanceTol >= 0 ? opts.acceptanceTol : 1e-12,
       patience: Number.isFinite(opts.patience) ? Math.max(1, Math.floor(opts.patience)) : 6,
-      deadlockPatience: Number.isFinite(opts.deadlockPatience) ? Math.max(1, Math.floor(opts.deadlockPatience)) : 2,
       plateauWindow: Number.isFinite(opts.plateauWindow) ? Math.max(4, Math.floor(opts.plateauWindow)) : 12,
       plateauPatience: Number.isFinite(opts.plateauPatience) ? Math.max(1, Math.floor(opts.plateauPatience)) : 2,
       plateauObjTolAbs: Number.isFinite(opts.plateauObjTolAbs) && opts.plateauObjTolAbs >= 0 ? opts.plateauObjTolAbs : 1e-3,
-      plateauObjTolRel: Number.isFinite(opts.plateauObjTolRel) && opts.plateauObjTolRel >= 0 ? opts.plateauObjTolRel : 1e-4,
-      plateauErrTolAbs: Number.isFinite(opts.plateauErrTolAbs) && opts.plateauErrTolAbs >= 0 ? opts.plateauErrTolAbs : 1e-3,
-      plateauErrTolRel: Number.isFinite(opts.plateauErrTolRel) && opts.plateauErrTolRel >= 0 ? opts.plateauErrTolRel : 1e-4,
+      plateauObjTolRel: Number.isFinite(opts.plateauObjTolRel) && opts.plateauObjTolRel >= 0 ? opts.plateauObjTolRel : 2e-4,
       delayMs: Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0,
       onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
       yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
@@ -475,98 +344,104 @@
     };
   }
 
+  function computePlateauProgress(window, currentValue, size) {
+    window.push(currentValue);
+    if (window.length > size + 1) {
+      window.shift();
+    }
+    if (window.length < size + 1) {
+      return { abs: null, rel: null };
+    }
+    var abs = window[0] - currentValue;
+    return {
+      abs: abs,
+      rel: abs / Math.max(1, window[0])
+    };
+  }
+
+  function updateStallCounters(counters, stats, opts) {
+    var next = {
+      stalledIters: counters.stalledIters,
+      plateauSweeps: counters.plateauSweeps
+    };
+    if (stats.smallMove && stats.smallImprovement) {
+      next.stalledIters += 1;
+    } else {
+      next.stalledIters = 0;
+    }
+    if (stats.plateau.abs !== null &&
+        (stats.plateau.abs <= opts.plateauObjTolAbs ||
+         stats.plateau.rel <= opts.plateauObjTolRel)) {
+      next.plateauSweeps += 1;
+    } else {
+      next.plateauSweeps = 0;
+    }
+    return next;
+  }
+
+  function classifyPPAGState(state, counters, opts) {
+    if (state.maxRelError <= opts.tolAreaGlobal || state.rmsRelError <= opts.tolAreaRms) {
+      return 'realized';
+    }
+    if (counters.plateauSweeps >= opts.plateauPatience) {
+      return 'stalled';
+    }
+    if (state.maxGradNorm <= opts.tolGrad || counters.stalledIters >= opts.patience) {
+      return 'stalled';
+    }
+    return 'max_iters';
+  }
+
   function preparePPAGFromGeneralPlaneGraph(cy, options) {
     var opts = normalizePPAGOptions(options);
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
-    }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
-      return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
-    }
-    if (!global.PlanarVibeBarycentricCore ||
-        !global.PlanarVibeBarycentricCore.buildUniformWeights ||
-        !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout ||
-        !global.PlanarVibeBarycentricCore.currentPositionsFromCy) {
-      return { ok: false, message: 'Barycentric core is missing. Check script load order' };
-    }
-
-    var g = graphFromCy(cy);
-    if (g.nodeIds.length < 3) {
-      return { ok: false, message: 'PPAG layout requires at least 3 vertices' };
+    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+      failureLabel: 'PPAG layout',
+      minNodeCount: 3,
+      seedOptions: {
+        maxIters: 1000,
+        tolerance: 1e-7,
+        useSeedOuter: false
+      }
+    });
+    if (!context || !context.ok) {
+      return context || { ok: false, message: 'PPAG setup failed' };
     }
 
-    var baseEmbedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
-    if (!baseEmbedding || !baseEmbedding.ok) {
-      return { ok: false, message: 'PPAG layout requires a planar graph' };
-    }
-
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
-    if (!outerFace || outerFace.length < 3) {
-      return { ok: false, message: 'Could not determine outer boundary for PPAG layout' };
-    }
-
-    var augmented = prepareAugmentedTriangulation(g.nodeIds, g.edgePairs, baseEmbedding, outerFace);
-    if (!augmented.ok) {
-      return { ok: false, message: augmented.reason || 'PPAG augmentation failed' };
-    }
-
-    var init = buildInitialPositions(augmented.nodeIds, augmented.edgePairs, outerFace, cy);
-    if (!init || !init.ok || !init.pos) {
-      return { ok: false, message: (init && init.message) || 'PPAG initialization failed' };
-    }
-
-    var posById = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
-      ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(init.pos, outerFace)
-      : copyPositions(init.pos);
-    var ppagData = buildPPAGData(baseEmbedding, augmented.embedding, outerFace, augmented.dummyFaceKeyById, augmented.dummyFaceVerticesById, posById);
+    var ppagData = buildPPAGData(context.augmented.embedding, context.outerFace, context.posById);
     if (!ppagData.ok) {
       return { ok: false, message: ppagData.reason || 'PPAG setup failed' };
     }
 
-    if (ppagData.originalFaceKeys.length === 0) {
+    if (ppagData.triangles.length === 0) {
       return {
         ok: true,
         opts: opts,
-        graph: g,
-        baseEmbedding: baseEmbedding,
-        outerFace: outerFace,
-        augmented: augmented,
-        posById: posById,
+        graph: context.graph,
+        outerFace: context.outerFace,
+        augmented: context.augmented,
+        posById: context.posById,
         ppagData: ppagData,
-        movableVertices: [],
-        targetEdgeLength2: computeAverageEdgeLength2(augmented.edgePairs, posById)
+        movableVertices: []
       };
     }
 
     for (var fi = 0; fi < ppagData.triangles.length; fi += 1) {
       var tri = ppagData.triangles[fi];
-      var area = triangleArea2(posById[tri.vertices[0]], posById[tri.vertices[1]], posById[tri.vertices[2]]) / 2;
+      var area = triangleArea2(context.posById[tri.vertices[0]], context.posById[tri.vertices[1]], context.posById[tri.vertices[2]]) / 2;
       if (!(area > opts.tolAreaPositive)) {
         return { ok: false, message: 'PPAG initialization failed: degenerate augmented triangle' };
-      }
-    }
-
-    var outerSet = new Set(outerFace.map(String));
-    var movableVertices = [];
-    for (var ni = 0; ni < augmented.nodeIds.length; ni += 1) {
-      var nodeId = String(augmented.nodeIds[ni]);
-      if (!outerSet.has(nodeId)) {
-        movableVertices.push(nodeId);
       }
     }
 
     return {
       ok: true,
       opts: opts,
-      graph: g,
-      baseEmbedding: baseEmbedding,
-      outerFace: outerFace,
-      augmented: augmented,
-      posById: posById,
+      graph: context.graph,
+      outerFace: context.outerFace,
+      augmented: context.augmented,
+      posById: context.posById,
       ppagData: ppagData,
-      movableVertices: movableVertices,
-      incidentEdgesByVertex: buildIncidentEdgeMap(augmented.edgePairs),
-      targetEdgeLength2: computeAverageEdgeLength2(augmented.edgePairs, posById)
+      movableVertices: context.movableVertices
     };
   }
 
@@ -576,18 +451,14 @@
     var posById = prepared.posById;
     var ppagData = prepared.ppagData;
     var movableVertices = prepared.movableVertices || [];
-    var regularizationEdges = prepared.augmented ? prepared.augmented.edgePairs : [];
-    var incidentEdgesByVertex = prepared.incidentEdgesByVertex || buildIncidentEdgeMap(regularizationEdges);
-    var outerDiameter = outerFaceDiameter(posById, prepared.outerFace || ppagData.outerFace || []);
+    var outerDiameter = PlanarCommon.outerFaceDiameter(posById, prepared.outerFace || ppagData.outerFace || []);
+    opts.maxVertexMove = opts.maxVertexMoveRel * outerDiameter;
     var moveTol = opts.moveTolAbs + opts.moveTolRel * outerDiameter;
-    var stalledIters = 0;
-    var deadSweeps = 0;
-    var plateauSweeps = 0;
+    var counters = { stalledIters: 0, plateauSweeps: 0 };
     var status = 'max_iters';
     var lastMoveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
-    var state = computePPAGState(ppagData, posById, movableVertices, regularizationEdges, prepared.targetEdgeLength2, opts, true);
+    var state = computePPAGState(ppagData, posById, movableVertices, opts, true);
     var objectiveWindow = state.ok ? [state.objective] : [];
-    var errorWindow = state.ok ? [state.maxRelError] : [];
 
     if (!state.ok) {
       return {
@@ -597,85 +468,38 @@
       };
     }
 
-    if (state.maxRelError <= opts.tolAreaGlobal) {
-      status = 'realized';
-    } else if (state.maxGradNorm <= opts.tolGrad) {
-      status = 'stalled';
-    }
+    status = classifyPPAGState(state, counters, opts);
 
     var iter;
     for (iter = 1; iter <= opts.maxIters && status === 'max_iters'; iter += 1) {
       var prevObjective = state.objective;
-      var prevSweepPos = copyPositions(posById);
+      var prevSweepPos = PlanarCommon.copyPositions(posById);
       var acceptedCount = 0;
       var acceptedStepSum = 0;
       var lineSearchSteps = 0;
-      var globalAccepted = false;
-
-      if (state.gradient && state.maxGradNorm > opts.tolGrad) {
-        var globalBaseStep = 0.35 * opts.initialMoveRel * outerDiameter / Math.max(state.maxGradNorm, 1e-12);
-        var globalStepScale = 1;
-        while (globalStepScale >= opts.minStepScale) {
-          var globalStepSize = globalBaseStep * globalStepScale;
-          var globalTrial = buildGlobalTrialPosition(posById, movableVertices, state.gradient, globalStepSize);
-          if (!allTrianglesStayPositive(ppagData, globalTrial.posById, opts.tolAreaPositive)) {
-            globalStepScale *= opts.stepShrink;
-            lineSearchSteps += 1;
-            continue;
-          }
-          var globalTrialState = computePPAGState(ppagData, globalTrial.posById, movableVertices, regularizationEdges, prepared.targetEdgeLength2, opts, false);
-          if (globalTrialState.ok &&
-              globalTrialState.objective <= state.objective - opts.acceptanceTol * Math.max(1, state.objective)) {
-            posById = globalTrial.posById;
-            prepared.posById = posById;
-            state = computePPAGState(ppagData, posById, movableVertices, regularizationEdges, prepared.targetEdgeLength2, opts, true);
-            acceptedCount += 1;
-            acceptedStepSum += globalStepSize;
-            globalAccepted = true;
-            break;
-          }
-          globalStepScale *= opts.stepShrink;
-          lineSearchSteps += 1;
-        }
-      }
 
       for (var vi = 0; vi < movableVertices.length; vi += 1) {
         var vertexId = movableVertices[vi];
-        var grad = computeLocalGradient(
-          vertexId,
-          ppagData,
-          posById,
-          state.faceCoeff || {},
-          incidentEdgesByVertex,
-          prepared.targetEdgeLength2,
-          opts
-        );
-        var gradNorm = Math.hypot(grad.x, grad.y);
-        if (!(gradNorm > opts.tolGrad)) {
-          continue;
-        }
-
-        var baseStep = opts.initialMoveRel * outerDiameter / gradNorm;
-        if (!(baseStep > 0) || !Number.isFinite(baseStep)) {
+        var delta = computeLocalDelta(vertexId, ppagData, posById, state.residuals || [], opts);
+        if (!(delta.norm > opts.tolGrad)) {
           continue;
         }
         var stepScale = 1;
         while (stepScale >= opts.minStepScale) {
-          var stepSize = baseStep * stepScale;
-          var trial = buildVertexTrialPosition(posById, vertexId, grad, stepSize);
+          var trial = buildVertexTrialPosition(posById, vertexId, delta, stepScale);
           if (!incidentTrianglesStayPositive(vertexId, ppagData, trial.posById, opts.tolAreaPositive)) {
             stepScale *= opts.stepShrink;
             lineSearchSteps += 1;
             continue;
           }
-          var trialState = computePPAGState(ppagData, trial.posById, movableVertices, regularizationEdges, prepared.targetEdgeLength2, opts, false);
+          var trialState = computePPAGState(ppagData, trial.posById, movableVertices, opts, false);
           if (trialState.ok &&
               trialState.objective <= state.objective - opts.acceptanceTol * Math.max(1, state.objective)) {
             posById = trial.posById;
             prepared.posById = posById;
-            state = computePPAGState(ppagData, posById, movableVertices, regularizationEdges, prepared.targetEdgeLength2, opts, true);
+            state = computePPAGState(ppagData, posById, movableVertices, opts, true);
             acceptedCount += 1;
-            acceptedStepSum += stepSize;
+            acceptedStepSum += trial.move;
             break;
           }
           stepScale *= opts.stepShrink;
@@ -691,43 +515,12 @@
       var improvement = prevObjective - state.objective;
       var smallMove = lastMoveStats.maxMove <= moveTol && lastMoveStats.avgMove <= moveTol;
       var smallImprovement = improvement <= opts.energyTolAbs + opts.energyTolRel * Math.max(1, prevObjective);
-      objectiveWindow.push(state.objective);
-      errorWindow.push(state.maxRelError);
-      if (objectiveWindow.length > opts.plateauWindow + 1) {
-        objectiveWindow.shift();
-      }
-      if (errorWindow.length > opts.plateauWindow + 1) {
-        errorWindow.shift();
-      }
-      var plateauObjImprovementAbs = null;
-      var plateauObjImprovementRel = null;
-      var plateauErrImprovementAbs = null;
-      var plateauErrImprovementRel = null;
-      if (objectiveWindow.length >= opts.plateauWindow + 1 && errorWindow.length >= opts.plateauWindow + 1) {
-        plateauObjImprovementAbs = objectiveWindow[0] - state.objective;
-        plateauObjImprovementRel = plateauObjImprovementAbs / Math.max(1, objectiveWindow[0]);
-        plateauErrImprovementAbs = errorWindow[0] - state.maxRelError;
-        plateauErrImprovementRel = plateauErrImprovementAbs / Math.max(1, errorWindow[0]);
-      }
-      if (smallMove && smallImprovement) {
-        stalledIters += 1;
-      } else {
-        stalledIters = 0;
-      }
-      if (acceptedCount === 0) {
-        deadSweeps += 1;
-      } else {
-        deadSweeps = 0;
-      }
-      if (plateauObjImprovementAbs !== null &&
-          plateauObjImprovementAbs <= opts.plateauObjTolAbs &&
-          plateauObjImprovementRel <= opts.plateauObjTolRel &&
-          plateauErrImprovementAbs <= opts.plateauErrTolAbs &&
-          plateauErrImprovementRel <= opts.plateauErrTolRel) {
-        plateauSweeps += 1;
-      } else {
-        plateauSweeps = 0;
-      }
+      var plateau = computePlateauProgress(objectiveWindow, state.objective, opts.plateauWindow);
+      counters = updateStallCounters(counters, {
+        smallMove: smallMove,
+        smallImprovement: smallImprovement,
+        plateau: plateau
+      }, opts);
 
       if (opts.onIteration) {
         opts.onIteration({
@@ -735,26 +528,23 @@
           maxIters: opts.maxIters,
           objective: state.objective,
           areaEnergy: state.areaEnergy,
-          edgeEnergy: state.edgeEnergy,
           gradNorm: state.maxGradNorm,
           maxRelError: state.maxRelError,
+          rmsRelError: state.rmsRelError,
           maxMove: lastMoveStats.maxMove,
           avgMove: lastMoveStats.avgMove,
           movedVertices: lastMoveStats.movedVertices,
           acceptedCount: acceptedCount,
           acceptedStep: acceptedCount > 0 ? (acceptedStepSum / acceptedCount) : 0,
-          globalAccepted: globalAccepted,
           lineSearchSteps: lineSearchSteps,
-          boundedFaceCount: ppagData.originalFaceKeys.length,
-          stalledIters: stalledIters,
+          boundedFaceCount: ppagData.triangles.length,
+          stalledIters: counters.stalledIters,
           stallLimit: opts.patience,
-          plateauSweeps: plateauSweeps,
+          plateauSweeps: counters.plateauSweeps,
           plateauPatience: opts.plateauPatience,
           plateauWindow: opts.plateauWindow,
-          plateauObjImprovementAbs: plateauObjImprovementAbs,
-          plateauObjImprovementRel: plateauObjImprovementRel,
-          plateauErrImprovementAbs: plateauErrImprovementAbs,
-          plateauErrImprovementRel: plateauErrImprovementRel
+          plateauObjImprovementAbs: plateau.abs,
+          plateauObjImprovementRel: plateau.rel
         });
       }
       if (typeof opts.onStepComplete === 'function') {
@@ -770,20 +560,8 @@
         });
       }
 
-      if (state.maxRelError <= opts.tolAreaGlobal) {
-        status = 'realized';
-        break;
-      }
-      if (deadSweeps >= opts.deadlockPatience) {
-        status = 'deadlock';
-        break;
-      }
-      if (plateauSweeps >= opts.plateauPatience) {
-        status = 'stalled';
-        break;
-      }
-      if (state.maxGradNorm <= opts.tolGrad || stalledIters >= opts.patience) {
-        status = 'stalled';
+      status = classifyPPAGState(state, counters, opts);
+      if (status !== 'max_iters') {
         break;
       }
     }
@@ -800,7 +578,7 @@
       stats: state,
       moveStats: lastMoveStats,
       iters: Math.min(opts.maxIters, Math.max(0, iter - (status === 'max_iters' ? 1 : 0))),
-      boundedFaceCount: ppagData.originalFaceKeys.length,
+      boundedFaceCount: ppagData.triangles.length,
       dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
       hasCrossings: hasCrossings
     };
@@ -817,7 +595,7 @@
       return prepared || { ok: false, message: 'PPAG setup failed' };
     }
 
-    if (prepared.ppagData.originalFaceKeys.length === 0) {
+    if (prepared.ppagData.triangles.length === 0) {
       runtime.applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
       cy.fit(undefined, 24);
       return { ok: true, message: 'Applied PPAG (no bounded faces to balance)' };
@@ -863,8 +641,7 @@
       ? global.PlanarVibeMetrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById)
       : null;
     var lastStats = result.stats || {};
-    var message = 'Applied PPAG [' + PPAG_REV + '] (' + prepared.ppagData.originalFaceKeys.length + ' bounded faces, ' +
-      prepared.ppagData.triangles.length + ' triangles';
+    var message = 'Applied PPAG [' + PPAG_REV + '] (' + prepared.ppagData.triangles.length + ' bounded triangles';
     if (prepared.augmented.dummyCount > 0) {
       message += ', +' + prepared.augmented.dummyCount + ' dummy';
     }
@@ -884,7 +661,7 @@
       message: message,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
-      boundedFaceCount: prepared.ppagData.originalFaceKeys.length,
+      boundedFaceCount: prepared.ppagData.triangles.length,
       dummyCount: prepared.augmented.dummyCount
     };
   }

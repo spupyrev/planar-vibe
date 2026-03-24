@@ -233,13 +233,6 @@
     var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 5;
     var onIteration = typeof opts.onIteration === 'function' ? opts.onIteration : null;
 
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, message: 'Planarity utilities are missing' };
-    }
-    if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout) {
-      return { ok: false, message: 'Barycentric core is missing' };
-    }
-
     var graph = PlanarCommon.graphFromCy(cy);
     var nodeIds = graph.nodeIds.slice();
     if (nodeIds.length < 3) {
@@ -250,58 +243,27 @@
       return { ok: false, message: 'FD-uniform requires at least 3 edges' };
     }
 
-    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
-    if (!emb || !emb.ok) {
-      return { ok: false, message: 'FD-uniform requires a planar graph' };
-    }
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
-    if (!outerFace) {
-      return { ok: false, message: 'Could not determine outer face' };
-    }
-
-    var augmentedNodeIds = nodeIds.slice();
-    var augmentedEdgePairs = edgePairs.slice();
-    if (global.PlanarGraphCore && global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
-      var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, emb, outerFace);
-      if (!prepared || !prepared.ok) {
-        return { ok: false, message: (prepared && prepared.reason) || 'Could not build a triangulated embedding' };
+    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+      failureLabel: 'FD-uniform',
+      minNodeCount: 3,
+      seedOptions: {
+        maxIters: Number.isFinite(opts.initMaxIters) ? Math.max(10, Math.floor(opts.initMaxIters)) : 1200,
+        tolerance: Number.isFinite(opts.initTolerance) ? Math.max(1e-10, opts.initTolerance) : 1e-7,
+        useSeedOuter: false
       }
-      augmentedNodeIds = prepared.nodeIds.map(String);
-      augmentedEdgePairs = prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; });
-    }
-    var embAug = global.PlanarVibePlanarityTest.computePlanarEmbedding(augmentedNodeIds, augmentedEdgePairs);
-    if (!embAug || !embAug.ok) {
-      return { ok: false, message: 'Could not build a triangulated embedding' };
-    }
-    var adjacencyAug = buildAdjacency(augmentedNodeIds, augmentedEdgePairs);
-    var uniformWeights = global.PlanarVibeBarycentricCore.buildUniformWeights(augmentedEdgePairs, 1);
-    var seedPos = PlanarCommon.currentPositionsFromCy(cy);
-    var initial = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-      nodeIds: augmentedNodeIds,
-      adjacency: adjacencyAug,
-      outerFace: outerFace,
-      weights: uniformWeights,
-      maxIters: Number.isFinite(opts.initMaxIters) ? Math.max(10, Math.floor(opts.initMaxIters)) : 1200,
-      tolerance: Number.isFinite(opts.initTolerance) ? Math.max(1e-10, opts.initTolerance) : 1e-7,
-      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-        useSeedOuter: false,
-        seedPos: seedPos
-      })
     });
-    if (!initial || !initial.ok || !initial.pos) {
-      return { ok: false, message: 'Initial barycentric embedding failed' };
+    if (!context || !context.ok) {
+      return context || { ok: false, message: 'FD-uniform setup failed' };
     }
 
-    var pos = PlanarCommon.alignOuterFace(initial.pos, outerFace);
+    var outerFace = context.outerFace;
+    var augmentedNodeIds = context.augmented.nodeIds.slice();
+    var augmentedEdgePairs = context.augmented.edgePairs.slice();
+    var pos = context.posById;
     var adjOrig = buildAdjacency(nodeIds, edgePairs);
-    var outerSet = new Set(outerFace.map(String));
-    var movable = [];
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      if (!outerSet.has(id)) {
-        movable.push(id);
-      }
-    }
+    var movable = PlanarCommon.collectMovableVertices(nodeIds, outerFace);
+
+    var i;
 
     var incidentEdges = {};
     for (i = 0; i < nodeIds.length; i += 1) {

@@ -278,3 +278,317 @@ Pipeline:
 4. reject any step that flips a triangulation triangle
 5. stop when motion and improvement are tiny
 
+---
+
+# Ideas for SIMPLICITY AND QUALITY improvements
+
+## 1) How to make it simpler
+
+### A. Collapse the stopping logic to 3 rules
+
+Right now you have:
+
+* global/rms area target,
+* gradient threshold,
+* small-move + small-improvement patience,
+* plateau window + plateau patience. 
+
+That is the biggest avoidable complexity. Replace all of it with:
+
+* stop if `maxRelError <= tolAreaGlobal`
+* stop if `acceptedCount === 0` in a full sweep
+* stop if `iter === maxIters`
+
+This lets you delete:
+
+* `computePlateauProgress`
+* `updateStallCounters`
+* `classifyPPAGState`
+* `tolGrad`, `moveTolRel`, `moveTolAbs`, `energyTolRel`, `energyTolAbs`, `patience`, `plateauWindow`, `plateauPatience`, `plateauObjTolAbs`, `plateauObjTolRel` from the public option surface. 
+
+That is a large simplicity win with little practical loss.
+
+### B. Make `state` triangle-only
+
+`computePPAGState` currently does two jobs:
+
+* compute residual/objective,
+* optionally build a full gradient map and max gradient norm. 
+
+But your step computation only needs:
+
+* current residuals,
+* local incident geometry for the current vertex. 
+
+So simplify `state` to:
+
+* `objective`
+* `residuals`
+* `maxRelError`
+* `rmsRelError`
+
+Drop `gradient` and `maxGradNorm` entirely. That removes `createGradientMap` from the main flow and makes `computePPAGState` much easier to explain. 
+
+### C. Inline “trial move” instead of copying all positions
+
+`buildVertexTrialPosition` clones the whole position map for every trial step. 
+
+For simplicity and speed, do this instead:
+
+* save old `(x,y)`
+* write tentative `(x,y)` directly into `posById[vertexId]`
+* test positivity / objective
+* keep or revert
+
+That removes one helper and a lot of object churn. It also fits incremental UI just fine, since you only publish after accepted moves or after a sweep.
+
+### D. Separate “solver core event” from UI/runtime event
+
+`solvePPAG` currently knows too much about reporting shape: `onIteration`, `onStepComplete`, renderer yield decisions, move stats payload size. `applyPPAGLayout` also wraps that again. 
+
+Keep incrementality, but reduce the interface to one callback:
+
+* `onSweep({ iter, positions, objective, maxRelError, acceptedCount })`
+
+Then let `applyPPAGLayout` adapt that to the renderer/UI. Same behavior, smaller mental model.
+
+### E. Reduce options to a short “control panel”
+
+The real core knobs are only:
+
+* `maxIters`
+* `maxVertexMoveRel`
+* `localDamping`
+* `stepShrink`
+* `minStepScale`
+* `tolAreaGlobal`
+* `renderEvery` / `yieldEvery` / `delayMs` for UI 
+
+Everything else is advanced noise. Even if you keep internal defaults, don’t expose them all.
+
+### F. Remove dead-feeling option: `initialMoveRel`
+
+I do not see `initialMoveRel` actually used in the solver. If that’s correct, delete it. 
+
+## 2) How to improve quality without hurting simplicity much
+
+### A. Add one tiny regularizer: stay near seed positions
+
+Best quality-per-complexity improvement.
+
+Right now the objective is only area equalization of augmented triangles. 
+That can overreact to dummy structure and produce ugly drift.
+
+Add:
+
+* `lambdaDisp * ||p_v - p_v^0||^2`
+
+Only for movable vertices, with small `lambdaDisp`.
+
+Why this is good:
+
+* very simple mathematically,
+* very easy to explain,
+* stabilizes intermediate drawings,
+* reduces ugly vertex wandering,
+* helps when augmentation dummies distort the target.
+
+Implementation-wise, it only changes the local 2×2 solve:
+
+* add `lambdaDisp` to diagonal
+* add `-lambdaDisp * (current - seed)` to the RHS
+
+So complexity barely changes.
+
+### C. Use a better vertex order each sweep
+
+Current order is fixed by `movableVertices`. 
+That makes the solver order-dependent.
+
+Simple fix:
+
+* at start of each sweep, sort vertices by max incident `|residual|`, descending.
+
+This gives you:
+
+* faster visible early improvement,
+* better intermediate UI states,
+* often fewer sweeps.
+
+It only needs one cheap per-vertex score computed from existing residuals.
+
+### D. Use local objective for accept/reject, not full global objective
+
+Currently each candidate move recomputes full `computePPAGState(...)` just to decide acceptance. 
+
+You can improve both simplicity-of-behavior and efficiency by using only incident triangles of the moved vertex for trial evaluation:
+
+* old local energy from incident triangles
+* new local energy after tentative move
+* accept if local energy decreases and positivity holds
+
+Then do one full recomputation at end of sweep for reporting/UI.
+
+This is a strong change, but still simple because it matches the local step model. It also makes intermediate behavior more responsive.
+
+Caveat: it is a slightly greedier approximation than full global acceptance. In practice here I’d expect it to be fine because only incident triangles change when one vertex moves in a triangulation.
+
+### E. Add a very cheap anti-skinny term only if needed
+
+If you want one more quality term beyond displacement, use something minimal like:
+
+* penalty for incident triangles whose area drops close to `tolAreaPositive`
+* or penalty for very short edge lengths around moved vertex
+
+I would **not** add full angle optimization. Too much complexity.
+Displacement regularization gives better quality-per-complexity.
+
+
+Agreed — if the seed positions are random, anchoring to them is the wrong bias.
+
+The good news is you can still improve quality with **local, geometry-only** changes that fit your current incremental solver very naturally.
+
+## Best replacements for the seed-position idea
+
+### 1. Add a **shape regularizer**, not a position regularizer
+
+Your current objective is only triangle area equalization. That is why it can create skinny or awkward triangles even when area residuals improve. The current residual/energy is purely area-based. 
+
+The simplest good addition is a **small anti-skinny penalty** on incident triangles of the moved vertex.
+
+Two practical versions:
+
+**Option A: edge-length balance inside each triangle**
+For each incident triangle, add a small penalty like:
+
+* `(maxEdge² / minEdge² - 1)`
+  or a smoother variant based on pairwise edge-length differences.
+
+**Option B: altitude floor / compactness**
+For each incident triangle, add a small penalty that grows when
+
+* `area / (sum edge²)` gets too small.
+
+I would choose **B**. It is closer to “avoid slivers” and needs no global reference drawing.
+
+Why this is attractive:
+
+* local only,
+* no dependency on initial positions,
+* same accept/reject structure,
+* easy to evaluate only on incident triangles.
+
+### 2. Update vertices by **worst local error first**
+
+Right now the per-vertex move is already based on incident triangle residuals. 
+So the cheapest quality improvement is to reorder vertices each sweep by something like:
+
+* `max |residual|` over incident triangles, or
+* sum of squared residuals over incident triangles.
+
+That improves intermediate UI states a lot:
+
+* the worst regions get fixed first,
+* each sweep looks more purposeful,
+* very little extra code.
+
+This is one of the highest quality-per-complexity changes.
+
+### 3. Treat dummy vertices as second-class citizens
+
+Since the optimization is on augmented triangles, dummy structure can steer the result too much. Your code already distinguishes augmented/dummy info in setup/reporting. 
+
+A very simple quality improvement:
+
+* sweep original movable vertices first,
+* sweep dummy vertices after,
+* or sweep dummy vertices every other iteration.
+
+That usually improves visible quality without complicating the solver much.
+
+## Simple quality improvements I’d actually recommend
+
+If you want the smallest changes with the best payoff, I’d do these three:
+
+### A. Add a tiny local compactness term
+
+Keep area equalization as primary, but accept a move based on:
+
+* `localEnergy = areaEnergy + λ * shapeEnergy`
+
+where `shapeEnergy` is computed only on incident triangles.
+
+Use a very small `λ`, just enough to discourage slivers.
+
+This barely changes the design:
+
+* `computeLocalDelta(...)` stays the same structure, still a 2×2 local step built from incident triangles. 
+* `incidentTrianglesStayPositive(...)` stays as-is. 
+* backtracking stays as-is.
+* only trial scoring changes.
+
+Even easier: don’t put the shape term into the linearized solve at first. Just use it in **accept/reject**. That is simpler than differentiating it immediately.
+
+### B. Sort vertices each sweep by local badness
+
+This is almost free and improves both intermediate and final quality.
+
+Use:
+
+* `score(v) = max |residual|` of incident triangles
+
+Then process high-score vertices first.
+
+### C. Slow down dummy vertices
+
+Very low-complexity, often high benefit.
+
+Example policy:
+
+* every sweep: original vertices
+* every 2nd sweep: dummy vertices
+
+## Simplicity improvements that still fit your UI constraint
+
+Since you must stay incremental, I’d simplify in ways that do **not** change that architecture:
+
+### 1. Remove gradient-based stopping entirely
+
+You compute a global gradient map and max gradient norm in `computePPAGState(...)`, but the core move already uses only local incident data. 
+This is the easiest chunk to remove.
+
+Then `computePPAGState(...)` becomes just:
+
+* residuals
+* objective
+* maxRelError
+* rmsRelError
+
+Much simpler.
+
+### 2. Remove plateau/stall machinery
+
+`classifyPPAGState(...)` and the related counters/options are a lot of complexity for limited value. 
+
+Use only:
+
+* success if `maxRelError <= tol`
+* stalled if a whole sweep accepts no moves
+* otherwise continue until `maxIters`
+
+That is enough for an incremental UI algorithm.
+
+### 3. Trial moves should be in-place + revert
+
+`buildVertexTrialPosition(...)` copies the full position map for each trial step. 
+That is both more code and more churn than needed.
+
+Simpler:
+
+* save old `(x,y)`
+* write tentative `(x,y)`
+* test positivity / trial energy
+* keep or restore
+
+That preserves your incremental reporting model perfectly.
+

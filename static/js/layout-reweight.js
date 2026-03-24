@@ -94,10 +94,6 @@
     return best ? best.slice() : null;
   }
 
-  function graphFromCy(cy) {
-    return PlanarCommon.graphFromCy(cy);
-  }
-
   function buildAdjacency(nodeIds, edgePairs) {
     return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
   }
@@ -378,39 +374,29 @@
 
     var opts = options || {};
     var tuning = opts.tuning || {};
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, message: 'Planarity utilities are missing' };
-    }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
-      return { ok: false, message: 'Planar graph utilities are missing' };
-    }
-
-    var g = graphFromCy(cy);
-    if (g.nodeIds.length < 3) {
-      return { ok: false, message: 'ReweightTutte++ requires at least 3 vertices' };
+    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+      failureLabel: 'ReweightTutte++',
+      minNodeCount: 3
+    });
+    if (!context || !context.ok) {
+      return context || { ok: false, message: 'ReweightTutte++ setup failed' };
     }
 
-    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
-    if (!emb || !emb.ok) {
-      return { ok: false, message: 'ReweightTutte++ requires a planar graph' };
-    }
-
-    var outer = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
-    if (!outer || outer.length < 3) {
-      return { ok: false, message: 'Could not determine outer face' };
-    }
-    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(g.nodeIds, g.edgePairs, emb, outer);
-    if (!augmented || !augmented.ok) {
-      return { ok: false, message: (augmented && augmented.reason) || 'Augmentation failed' };
-    }
+    var g = context.graph;
+    var outer = context.outerFace;
+    var augmented = context.augmented;
     var embAug = augmented.embedding;
-    var outerFaceForEmbedding = longestFace(embAug.faces);
-    if (!outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
-      return { ok: false, message: 'Could not determine augmented outer face' };
-    }
+    var outerFaceForEmbedding = outer;
 
     var faces = embAug.faces || [];
     var outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
+    if (outerFaceIdx < 0) {
+      outerFaceForEmbedding = longestFace(faces);
+      outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
+    }
+    if (outerFaceIdx < 0 || !outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
+      return { ok: false, message: 'Could not determine augmented outer face' };
+    }
     var boundedFaceIdx = [];
     for (var i = 0; i < faces.length; i += 1) {
       if (i !== outerFaceIdx) boundedFaceIdx.push(i);
@@ -448,11 +434,9 @@
     var desired = 1 / boundedFaceIdx.length;
     var totalInnerIters = 0;
     var seedPos = currentPositionsFromCy(cy);
-    var fixedOuterPos = null;
+    var fixedOuterPos = {};
     var stopReason = 'max-iters';
-
     var initPos = initOuterCoords(augmented.nodeIds, outer, null);
-    fixedOuterPos = {};
     for (var oi = 0; oi < outer.length; oi += 1) {
       var ov = String(outer[oi]);
       fixedOuterPos[ov] = { x: initPos[ov].x, y: initPos[ov].y };

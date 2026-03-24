@@ -8,10 +8,6 @@
     return PlanarCommon.faceKey(face);
   }
 
-  function graphFromCy(cy) {
-    return PlanarCommon.graphFromCy(cy);
-  }
-
   function buildAdjacency(nodeIds, edgePairs) {
     return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
   }
@@ -128,10 +124,6 @@
         seedPos: seedPos
       })
     });
-  }
-
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace) {
-    return PlanarCommon.prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, 'FaceBalancer');
   }
 
   function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds) {
@@ -982,44 +974,25 @@
     var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5;
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 80;
 
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
-    }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
-      return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
-    }
     if (!global.PlanarVibeBarycentricCore ||
-        !global.PlanarVibeBarycentricCore.buildUniformWeights ||
-        !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout ||
         !global.PlanarVibeBarycentricCore.defaultOuterInitOptions) {
       return { ok: false, message: 'Barycentric core is missing. Check script load order' };
     }
 
-    var g = graphFromCy(cy);
-    if (g.nodeIds.length < 3) {
-      return { ok: false, message: 'FaceBalancer requires at least 3 vertices' };
-    }
-    var baseEmbedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
-    if (!baseEmbedding || !baseEmbedding.ok) {
-      return { ok: false, message: 'FaceBalancer requires a planar graph' };
-    }
-
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
-    if (!outerFace || outerFace.length < 3) {
-      return { ok: false, message: 'Could not determine outer boundary for FaceBalancer layout' };
-    }
-    var augmented = prepareAugmentedTriangulation(g.nodeIds, g.edgePairs, baseEmbedding, outerFace);
-    if (!augmented.ok) {
-      return { ok: false, message: augmented.reason || 'FaceBalancer augmentation failed' };
-    }
-    var init = buildInitialPositions(augmented.nodeIds, augmented.edgePairs, outerFace, cy);
-    if (!init || !init.ok || !init.pos) {
-      return { ok: false, message: (init && init.message) || 'FaceBalancer initialization failed' };
+    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+      failureLabel: 'FaceBalancer layout',
+      minNodeCount: 3,
+      initPositions: buildInitialPositions
+    });
+    if (!context || !context.ok) {
+      return context || { ok: false, message: 'FaceBalancer setup failed' };
     }
 
-    var initPos = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
-      ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(init.pos, outerFace)
-      : copyPositions(init.pos);
+    var g = context.graph;
+    var baseEmbedding = context.baseEmbedding;
+    var outerFace = context.outerFace;
+    var augmented = context.augmented;
+    var initPos = context.posById;
     var areaTol = Number.isFinite(opts.areaTol) && opts.areaTol >= 0
       ? opts.areaTol
       : 1e-15;

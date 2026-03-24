@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "test": "timeout 10m node --test tests/*.test.mjs",
-    "report:data": "timeout 10m node scripts/compute-report-data.mjs",
+    "report:data": "node scripts/compute-report-data.mjs",
     "report": "timeout 2m node scripts/generate-report.mjs"
   }
 }

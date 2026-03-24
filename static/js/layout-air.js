@@ -26,14 +26,6 @@
     return -1;
   }
 
-  function graphFromCy(cy) {
-    return PlanarCommon.graphFromCy(cy);
-  }
-
-  function buildAdjacency(nodeIds, edgePairs) {
-    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
-  }
-
   function triangleArea2(a, b, c) {
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   }
@@ -44,10 +36,6 @@
 
   function orientFaceCCW(face, posById) {
     return PlanarCommon.orientFaceCCW(face, posById);
-  }
-
-  function copyPositions(pos) {
-    return PlanarCommon.copyPositions(pos);
   }
 
   function add(p, q) {
@@ -72,22 +60,6 @@
 
   function norm(p) {
     return Math.sqrt(dot(p, p));
-  }
-
-  function outerFaceDiameter(posById, outerFace) {
-    return PlanarCommon.outerFaceDiameter(posById, outerFace);
-  }
-
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace) {
-    return PlanarCommon.prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, 'Air');
-  }
-
-  function buildInitialPositions(nodeIds, edgePairs, outerFace, cy) {
-    return PlanarCommon.buildUniformBarycentricSeed(nodeIds, edgePairs, outerFace, cy, {
-      maxIters: 1000,
-      tolerance: 1e-7,
-      useSeedOuter: false
-    });
   }
 
   function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds) {
@@ -393,47 +365,27 @@
 
   function prepareAirFromGeneralPlaneGraph(cy, options) {
     var opts = normalizeAirOptions(options);
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
-    }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
-      return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
-    }
-    if (!global.PlanarVibeBarycentricCore ||
-        !global.PlanarVibeBarycentricCore.buildUniformWeights ||
-        !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout ||
-        !global.PlanarVibeBarycentricCore.currentPositionsFromCy) {
-      return { ok: false, message: 'Barycentric core is missing. Check script load order' };
-    }
-
-    var g = graphFromCy(cy);
-    if (g.nodeIds.length < 3) {
-      return { ok: false, message: 'Air layout requires at least 3 vertices' };
+    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+      failureLabel: 'Air layout',
+      minNodeCount: 3,
+      seedOptions: {
+        maxIters: 1000,
+        tolerance: 1e-7,
+        useSeedOuter: false
+      }
+    });
+    if (!context || !context.ok) {
+      return context || { ok: false, message: 'Air setup failed' };
     }
 
-    var baseEmbedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
-    if (!baseEmbedding || !baseEmbedding.ok) {
-      return { ok: false, message: 'Air layout requires a planar graph' };
-    }
-
-    var originalOuterFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
-    if (!originalOuterFace || originalOuterFace.length < 3) {
-      return { ok: false, message: 'Could not determine outer boundary for Air layout' };
-    }
-    var augmented = prepareAugmentedTriangulation(g.nodeIds, g.edgePairs, baseEmbedding, originalOuterFace);
-    if (!augmented.ok) {
-      return { ok: false, message: augmented.reason || 'Air augmentation failed' };
-    }
-
-    var init = buildInitialPositions(augmented.nodeIds, augmented.edgePairs, originalOuterFace, cy);
-    if (!init || !init.ok || !init.pos) {
-      return { ok: false, message: (init && init.message) || 'Air initialization failed' };
-    }
-
-    var posById = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
-      ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(init.pos, originalOuterFace)
-      : copyPositions(init.pos);
-    var airData = buildAirData(baseEmbedding, augmented.embedding, originalOuterFace, augmented.dummyFaceKeyById, augmented.dummyFaceVerticesById, posById);
+    var airData = buildAirData(
+      context.baseEmbedding,
+      context.augmented.embedding,
+      context.outerFace,
+      context.augmented.dummyFaceKeyById,
+      context.augmented.dummyFaceVerticesById,
+      context.posById
+    );
     if (!airData.ok) {
       return { ok: false, message: airData.reason || 'Air setup failed' };
     }
@@ -442,11 +394,11 @@
       return {
         ok: true,
         opts: opts,
-        graph: g,
-        baseEmbedding: baseEmbedding,
-        outerFace: originalOuterFace,
-        augmented: augmented,
-        posById: posById,
+        graph: context.graph,
+        baseEmbedding: context.baseEmbedding,
+        outerFace: context.outerFace,
+        augmented: context.augmented,
+        posById: context.posById,
         airData: airData,
         movableVertices: []
       };
@@ -454,17 +406,20 @@
 
     for (var fi = 0; fi < airData.triangles.length; fi += 1) {
       var tri = airData.triangles[fi];
-      var area = Math.abs(triangleArea2(posById[tri.vertices[0]], posById[tri.vertices[1]], posById[tri.vertices[2]])) / 2;
+      var area = Math.abs(triangleArea2(
+        context.posById[tri.vertices[0]],
+        context.posById[tri.vertices[1]],
+        context.posById[tri.vertices[2]]
+      )) / 2;
       if (!(area > opts.tolAreaPositive)) {
         return { ok: false, message: 'Air initialization failed: degenerate augmented triangle' };
       }
     }
 
-    var outerSet = new Set(originalOuterFace.map(String));
     var movableVertices = [];
-    for (var ni = 0; ni < augmented.nodeIds.length; ni += 1) {
-      var nodeId = String(augmented.nodeIds[ni]);
-      if (!outerSet.has(nodeId) && airData.incident[nodeId] && airData.incident[nodeId].length > 0) {
+    for (var ni = 0; ni < context.movableVertices.length; ni += 1) {
+      var nodeId = String(context.movableVertices[ni]);
+      if (airData.incident[nodeId] && airData.incident[nodeId].length > 0) {
         movableVertices.push(nodeId);
       }
     }
@@ -472,11 +427,11 @@
     return {
       ok: true,
       opts: opts,
-      graph: g,
-      baseEmbedding: baseEmbedding,
-      outerFace: originalOuterFace,
-      augmented: augmented,
-      posById: posById,
+      graph: context.graph,
+      baseEmbedding: context.baseEmbedding,
+      outerFace: context.outerFace,
+      augmented: context.augmented,
+      posById: context.posById,
       airData: airData,
       movableVertices: movableVertices
     };
@@ -490,7 +445,7 @@
     var movableVertices = prepared.movableVertices || [];
     var status = 'max_sweeps';
     var lastStats = computeAirStats(airData, posById, movableVertices, opts.tolAreaPositive);
-    var outerDiameter = outerFaceDiameter(posById, airData.outerFace || prepared.outerFace || []);
+    var outerDiameter = PlanarCommon.outerFaceDiameter(posById, airData.outerFace || prepared.outerFace || []);
     var moveTol = opts.moveTolAbs + opts.moveTolRel * outerDiameter;
     var avgMoveTol = 0.25 * moveTol;
     var plateauErrTolAbs = opts.plateauErrTolAbs !== null ? opts.plateauErrTolAbs : opts.tolAreaGlobal;
@@ -521,7 +476,7 @@
     }
 
     for (var sweep = 1; sweep <= opts.maxSweeps; sweep += 1) {
-      var prevSweepPos = copyPositions(posById);
+      var prevSweepPos = PlanarCommon.copyPositions(posById);
       var acceptedCount = 0;
       var sumMove = 0;
       var maxMove = 0;
