@@ -4,8 +4,32 @@
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
   var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
 
-  function buildAdjacency(nodeIds, edgePairs) {
-    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
+  function checkTutteDependencies() {
+    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
+      return {
+        ok: false,
+        message: 'Planarity utilities are missing. Check script load order'
+      };
+    }
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+      return {
+        ok: false,
+        message: 'PlanarGraphCore is missing. Check script load order'
+      };
+    }
+    if (!PlanarCommon || typeof PlanarCommon.prepareTriangulatedLayoutData !== 'function') {
+      return {
+        ok: false,
+        message: 'Shared planar prep is missing. Check script load order'
+      };
+    }
+    if (!global.PlanarVibeBarycentricCore || typeof global.PlanarVibeBarycentricCore.computeBarycentricLayout !== 'function') {
+      return {
+        ok: false,
+        message: 'Barycentric core is missing. Check script load order'
+      };
+    }
+    return { ok: true };
   }
 
   function extractOriginalPositions(posById, nodeIds) {
@@ -19,105 +43,55 @@
     return out;
   }
 
-  function applyTutteLayout(cy) {
-    var nodes = cy.nodes().toArray();
-    if (nodes.length < 3) {
+  function computeTutteLayout(nodeIds, edgePairs, options) {
+    var opts = options || {};
+    var ids = (nodeIds || []).map(String);
+    var pairs = (edgePairs || []).map(function (e) { return [String(e[0]), String(e[1])]; });
+
+    if (ids.length < 3) {
       return {
         ok: false,
         message: 'Tutte requires at least 3 vertices'
       };
     }
 
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return {
-        ok: false,
-        message: 'Planarity utilities are missing. Check script load order'
-      };
-    }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
-      return {
-        ok: false,
-        message: 'PlanarGraphCore is missing. Check script load order'
-      };
-    }
-    if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout) {
-      return {
-        ok: false,
-        message: 'Barycentric core is missing. Check script load order'
-      };
+    var deps = checkTutteDependencies();
+    if (!deps.ok) {
+      return deps;
     }
 
-    var graph = PlanarCommon.graphFromCy(cy);
-    var nodeIds = graph.nodeIds.slice();
-    var edgePairs = graph.edgePairs.slice();
-
-    var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
-    if (!embedding || !embedding.ok) {
-      return {
-        ok: false,
-        message: 'Tutte requires a planar graph'
-      };
-    }
-
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
-    if (!outerFace || outerFace.length < 3) {
-      return {
-        ok: false,
-        message: 'Could not determine outer face for Tutte'
-      };
-    }
-    var prepared = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
+    var prepared = PlanarCommon.prepareTriangulatedLayoutData({
+      nodeIds: ids,
+      edgePairs: pairs
+    }, {
+      failureLabel: 'Tutte layout',
+      minNodeCount: 3,
+      baseEmbedding: opts.embedding || null,
+      outerFace: Array.isArray(opts.outerFace) ? opts.outerFace.slice().map(String) : null,
+      augmentationOptions: opts.augmentationOptions || null,
+      initPositions: function (solveNodeIds, solveEdgePairs, outerFace, localCy, context) {
+        return global.PlanarVibeBarycentricCore.computeBarycentricLayout(solveNodeIds, solveEdgePairs, {
+          outerFace: outerFace,
+          embedding: context && context.augmented ? context.augmented.embedding : null,
+          maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000,
+          tolerance: Number.isFinite(opts.tolerance) ? Math.max(0, opts.tolerance) : 1e-7,
+          initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+            useSeedOuter: false
+          })
+        });
+      }
+    });
     if (!prepared || !prepared.ok) {
-      return {
-        ok: false,
-        message: (prepared && prepared.reason) || 'Could not build a triangulated embedding for Tutte'
-      };
+      return prepared || { ok: false, message: 'Tutte failed' };
     }
-    var solveNodeIds = prepared.nodeIds.map(String);
-    var solveEdgePairs = prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; });
-    var solveEmbedding = prepared.embedding;
-    var solveAdj = buildAdjacency(solveNodeIds, solveEdgePairs);
-    var weights = global.PlanarVibeBarycentricCore.buildUniformWeights(solveEdgePairs, 1);
-    var attempts = [
-      { maxIters: 1000, tolerance: 1e-6 },
-      { maxIters: 1000, tolerance: 1e-7 },
-      { maxIters: 2000, tolerance: 1e-8 }
-    ];
-    var out = null;
-    var hasCrossings = false;
-    for (var ai = 0; ai < attempts.length; ai += 1) {
-      var attempt = attempts[ai];
-      out = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-        nodeIds: solveNodeIds,
-        adjacency: solveAdj,
-        outerFace: outerFace,
-        weights: weights,
-        maxIters: attempt.maxIters,
-        tolerance: attempt.tolerance,
-        initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-          useSeedOuter: false
-        })
-      });
-      if (!out.ok) {
-        break;
-      }
-      hasCrossings = !!(global.PlanarVibeMetrics &&
-        typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
-        global.PlanarVibeMetrics.hasCrossingsFromPositions(
-          extractOriginalPositions(out.pos, nodeIds),
-          edgePairs
-        ));
-      if (!hasCrossings) {
-        break;
-      }
-    }
-    if (!out.ok) {
-      return {
-        ok: false,
-        message: out.message || 'Tutte solver failed'
-      };
-    }
-    out.pos = PlanarCommon.alignOuterFace(out.pos, outerFace);
+
+    var projected = extractOriginalPositions(prepared.posById, ids);
+    var hasCrossings = !!(global.PlanarVibeMetrics &&
+      typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
+      global.PlanarVibeMetrics.hasCrossingsFromPositions(
+        projected,
+        pairs
+      ));
     if (hasCrossings) {
       return {
         ok: false,
@@ -125,13 +99,41 @@
       };
     }
 
+    return {
+      ok: true,
+      nodeIds: ids,
+      edgePairs: pairs,
+      outerFace: prepared.outerFace,
+      embedding: prepared.baseEmbedding,
+      augmented: prepared.augmented,
+      pos: projected,
+      iters: prepared.initResult && Number.isFinite(prepared.initResult.iters) ? prepared.initResult.iters : 0,
+      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
+        ? PlanarCommon.createAugmentationDebugState(
+          prepared.graph,
+          prepared.outerFace,
+          prepared.augmented,
+          prepared.posById
+        )
+        : null
+    };
+  }
+
+  function applyTutteLayout(cy) {
+    var nodes = cy.nodes().toArray();
+    var graph = PlanarCommon.graphFromCy(cy);
+    var result = computeTutteLayout(graph.nodeIds, graph.edgePairs);
+    if (!result || !result.ok) {
+      return result || { ok: false, message: 'Tutte failed' };
+    }
+
     if (typeof LayoutRuntime.applyAndFit === 'function') {
-      LayoutRuntime.applyAndFit(cy, nodeIds, out.pos, 24);
+      LayoutRuntime.applyAndFit(cy, result.nodeIds, result.pos, 24);
     } else {
       for (var i = 0; i < nodes.length; i += 1) {
         var nodeId = nodes[i].id();
-        if (out.pos[nodeId]) {
-          nodes[i].position(out.pos[nodeId]);
+        if (result.pos[nodeId]) {
+          nodes[i].position(result.pos[nodeId]);
         }
       }
       cy.fit(undefined, 24);
@@ -139,11 +141,14 @@
 
     return {
       ok: true,
-      message: 'Applied Tutte (' + outerFace.length + '-vertex outer face, ' + out.iters + ' iters)'
+      message: 'Applied Tutte (' + result.outerFace.length + '-vertex outer face, ' + result.iters + ' iters)',
+      debugState: result.debugState || null
     };
   }
 
   global.PlanarVibeTutte = {
+    computeTutteLayout: computeTutteLayout,
+    computeTutteGeometry: computeTutteLayout,
     applyTutteLayout: applyTutteLayout
   };
 })(window);

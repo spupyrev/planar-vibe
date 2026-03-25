@@ -7,6 +7,8 @@
     var edges = [];
     var edgeKeys = new Set();
     var positionsById = {};
+    var labelsById = {};
+    var classesById = {};
     var hasExplicitPositions = false;
 
     for (var i = 0; i < lines.length; i += 1) {
@@ -18,16 +20,18 @@
       var parts = line.split(/\s+/);
       if (parts[0] === 'v' || parts[0] === 'V') {
         if (parts.length < 4) {
-          throw new Error('Invalid line ' + (i + 1) + ': expected "v id x y".');
+          throw new Error('Invalid line ' + (i + 1) + ': expected "v id x y [label] [class]".');
         }
         var vertexId = parts[1];
         var x = Number(parts[2]);
         var y = Number(parts[3]);
         if (!vertexId || !Number.isFinite(x) || !Number.isFinite(y)) {
-          throw new Error('Invalid line ' + (i + 1) + ': expected finite coordinates in "v id x y".');
+          throw new Error('Invalid line ' + (i + 1) + ': expected finite coordinates in "v id x y [label] [class]".');
         }
         nodes.add(vertexId);
         positionsById[vertexId] = { x: x, y: y };
+        labelsById[vertexId] = parts.length >= 5 ? parts[4] : vertexId;
+        classesById[vertexId] = parts.length >= 6 ? parts[5] : '';
         hasExplicitPositions = true;
         continue;
       }
@@ -63,12 +67,16 @@
 
     var nodeElements = [];
     nodes.forEach(function (id) {
-      nodeElements.push({
+      var nodeEl = {
         data: {
           id: id,
-          label: id
+          label: labelsById[id] !== undefined ? labelsById[id] : id
         }
-      });
+      };
+      if (classesById[id]) {
+        nodeEl.classes = classesById[id];
+      }
+      nodeElements.push(nodeEl);
     });
 
     return {
@@ -76,6 +84,8 @@
       nodeCount: nodeElements.length,
       edgeCount: edges.length,
       positionsById: positionsById,
+      labelsById: labelsById,
+      classesById: classesById,
       hasExplicitPositions: hasExplicitPositions
     };
   }
@@ -208,6 +218,8 @@
     var savedViewport = null;
     var currentVisualizedInput = null;
     var layoutBusyState = null;
+    var showDebugAugmentation = false;
+    var currentDebugState = null;
 
     function hashStringLocal(value, seed) {
       var hash = seed >>> 0;
@@ -225,6 +237,12 @@
 
     function computeNodeFontSize(vertexSize) {
       return Math.max(6, Math.round(vertexSize * 0.45));
+    }
+
+    function undirectedEdgeKey(u, v) {
+      var a = String(u);
+      var b = String(v);
+      return a < b ? a + '::' + b : b + '::' + a;
     }
 
     var cy = null;
@@ -259,11 +277,25 @@
             }
           },
           {
+            selector: 'node.dummy-node',
+            style: {
+              'background-color': '#7a1f1f',
+              'border-color': '#3d0d0d'
+            }
+          },
+          {
             selector: 'edge',
             style: {
               'line-color': LOGO_COLORS.black,
               'width': graphStylePrefs.edgeWidth,
               'curve-style': 'straight'
+            }
+          },
+          {
+            selector: 'edge.debug-overlay',
+            style: {
+              'line-color': '#7a1f1f',
+              'line-style': 'dashed'
             }
           }
         ],
@@ -349,12 +381,19 @@
         .update();
     }
 
+    function isDebugOverlayNode(node) {
+      return !!(node && typeof node.hasClass === 'function' && node.hasClass('debug-overlay'));
+    }
+
     function capturePositionsFromCy() {
       if (!cy) {
         return {};
       }
       var byId = {};
       cy.nodes().forEach(function (node) {
+        if (isDebugOverlayNode(node)) {
+          return;
+        }
         var p = node.position();
         byId[String(node.id())] = { x: p.x, y: p.y };
       });
@@ -427,6 +466,121 @@
         };
       }
       return byId;
+    }
+
+    function clearDebugOverlayFromCy() {
+      if (!cy) {
+        return;
+      }
+      cy.elements('.debug-overlay').remove();
+    }
+
+    function buildDebugOverlayData() {
+      var debug = currentDebugState;
+      if (!showDebugAugmentation || !debug) {
+        return null;
+      }
+      var dummyIds = Array.isArray(debug.dummyIds) ? debug.dummyIds.map(String) : [];
+      var dummyPositionsById = debug.dummyPositionsById || {};
+      var dummyLabelById = debug.dummyLabelById || {};
+      var renderIdByDummyId = {};
+      var labelsById = {};
+      var classesById = {};
+      var positionsById = {};
+      var edgePairs = [];
+      var edgeClassByKey = {};
+      var i;
+
+      for (i = 0; i < dummyIds.length; i += 1) {
+        var dummyId = String(dummyIds[i]);
+        var renderId = '__dbg__' + dummyId;
+        renderIdByDummyId[dummyId] = renderId;
+        labelsById[renderId] = dummyLabelById[dummyId] !== undefined ? String(dummyLabelById[dummyId]) : dummyId;
+        classesById[renderId] = 'dummy-node debug-overlay';
+        if (dummyPositionsById[dummyId] && Number.isFinite(dummyPositionsById[dummyId].x) && Number.isFinite(dummyPositionsById[dummyId].y)) {
+          positionsById[renderId] = {
+            x: dummyPositionsById[dummyId].x,
+            y: dummyPositionsById[dummyId].y
+          };
+        }
+      }
+
+      var addedEdgePairs = Array.isArray(debug.addedEdgePairs) ? debug.addedEdgePairs : [];
+      for (i = 0; i < addedEdgePairs.length; i += 1) {
+        var u = String(addedEdgePairs[i][0]);
+        var v = String(addedEdgePairs[i][1]);
+        var ru = renderIdByDummyId[u] || u;
+        var rv = renderIdByDummyId[v] || v;
+        edgePairs.push([ru, rv]);
+        edgeClassByKey[undirectedEdgeKey(ru, rv)] = 'debug-overlay';
+      }
+
+      return {
+        positionsById: positionsById,
+        labelsById: labelsById,
+        classesById: classesById,
+        edgePairs: edgePairs,
+        edgeClassByKey: edgeClassByKey
+      };
+    }
+
+    function syncDebugOverlayInCy() {
+      clearDebugOverlayFromCy();
+      if (!cy) {
+        return;
+      }
+      var overlay = buildDebugOverlayData();
+      if (!overlay) {
+        return;
+      }
+      var elements = [];
+      var nodeIds = Object.keys(overlay.positionsById);
+      for (var i = 0; i < nodeIds.length; i += 1) {
+        var id = nodeIds[i];
+        elements.push({
+          data: {
+            id: id,
+            label: overlay.labelsById[id] !== undefined ? overlay.labelsById[id] : id
+          },
+          classes: overlay.classesById[id] || 'debug-overlay'
+        });
+      }
+      for (i = 0; i < overlay.edgePairs.length; i += 1) {
+        var source = String(overlay.edgePairs[i][0]);
+        var target = String(overlay.edgePairs[i][1]);
+        var edgeId = '__dbg__e' + i + '__' + source + '__' + target;
+        elements.push({
+          data: {
+            id: edgeId,
+            source: source,
+            target: target
+          },
+          classes: overlay.edgeClassByKey[undirectedEdgeKey(source, target)] || 'debug-overlay'
+        });
+      }
+      if (elements.length === 0) {
+        return;
+      }
+      cy.add(elements);
+      cy.nodes('.debug-overlay').forEach(function (node) {
+        var p = overlay.positionsById[String(node.id())];
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+          node.position({ x: p.x, y: p.y });
+        }
+      });
+    }
+
+    function setCurrentDebugState(debugState) {
+      currentDebugState = debugState || null;
+      if (cy) {
+        syncDebugOverlayInCy();
+      } else {
+        renderStaticSnapshot();
+      }
+    }
+
+    function clearCurrentDebugState() {
+      setCurrentDebugState(null);
     }
 
     function updateStyleControlsUI() {
@@ -555,6 +709,9 @@
       var fontSize = opts.fontSize;
       var includeBackground = opts.includeBackground !== false;
       var forcedViewBox = opts.viewBox || null;
+      var labelsById = opts.labelsById || {};
+      var classesById = opts.classesById || {};
+      var edgeClassByKey = opts.edgeClassByKey || {};
       var pad = Math.max(24, radius + 8);
       var nodeIds = Object.keys(nodePosById || {});
       var minX = Infinity;
@@ -614,7 +771,13 @@
         if (!pu || !pv) {
           continue;
         }
-        svg.push('<line x1="' + (pu.x + offsetX) + '" y1="' + (pu.y + offsetY) + '" x2="' + (pv.x + offsetX) + '" y2="' + (pv.y + offsetY) + '"/>');
+        var edgeClass = String(edgeClassByKey[undirectedEdgeKey(u, v)] || '');
+        var isDebugEdge = edgeClass.indexOf('debug-overlay') !== -1;
+        svg.push(
+          '<line x1="' + (pu.x + offsetX) + '" y1="' + (pu.y + offsetY) + '" x2="' + (pv.x + offsetX) + '" y2="' + (pv.y + offsetY) + '"' +
+          ' stroke="' + (isDebugEdge ? '#7a1f1f' : LOGO_COLORS.black) + '"' +
+          ' stroke-dasharray="' + (isDebugEdge ? '4 3' : 'none') + '"/>'
+        );
       }
       svg.push('</g>');
       svg.push('<g id="nodes">');
@@ -626,8 +789,15 @@
         }
         var x = pn.x + offsetX;
         var y = pn.y + offsetY;
-        var label = escapeXml(id);
-        svg.push('<circle cx="' + x + '" cy="' + y + '" r="' + radius + '" fill="' + LOGO_COLORS.blue + '" stroke="' + LOGO_COLORS.black + '" stroke-width="0.5"/>');
+        var label = escapeXml(
+          labelsById[id] !== undefined
+            ? labelsById[id]
+            : id
+        );
+        var nodeClass = String(classesById[id] || '');
+        var fill = nodeClass.indexOf('dummy-node') !== -1 ? '#7a1f1f' : LOGO_COLORS.blue;
+        var stroke = nodeClass.indexOf('dummy-node') !== -1 ? '#3d0d0d' : LOGO_COLORS.black;
+        svg.push('<circle cx="' + x + '" cy="' + y + '" r="' + radius + '" fill="' + fill + '" stroke="' + stroke + '" stroke-width="0.5"/>');
         svg.push('<text x="' + x + '" y="' + y + '" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="' + fontSize + '" font-family="Segoe UI, Arial, sans-serif">' + label + '</text>');
       }
       svg.push('</g>');
@@ -914,10 +1084,13 @@
       var posById = {};
       var nodeIds = [];
       if (cy) {
-        nodeIds = cy.nodes().map(function (node) { return String(node.id()); });
-        cy.nodes().forEach(function (node) {
-          posById[String(node.id())] = node.position();
-        });
+        nodeIds = getNodeIdsFromParsed(currentParsed);
+        for (var ni = 0; ni < nodeIds.length; ni += 1) {
+          var cyNode = cy.getElementById(nodeIds[ni]);
+          if (cyNode && cyNode.length) {
+            posById[nodeIds[ni]] = cyNode.position();
+          }
+        }
       } else {
         nodeIds = getNodeIdsFromParsed(currentParsed);
         posById = savedPositions || {};
@@ -975,10 +1148,13 @@
       var posById = {};
       var nodeIds = [];
       if (cy) {
-        nodeIds = cy.nodes().map(function (node) { return String(node.id()); });
-        cy.nodes().forEach(function (node) {
-          posById[String(node.id())] = node.position();
-        });
+        nodeIds = getNodeIdsFromParsed(currentParsed);
+        for (var ni = 0; ni < nodeIds.length; ni += 1) {
+          var cyNode = cy.getElementById(nodeIds[ni]);
+          if (cyNode && cyNode.length) {
+            posById[nodeIds[ni]] = cyNode.position();
+          }
+        }
       } else {
         nodeIds = getNodeIdsFromParsed(currentParsed);
         posById = savedPositions || {};
@@ -1049,12 +1225,106 @@
       global.$('#stats-spacing-uniformity').text(result.score.toFixed(3));
     }
 
+    function buildVisibleSnapshotData() {
+      var basePositions = savedPositions || {};
+      var baseEdgePairs = currentParsed ? edgePairsFromParsed(currentParsed) : [];
+      var labelsById = Object.assign({}, currentParsed && currentParsed.labelsById ? currentParsed.labelsById : {});
+      var classesById = Object.assign({}, currentParsed && currentParsed.classesById ? currentParsed.classesById : {});
+      var edgeClassByKey = {};
+      var nodePosById = {};
+      var edgePairs = baseEdgePairs.slice();
+      var keys = Object.keys(basePositions);
+      var i;
+
+      for (i = 0; i < keys.length; i += 1) {
+        var id = keys[i];
+        var p = basePositions[id];
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+          nodePosById[id] = { x: p.x, y: p.y };
+        }
+      }
+
+      var overlay = buildDebugOverlayData();
+      if (overlay) {
+        var overlayIds = Object.keys(overlay.positionsById);
+        for (i = 0; i < overlayIds.length; i += 1) {
+          var overlayId = overlayIds[i];
+          nodePosById[overlayId] = {
+            x: overlay.positionsById[overlayId].x,
+            y: overlay.positionsById[overlayId].y
+          };
+          labelsById[overlayId] = overlay.labelsById[overlayId];
+          classesById[overlayId] = overlay.classesById[overlayId];
+        }
+        edgePairs = edgePairs.concat(overlay.edgePairs);
+        Object.assign(edgeClassByKey, overlay.edgeClassByKey);
+      }
+
+      return {
+        nodePosById: nodePosById,
+        edgePairs: edgePairs,
+        labelsById: labelsById,
+        classesById: classesById,
+        edgeClassByKey: edgeClassByKey
+      };
+    }
+
+    function computeStaticFitViewport() {
+      var wrapEl = global.document.getElementById('cy-static-wrap');
+      var snapshotData = buildVisibleSnapshotData();
+      if (!wrapEl || !snapshotData) {
+        return null;
+      }
+      var nodeIds = Object.keys(snapshotData.nodePosById || {});
+      if (nodeIds.length === 0) {
+        return null;
+      }
+
+      var radius = graphStylePrefs.vertexSize / 2;
+      var margin = Math.max(24, radius + 8);
+      var minX = Infinity;
+      var minY = Infinity;
+      var maxX = -Infinity;
+      var maxY = -Infinity;
+      for (var i = 0; i < nodeIds.length; i += 1) {
+        var p = snapshotData.nodePosById[nodeIds[i]];
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          continue;
+        }
+        minX = Math.min(minX, p.x - radius - margin);
+        minY = Math.min(minY, p.y - radius - margin);
+        maxX = Math.max(maxX, p.x + radius + margin);
+        maxY = Math.max(maxY, p.y + radius + margin);
+      }
+      if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+        return null;
+      }
+
+      var width = Math.max(1, Math.floor(wrapEl.clientWidth || wrapEl.getBoundingClientRect().width || DEFAULT_WORLD_WIDTH));
+      var height = Math.max(1, Math.floor(wrapEl.clientHeight || wrapEl.getBoundingClientRect().height || DEFAULT_WORLD_HEIGHT));
+      var boxWidth = Math.max(1e-9, maxX - minX);
+      var boxHeight = Math.max(1e-9, maxY - minY);
+      var zoom = Math.min(width / boxWidth, height / boxHeight);
+      if (!Number.isFinite(zoom) || zoom <= 1e-9) {
+        zoom = 1;
+      }
+      return {
+        zoom: zoom,
+        pan: {
+          x: -minX * zoom + (width - boxWidth * zoom) / 2,
+          y: -minY * zoom + (height - boxHeight * zoom) / 2
+        },
+        width: width,
+        height: height
+      };
+    }
+
     function renderStaticSnapshot() {
       if (!currentParsed || !currentParsed.elements) {
         global.$('#cy-static-svg').empty();
         return;
       }
-      var edgePairs = edgePairsFromParsed(currentParsed);
+      var snapshotData = buildVisibleSnapshotData();
       var forcedViewBox = null;
       var wrapEl = global.document.getElementById('cy-static-wrap');
       if (savedViewport && wrapEl) {
@@ -1072,19 +1342,26 @@
         }
       }
       if (!forcedViewBox) {
-        forcedViewBox = {
-          minX: 0,
-          minY: 0,
-          width: DEFAULT_WORLD_WIDTH,
-          height: DEFAULT_WORLD_HEIGHT
-        };
+        var fitViewport = computeStaticFitViewport();
+        if (fitViewport) {
+          saveViewportState(fitViewport);
+          forcedViewBox = {
+            minX: (-fitViewport.pan.x) / fitViewport.zoom,
+            minY: (-fitViewport.pan.y) / fitViewport.zoom,
+            width: fitViewport.width / fitViewport.zoom,
+            height: fitViewport.height / fitViewport.zoom
+          };
+        }
       }
-      var snapshot = buildSvgMarkup(savedPositions, edgePairs, {
+      var snapshot = buildSvgMarkup(snapshotData.nodePosById, snapshotData.edgePairs, {
         radius: graphStylePrefs.vertexSize / 2,
         edgeWidth: graphStylePrefs.edgeWidth,
         fontSize: computeNodeFontSize(graphStylePrefs.vertexSize),
         includeBackground: false,
-        viewBox: forcedViewBox
+        viewBox: forcedViewBox,
+        labelsById: snapshotData.labelsById,
+        classesById: snapshotData.classesById,
+        edgeClassByKey: snapshotData.edgeClassByKey
       });
       if (!snapshot) {
         global.$('#cy-static-svg').empty();
@@ -1101,6 +1378,7 @@
 
     function setModeUi() {
       global.$('#interactive-toggle').prop('checked', isInteractive);
+      global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
       global.$('#cy').toggle(isInteractive);
       global.$('#cy-static-wrap').toggle(!isInteractive);
       global.$('.layout-toolbar').show();
@@ -1109,7 +1387,26 @@
       global.$('#vertex-size-control-row').css('opacity', '1');
       global.$('#edge-width-slider').prop('disabled', false);
       global.$('#edge-width-control-row').css('opacity', '1');
-      global.$('#reset-zoom-btn').prop('disabled', !isInteractive);
+      global.$('#reset-zoom-btn').prop('disabled', !isInteractive && !(currentParsed && currentParsed.elements));
+    }
+
+    function setDebugAugmentationVisible(visible, suppressStatus) {
+      showDebugAugmentation = !!visible;
+      global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
+      if (cy) {
+        syncDebugOverlayInCy();
+      } else {
+        renderStaticSnapshot();
+      }
+      if (!suppressStatus) {
+        if (showDebugAugmentation) {
+          setStatus(currentDebugState
+            ? 'Showing augmentation debug overlay'
+            : 'Debug overlay enabled (no algorithm debug state yet)', false);
+        } else {
+          setStatus('Hiding augmentation debug overlay', false);
+        }
+      }
     }
 
     function setInteractiveMode(nextInteractive, persistPreference, suppressStatus) {
@@ -1157,6 +1454,7 @@
           cy.fit(undefined, 24);
           saveViewportState(captureViewportFromCy());
         }
+        syncDebugOverlayInCy();
       }
       updateStatistics(currentParsed);
       updateFaceAreaPlot();
@@ -1166,7 +1464,7 @@
       }
     }
 
-    function normalizeLayoutScale() {
+    function normalizeLayoutScale(debugState) {
       if (!cy) {
         return;
       }
@@ -1179,6 +1477,9 @@
       var maxX = -Infinity;
       var maxY = -Infinity;
       nodes.forEach(function (node) {
+        if (isDebugOverlayNode(node)) {
+          return;
+        }
         var p = node.position();
         if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
           return;
@@ -1202,24 +1503,47 @@
       if (!Number.isFinite(scale) || scale <= 0) {
         return;
       }
+      function transformPoint(p) {
+        return {
+          x: (p.x - minX) * scale + pad,
+          y: (p.y - minY) * scale + pad
+        };
+      }
       if (width < 1e-9 && height < 1e-9) {
         var single = nodes[0];
         if (single) {
           single.position({ x: targetWidth / 2, y: targetHeight / 2 });
         }
+        if (debugState && debugState.dummyPositionsById) {
+          var singleKeys = Object.keys(debugState.dummyPositionsById);
+          for (var si = 0; si < singleKeys.length; si += 1) {
+            debugState.dummyPositionsById[singleKeys[si]] = { x: targetWidth / 2, y: targetHeight / 2 };
+          }
+        }
         cy.fit(undefined, 24);
         return;
       }
       nodes.forEach(function (node) {
+        if (isDebugOverlayNode(node)) {
+          return;
+        }
         var p = node.position();
         if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
           return;
         }
-        node.position({
-          x: (p.x - minX) * scale + pad,
-          y: (p.y - minY) * scale + pad
-        });
+        node.position(transformPoint(p));
       });
+      if (debugState && debugState.dummyPositionsById) {
+        var dummyKeys = Object.keys(debugState.dummyPositionsById);
+        for (var di = 0; di < dummyKeys.length; di += 1) {
+          var dummyId = dummyKeys[di];
+          var dp = debugState.dummyPositionsById[dummyId];
+          if (!dp || !Number.isFinite(dp.x) || !Number.isFinite(dp.y)) {
+            continue;
+          }
+          debugState.dummyPositionsById[dummyId] = transformPoint(dp);
+        }
+      }
       cy.fit(undefined, 24);
     }
 
@@ -1317,12 +1641,12 @@
         return;
       }
       if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-        setStatistics({ vertexCount: cy.nodes().length, edgeCount: edgePairsFromParsed(parsed).length, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
+        setStatistics({ vertexCount: getNodeIdsFromParsed(parsed).length, edgeCount: edgePairsFromParsed(parsed).length, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearDrawingStats('No plot');
         setPlanarButtonsDisabled();
         return;
       }
-      var nodeIds = cy.nodes().map(function (node) { return String(node.id()); });
+      var nodeIds = getNodeIdsFromParsed(parsed);
       var edgePairs = edgePairsFromParsed(parsed);
       var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
       var isPlanar = !!(embedding && embedding.ok);
@@ -1356,6 +1680,7 @@
     function drawGraph() {
       try {
         currentParsed = global.PlanarVibePlugin.parseEdgeList(global.$('#dotfile').val());
+        clearCurrentDebugState();
 
         function applyParsedPositionsIfAny() {
           if (!currentParsed || !currentParsed.hasExplicitPositions) {
@@ -1410,6 +1735,65 @@
         setStatus(error.message, true);
       }
     }
+
+    function buildTemporaryCyFromCurrentParsed() {
+      if (!currentParsed || !currentParsed.elements || typeof global.cytoscape !== 'function') {
+        return null;
+      }
+      var tempCy = global.cytoscape({
+        headless: true,
+        elements: currentParsed.elements
+      });
+      var basePositions = currentParsed.hasExplicitPositions && currentParsed.positionsById
+        ? currentParsed.positionsById
+        : (savedPositions && Object.keys(savedPositions).length > 0
+          ? savedPositions
+          : assignDeterministicPositionsForParsed(currentParsed));
+      tempCy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        var p = basePositions[id];
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+          node.position({ x: p.x, y: p.y });
+        }
+      });
+      return tempCy;
+    }
+
+    global.PlanarVibePlugin.exportCurrentPPAGAugmentation = function (options) {
+      if (!cy && (!currentParsed || !currentParsed.elements)) {
+        return { ok: false, message: 'Load a graph first' };
+      }
+      if (!global.PlanarVibePPAG || typeof global.PlanarVibePPAG.exportPPAGAugmentedGraph !== 'function') {
+        return { ok: false, message: 'PPAG module is missing. Check script load order' };
+      }
+      var exportCy = cy || buildTemporaryCyFromCurrentParsed();
+      if (!exportCy) {
+        return { ok: false, message: 'Load a graph first' };
+      }
+      try {
+        return global.PlanarVibePPAG.exportPPAGAugmentedGraph(exportCy, options || {});
+      } finally {
+        if (!cy && exportCy && typeof exportCy.destroy === 'function') {
+          exportCy.destroy();
+        }
+      }
+    };
+
+    global.PlanarVibePlugin.visualizeCurrentPPAGAugmentation = function (options) {
+      var exported = global.PlanarVibePlugin.exportCurrentPPAGAugmentation(options);
+      if (!exported || !exported.ok) {
+        return exported || { ok: false, message: 'Could not export PPAG augmentation' };
+      }
+      global.$('#dotfile').val(exported.text);
+      drawGraph();
+      setStatus(
+        'Visualizing PPAG augmented graph H (' +
+          exported.boundedFaceCount + ' bounded triangles, +' +
+          exported.dummyCount + ' dummy)',
+        false
+      );
+      return exported;
+    };
 
     function checkTextArea() {
       var value = global.$('#dotfile').val().trim();
@@ -1473,6 +1857,7 @@
         return;
       }
       setSelectedLayoutButton(layoutName);
+      clearCurrentDebugState();
 
       if (layoutName === 'random') {
         if (!global.PlanarVibeRandom || typeof global.PlanarVibeRandom.applyRandomLayout !== 'function') {
@@ -1889,8 +2274,9 @@
       if (result && typeof result.then === 'function') {
         result.then(function (resolved) {
           if (resolved && resolved.ok && shouldNormalizeOnSuccess) {
-            normalizeLayoutScale();
+            normalizeLayoutScale(resolved.debugState || null);
           }
+          setCurrentDebugState(resolved && resolved.ok && resolved.debugState ? resolved.debugState : null);
           setLayoutStatus(resolved && resolved.message ? resolved.message : ('Applied ' + name + ' layout'), !(resolved && resolved.ok));
           if (shouldDisableOthers) {
             restoreLayoutBusy();
@@ -1906,8 +2292,9 @@
         return;
       }
       if (result && result.ok && shouldNormalizeOnSuccess) {
-        normalizeLayoutScale();
+        normalizeLayoutScale(result.debugState || null);
       }
+      setCurrentDebugState(result && result.ok && result.debugState ? result.debugState : null);
       setLayoutStatus(result && result.message ? result.message : ('Applied ' + name + ' layout'), !(result && result.ok));
       if (shouldDisableOthers) {
         restoreLayoutBusy();
@@ -1946,6 +2333,12 @@
 
     function resetZoom() {
       if (!cy) {
+        if (!currentParsed || !currentParsed.elements) {
+          return;
+        }
+        saveViewportState(computeStaticFitViewport());
+        renderStaticSnapshot();
+        setStatus('Scale reset', false);
         return;
       }
       if (cy.nodes().length === 0) {
@@ -2027,7 +2420,8 @@
         var x = p.x + offsetX;
         var y = p.y + offsetY;
         var label = escapeXml(node.data('label') !== undefined ? node.data('label') : node.id());
-        svg.push('<circle cx="' + x + '" cy="' + y + '" r="' + radius + '" fill="' + LOGO_COLORS.blue + '" stroke="' + LOGO_COLORS.black + '" stroke-width="0.5"/>');
+        var isDummy = typeof node.hasClass === 'function' && node.hasClass('dummy-node');
+        svg.push('<circle cx="' + x + '" cy="' + y + '" r="' + radius + '" fill="' + (isDummy ? '#7a1f1f' : LOGO_COLORS.blue) + '" stroke="' + (isDummy ? '#3d0d0d' : LOGO_COLORS.black) + '" stroke-width="0.5"/>');
         svg.push('<text x="' + x + '" y="' + y + '" text-anchor="middle" dominant-baseline="middle" fill="#ffffff" font-size="' + fontSize + '" font-family="Segoe UI, Arial, sans-serif">' + label + '</text>');
       });
       svg.push('</g>');
@@ -2144,6 +2538,10 @@
 
       global.$('#save-svg-btn').on('click', function () {
         exportSvg();
+      });
+
+      global.$('#show-augmentation-toggle').on('change', function () {
+        setDebugAugmentationVisible(global.$(this).is(':checked'));
       });
 
       global.$('#interactive-toggle').on('change', function () {

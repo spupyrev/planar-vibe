@@ -483,7 +483,15 @@
       return {
         ok: true,
         stopReason: stopReason,
-        message: 'Applied FD-uniform (' + performedIters + ' iters, accepted ' + acceptedTotal + ', rejected ' + rejectedTotal + ', ' + stopReason + ')'
+        message: 'Applied FD-uniform (' + performedIters + ' iters, accepted ' + acceptedTotal + ', rejected ' + rejectedTotal + ', ' + stopReason + ')',
+        debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
+          ? PlanarCommon.createAugmentationDebugState(
+            graph,
+            outerFace,
+            context.augmented,
+            finalPos
+          )
+          : null
       };
     }
 

@@ -668,7 +668,18 @@
     if (prepared.airData.originalFaceKeys.length === 0) {
       runtime.applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
       cy.fit(undefined, 24);
-      return { ok: true, message: 'Applied Air (no bounded faces to balance)' };
+      return {
+        ok: true,
+        message: 'Applied Air (no bounded faces to balance)',
+        debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
+          ? PlanarCommon.createAugmentationDebugState(
+            prepared.graph,
+            prepared.outerFace,
+            prepared.augmented,
+            prepared.posById
+          )
+          : null
+      };
     }
 
     var opts = prepared.opts;
@@ -730,7 +741,15 @@
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: lastStats ? lastStats.maxRelError : null,
       boundedFaceCount: prepared.airData.originalFaceKeys.length,
-      dummyCount: prepared.augmented.dummyCount
+      dummyCount: prepared.augmented.dummyCount,
+      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
+        ? PlanarCommon.createAugmentationDebugState(
+          prepared.graph,
+          prepared.outerFace,
+          prepared.augmented,
+          prepared.posById
+        )
+        : null
     };
   }
 

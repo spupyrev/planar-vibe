@@ -301,6 +301,7 @@
     cycle20: cycleGraph(20),
     ladder20: ladderGraph(20),
     oct174: OCT174_WITH_COORDS,
+    grid2x10: gridGraph(2, 10),
     grid2x20: gridGraph(2, 20),
     grid4x20: gridGraph(4, 20),
     grid9x9: gridGraph(9, 9),

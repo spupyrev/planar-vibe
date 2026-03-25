@@ -20,6 +20,191 @@
     adjacency[target].push(source);
   }
 
+  function createEmptyAdjacencySets(nodeIds) {
+    var adj = {};
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      adj[String(nodeIds[i])] = new Set();
+    }
+    return adj;
+  }
+
+  function buildSimpleAdjacencySets(nodeIds, edgePairs) {
+    var ids = nodeIds.map(String);
+    var adj = createEmptyAdjacencySets(ids);
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var e = edgePairs[i];
+      if (!e || e.length < 2) {
+        continue;
+      }
+      var u = String(e[0]);
+      var v = String(e[1]);
+      if (u === v || !adj[u] || !adj[v]) {
+        continue;
+      }
+      adj[u].add(v);
+      adj[v].add(u);
+    }
+    return adj;
+  }
+
+  function connectivityAfterRemoving(nodeIds, adjacency, removedSet) {
+    var ids = nodeIds.map(String);
+    var start = null;
+    var remaining = 0;
+    for (var i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
+      if (removedSet && removedSet.has(id)) {
+        continue;
+      }
+      remaining += 1;
+      if (start === null) {
+        start = id;
+      }
+    }
+    if (remaining <= 1) {
+      return { connected: true, remaining: remaining };
+    }
+
+    var seen = new Set([start]);
+    var queue = [start];
+    while (queue.length > 0) {
+      var u = queue.shift();
+      var neighbors = adjacency[u];
+      if (!neighbors) {
+        continue;
+      }
+      neighbors.forEach(function (v) {
+        if (removedSet && removedSet.has(v)) {
+          return;
+        }
+        if (seen.has(v)) {
+          return;
+        }
+        seen.add(v);
+        queue.push(v);
+      });
+    }
+
+    return {
+      connected: seen.size === remaining,
+      remaining: remaining
+    };
+  }
+
+  function analyzeThreeConnectivity(nodeIds, edgePairs) {
+    var ids = nodeIds.map(String);
+    if (ids.length < 4) {
+      return {
+        ok: false,
+        reason: 'Graph is not 3-connected: requires at least 4 vertices'
+      };
+    }
+
+    var adj = buildSimpleAdjacencySets(ids, edgePairs);
+    for (var i = 0; i < ids.length; i += 1) {
+      if ((adj[ids[i]] ? adj[ids[i]].size : 0) < 3) {
+        return {
+          ok: false,
+          reason: 'Graph is not 3-connected: vertex ' + ids[i] + ' has degree < 3',
+          witness: { type: 'low-degree', vertex: ids[i] }
+        };
+      }
+    }
+
+    var base = connectivityAfterRemoving(ids, adj, new Set());
+    if (!base.connected) {
+      return {
+        ok: false,
+        reason: 'Graph is not 3-connected: graph is disconnected',
+        witness: { type: 'disconnected' }
+      };
+    }
+
+    for (i = 0; i < ids.length; i += 1) {
+      var cut1 = new Set([ids[i]]);
+      if (!connectivityAfterRemoving(ids, adj, cut1).connected) {
+        return {
+          ok: false,
+          reason: 'Graph is not 3-connected: articulation vertex ' + ids[i],
+          witness: { type: 'articulation', vertex: ids[i] }
+        };
+      }
+    }
+
+    for (i = 0; i < ids.length; i += 1) {
+      for (var j = i + 1; j < ids.length; j += 1) {
+        var cut2 = new Set([ids[i], ids[j]]);
+        if (!connectivityAfterRemoving(ids, adj, cut2).connected) {
+          return {
+            ok: false,
+            reason: 'Graph is not 3-connected: separation pair {' + ids[i] + ', ' + ids[j] + '}',
+            witness: { type: 'separation-pair', vertices: [ids[i], ids[j]] }
+          };
+        }
+      }
+    }
+
+    return { ok: true };
+  }
+
+  function analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace) {
+    var ids = nodeIds.map(String);
+    var outer = Array.isArray(outerFace) ? outerFace.slice().map(String) : [];
+    if (outer.length < 3) {
+      return {
+        ok: false,
+        reason: 'Graph is not internally 3-connected: outer face must have at least 3 vertices'
+      };
+    }
+
+    var idSet = new Set(ids);
+    for (var i = 0; i < outer.length; i += 1) {
+      if (!idSet.has(outer[i])) {
+        return {
+          ok: false,
+          reason: 'Graph is not internally 3-connected: outer face contains unknown vertex ' + outer[i]
+        };
+      }
+    }
+
+    var hubId = '@internal3connOuterHub';
+    var suffix = 0;
+    while (idSet.has(hubId)) {
+      suffix += 1;
+      hubId = '@internal3connOuterHub' + suffix;
+    }
+
+    var augmentedNodeIds = ids.concat([hubId]);
+    var augmentedEdgePairs = cloneEdgePairs(edgePairs);
+    var seenOuter = new Set();
+    for (i = 0; i < outer.length; i += 1) {
+      var v = outer[i];
+      if (seenOuter.has(v)) {
+        continue;
+      }
+      seenOuter.add(v);
+      augmentedEdgePairs.push([hubId, v]);
+    }
+
+    var result = analyzeThreeConnectivity(augmentedNodeIds, augmentedEdgePairs);
+    if (result.ok) {
+      return result;
+    }
+    return {
+      ok: false,
+      reason: 'Graph is not internally 3-connected for the chosen outer face: ' + result.reason,
+      witness: result.witness || null
+    };
+  }
+
+  function isThreeConnected(nodeIds, edgePairs) {
+    return analyzeThreeConnectivity(nodeIds, edgePairs).ok;
+  }
+
+  function isInternallyThreeConnected(nodeIds, edgePairs, outerFace) {
+    return analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace).ok;
+  }
+
   function buildCycle(parent, fromId, toId) {
     var cycle = [toId];
     var cur = fromId;
@@ -170,15 +355,6 @@
           return selected;
         }
       }
-    }
-
-    var cycle = detectCycleFromAdjacency(nodeIds, adjacency);
-    if (cycle && cycle.length >= 3) {
-      return cycle;
-    }
-
-    if (nodeIds.length >= 3) {
-      return [nodeIds[0], nodeIds[1], nodeIds[2]];
     }
     return null;
   }
@@ -454,7 +630,7 @@
     };
   }
 
-  function augmentByFaceStellation(nodeIds, edgePairs, embedding, outerFace) {
+  function augmentByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
     var nodes = nodeIds.map(String);
     var edges = cloneEdgePairs(edgePairs);
     var edgeSet = new Set();
@@ -462,6 +638,16 @@
     var dummyCount = 0;
     var dummyFaceVerticesById = {};
     var outerIndex = findOuterFaceIndex(embedding.faces, outerFace);
+    var opts = options || {};
+    var cycleGadgetSize = Number.isFinite(opts.cycleGadgetSize)
+      ? Math.max(3, Math.floor(opts.cycleGadgetSize))
+      : 0;
+    var cycleGadgetThreshold = Number.isFinite(opts.cycleGadgetThreshold)
+      ? Math.max(cycleGadgetSize + 1, Math.floor(opts.cycleGadgetThreshold))
+      : Infinity;
+    var pathGadgetMaxDegree = Number.isFinite(opts.pathGadgetMaxDegree)
+      ? Math.max(5, Math.floor(opts.pathGadgetMaxDegree))
+      : 5;
 
     for (var i = 0; i < edges.length; i += 1) {
       edgeSet.add(canonicalUndirectedEdgeKey(edges[i][0], edges[i][1]));
@@ -477,6 +663,254 @@
       return id;
     }
 
+    function addEdge(u, v) {
+      var key = canonicalUndirectedEdgeKey(u, v);
+      if (edgeSet.has(key)) {
+        return;
+      }
+      edgeSet.add(key);
+      edges.push([u, v]);
+    }
+
+    function faceChain(face, startIndex, endIndex) {
+      var out = [];
+      var n = face.length;
+      var idx = startIndex;
+      while (true) {
+        out.push(String(face[idx % n]));
+        if (idx === endIndex) {
+          break;
+        }
+        idx += 1;
+      }
+      return out;
+    }
+
+    function buildNonSeparatingDummyBlocks(face) {
+      var boundary = face.map(String);
+      var n = boundary.length;
+      if (n <= 3) {
+        return [];
+      }
+
+      var blocks = [];
+      var current = [boundary[0]];
+      for (var step = 1; step < n; step += 1) {
+        var candidate = boundary[step];
+        var forbidden = false;
+        for (var j = 0; j < current.length - 1; j += 1) {
+          // The final boundary edge back to the starting vertex is part of the
+          // intended fan, not a premature separating triangle.
+          if (j === 0 && current[0] === boundary[0] && candidate === boundary[n - 1]) {
+            continue;
+          }
+          if (edgeSet.has(canonicalUndirectedEdgeKey(current[j], candidate))) {
+            forbidden = true;
+            break;
+          }
+        }
+        if (forbidden) {
+          if (current.length < 2) {
+            return null;
+          }
+          blocks.push(current.slice());
+          current = [current[current.length - 1], candidate];
+        } else {
+          current.push(candidate);
+        }
+      }
+      if (current.length < 2) {
+        return null;
+      }
+      blocks.push(current.slice());
+      return blocks;
+    }
+
+    function augmentFaceWithDummyBlocks(face) {
+      var blocks = buildNonSeparatingDummyBlocks(face);
+      if (!Array.isArray(blocks) || blocks.length === 0) {
+        return false;
+      }
+
+      var dummies = [];
+      for (var bi = 0; bi < blocks.length; bi += 1) {
+        var dummy = nextDummyId();
+        dummies.push(dummy);
+        nodes.push(dummy);
+        dummyFaceVerticesById[dummy] = face.slice().map(String);
+        var seenBoundary = new Set();
+        for (var bj = 0; bj < blocks[bi].length; bj += 1) {
+          var boundaryId = String(blocks[bi][bj]);
+          if (seenBoundary.has(boundaryId)) {
+            continue;
+          }
+          seenBoundary.add(boundaryId);
+          addEdge(dummy, boundaryId);
+        }
+      }
+
+      if (dummies.length === 1) {
+        return true;
+      }
+
+      for (bi = 0; bi < dummies.length - 1; bi += 1) {
+        addEdge(dummies[bi], dummies[bi + 1]);
+      }
+
+      // As with the bounded-degree path gadget, the dummy blocks triangulate
+      // the boundary chains but leave one residual cap polygon
+      // [apex, d0, d1, ..., d{k-1}]. Triangulate that cap explicitly.
+      var apex = String(blocks[0][0]);
+      for (bi = 1; bi < dummies.length; bi += 1) {
+        addEdge(apex, dummies[bi]);
+      }
+      return true;
+    }
+
+    function faceCutIndices(n, k) {
+      var cuts = [];
+      for (var ci = 0; ci < k; ci += 1) {
+        cuts.push(Math.floor((ci * n) / k));
+      }
+      for (ci = 1; ci < cuts.length; ci += 1) {
+        if (!(cuts[ci - 1] < cuts[ci])) {
+          return null;
+        }
+      }
+      return cuts;
+    }
+
+    function resolvedPathGadgetLength(n) {
+      if (!(pathGadgetMaxDegree >= 5)) {
+        return 0;
+      }
+      if (n <= pathGadgetMaxDegree) {
+        return 0;
+      }
+
+      // Use the fewest path dummies that keep the boundary chains balanced.
+      // With evenly spaced cuts, each chain length differs by at most one.
+      // The current path gadget gives each internal dummy degree about
+      // chainVertexCount + 3, so a degree cap D allows chains of at most D - 3
+      // vertices. We use the smallest path satisfying that cap.
+      var maxChainVertices = Math.max(2, pathGadgetMaxDegree - 3);
+      var chainCount = Math.ceil(n / maxChainVertices);
+      return Math.max(2, chainCount - 1);
+    }
+
+    function connectSplitChain(leftDummy, rightDummy, chain) {
+      if (!Array.isArray(chain) || chain.length === 0) {
+        return;
+      }
+      if (!leftDummy && !rightDummy) {
+        return;
+      }
+      if (!rightDummy) {
+        for (var onlyLeft = 0; onlyLeft < chain.length; onlyLeft += 1) {
+          addEdge(leftDummy, chain[onlyLeft]);
+        }
+        return;
+      }
+      if (!leftDummy) {
+        for (var onlyRight = 0; onlyRight < chain.length; onlyRight += 1) {
+          addEdge(rightDummy, chain[onlyRight]);
+        }
+        return;
+      }
+
+      var split = Math.floor((chain.length - 1) / 2);
+      var idx;
+      for (idx = 0; idx <= split; idx += 1) {
+        addEdge(leftDummy, chain[idx]);
+      }
+      for (idx = split; idx < chain.length; idx += 1) {
+        addEdge(rightDummy, chain[idx]);
+      }
+    }
+
+    function augmentLargeFaceWithCycle(face) {
+      var n = face.length;
+      if (!(cycleGadgetSize >= 3) || n < cycleGadgetThreshold) {
+        return false;
+      }
+      var cuts = faceCutIndices(n, cycleGadgetSize);
+      if (!cuts) {
+        return false;
+      }
+
+      var dummies = [];
+      var di;
+      for (di = 0; di < cycleGadgetSize; di += 1) {
+        var dummy = nextDummyId();
+        dummies.push(dummy);
+        nodes.push(dummy);
+        dummyFaceVerticesById[dummy] = face.slice().map(String);
+      }
+
+      for (di = 0; di < cycleGadgetSize; di += 1) {
+        addEdge(dummies[di], dummies[(di + 1) % cycleGadgetSize]);
+      }
+      for (di = 2; di < cycleGadgetSize - 1; di += 1) {
+        addEdge(dummies[0], dummies[di]);
+      }
+
+      for (var ci = 0; ci < cycleGadgetSize; ci += 1) {
+        var startIndex = cuts[ci];
+        var endIndex = (ci === cycleGadgetSize - 1) ? cuts[0] + n : cuts[ci + 1];
+        var chain = faceChain(face, startIndex, endIndex);
+        for (var cj = 0; cj < chain.length; cj += 1) {
+          addEdge(dummies[ci], chain[cj]);
+        }
+      }
+      return true;
+    }
+
+    function augmentLargeFaceWithPath(face) {
+      var n = face.length;
+      var resolvedLength = resolvedPathGadgetLength(n);
+      if (!(resolvedLength >= 2)) {
+        return false;
+      }
+      var cuts = faceCutIndices(n, resolvedLength + 1);
+      if (!cuts) {
+        return false;
+      }
+
+      var dummies = [];
+      var di;
+      for (di = 0; di < resolvedLength; di += 1) {
+        var dummy = nextDummyId();
+        dummies.push(dummy);
+        nodes.push(dummy);
+        dummyFaceVerticesById[dummy] = face.slice().map(String);
+      }
+
+      for (di = 0; di < resolvedLength - 1; di += 1) {
+        addEdge(dummies[di], dummies[di + 1]);
+      }
+
+      var chain = faceChain(face, cuts[0], cuts[1]);
+      connectSplitChain(null, dummies[0], chain);
+
+      for (di = 1; di < resolvedLength; di += 1) {
+        chain = faceChain(face, cuts[di], cuts[di + 1]);
+        connectSplitChain(dummies[di - 1], dummies[di], chain);
+      }
+
+      chain = faceChain(face, cuts[resolvedLength], cuts[0] + n);
+      connectSplitChain(dummies[resolvedLength - 1], null, chain);
+
+      // The path fans triangulate the boundary chains, but they leave one
+      // residual cap polygon at the shared cut vertex face[cuts[0]]:
+      // [apex, d0, d1, ..., d{k-1}]. Triangulate that cap explicitly.
+      var apex = String(face[cuts[0]]);
+      for (di = 1; di < resolvedLength - 1; di += 1) {
+        addEdge(apex, dummies[di]);
+      }
+
+      return true;
+    }
+
     for (i = 0; i < embedding.faces.length; i += 1) {
       var face = embedding.faces[i];
       if (!face || face.length <= 3) {
@@ -486,17 +920,24 @@
         continue;
       }
 
+      if (augmentFaceWithDummyBlocks(face)) {
+        continue;
+      }
+
+      if (augmentLargeFaceWithPath(face)) {
+        continue;
+      }
+
+      if (augmentLargeFaceWithCycle(face)) {
+        continue;
+      }
+
       var dummy = nextDummyId();
       nodes.push(dummy);
       dummyFaceVerticesById[dummy] = face.slice().map(String);
       for (var j = 0; j < face.length; j += 1) {
         var u = String(face[j]);
-        var key = canonicalUndirectedEdgeKey(dummy, u);
-        if (edgeSet.has(key)) {
-          continue;
-        }
-        edgeSet.add(key);
-        edges.push([dummy, u]);
+        addEdge(dummy, u);
       }
     }
 
@@ -508,7 +949,7 @@
     };
   }
 
-  function prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace) {
+  function prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return {
         ok: false,
@@ -546,7 +987,7 @@
         };
       }
 
-      var step = augmentByFaceStellation(nodes, edges, emb, selectedOuterFace);
+      var step = augmentByFaceStellation(nodes, edges, emb, selectedOuterFace, options);
       if (!step || !Array.isArray(step.nodeIds) || !Array.isArray(step.edgePairs)) {
         return {
           ok: false,
@@ -848,6 +1289,10 @@
     alignOuterFaceEdgeHorizontally: alignOuterFaceEdgeHorizontally,
     computePositionMoveStats: computePositionMoveStats,
     createMovementConvergenceTracker: createMovementConvergenceTracker,
+    analyzeThreeConnectivity: analyzeThreeConnectivity,
+    analyzeInternallyThreeConnected: analyzeInternallyThreeConnected,
+    isThreeConnected: isThreeConnected,
+    isInternallyThreeConnected: isInternallyThreeConnected,
     isTriangulatedEmbedding: isTriangulatedEmbedding,
     augmentByFaceStellation: augmentByFaceStellation,
     prepareTriangulatedByFaceStellation: prepareTriangulatedByFaceStellation,

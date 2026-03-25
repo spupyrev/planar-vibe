@@ -72,6 +72,7 @@
                     <td>
                       <select id="sample-grid-select" class="form-select form-select-sm sample-select" title="Grid samples">
                         <option value="">Grid</option>
+                        <option value="grid2x10">2x10</option>
                         <option value="grid2x20">2x20</option>
                         <option value="grid4x20">4x20</option>
                         <option value="grid9x9">9x9</option>
@@ -184,6 +185,10 @@
           <button id="save-svg-btn" type="button" class="btn btn-light btn-sm save-svg-btn" title="Save SVG" aria-label="Save SVG">
             <img src="static/img/save_as.svg" alt="">
           </button>
+          <label class="debug-augmentation-toggle" title="Show exact augmentation vertices and added edges from the latest algorithm run">
+            <input id="show-augmentation-toggle" type="checkbox">
+            <span>Aug</span>
+          </label>
           <label class="interactive-toggle" title="Toggle Cytoscape interactivity">
             <input id="interactive-toggle" type="checkbox" checked>
             <span>Interactive</span>

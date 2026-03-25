@@ -19,23 +19,39 @@
     return best || '';
   }
 
+  function isDummyCyNode(node) {
+    return !!(node && typeof node.hasClass === 'function' && node.hasClass('dummy-node'));
+  }
+
   function graphFromCy(cy) {
+    var nodes = cy.nodes().toArray ? cy.nodes().toArray() : cy.nodes();
+    var filteredNodes = [];
+    var keep = {};
+    for (var i = 0; i < nodes.length; i += 1) {
+      if (isDummyCyNode(nodes[i])) {
+        continue;
+      }
+      var id = String(nodes[i].id());
+      filteredNodes.push(id);
+      keep[id] = true;
+    }
     return {
-      nodeIds: cy.nodes().map(function (n) { return String(n.id()); }),
-      edgePairs: cy.edges().map(function (e) {
+      nodeIds: filteredNodes,
+      edgePairs: (cy.edges().toArray ? cy.edges().toArray() : cy.edges()).map(function (e) {
         return [String(e.source().id()), String(e.target().id())];
+      }).filter(function (edge) {
+        return keep[edge[0]] && keep[edge[1]];
       })
     };
   }
 
   function currentPositionsFromCy(cy) {
-    if (global.PlanarVibeBarycentricCore &&
-        typeof global.PlanarVibeBarycentricCore.currentPositionsFromCy === 'function') {
-      return global.PlanarVibeBarycentricCore.currentPositionsFromCy(cy);
-    }
     var out = {};
     var nodes = cy.nodes().toArray ? cy.nodes().toArray() : cy.nodes();
     for (var i = 0; i < nodes.length; i += 1) {
+      if (isDummyCyNode(nodes[i])) {
+        continue;
+      }
       var id = String(nodes[i].id());
       var p = nodes[i].position();
       out[id] = { x: p.x, y: p.y };
@@ -115,25 +131,6 @@
     return diameter > 1e-12 ? diameter : 1;
   }
 
-  function buildUniformBarycentricSeed(nodeIds, edgePairs, outerFace, cy, options) {
-    var opts = options || {};
-    var adjacency = buildAdjacency(nodeIds, edgePairs);
-    var weights = global.PlanarVibeBarycentricCore.buildUniformWeights(edgePairs, 1);
-    var seedPos = currentPositionsFromCy(cy);
-    return global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-      nodeIds: nodeIds,
-      adjacency: adjacency,
-      outerFace: outerFace,
-      weights: weights,
-      maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000,
-      tolerance: Number.isFinite(opts.tolerance) ? Math.max(0, opts.tolerance) : 1e-7,
-      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-        useSeedOuter: opts.useSeedOuter === true,
-        seedPos: seedPos
-      })
-    });
-  }
-
   function collectMovableVertices(nodeIds, outerFace) {
     var outerSet = new Set((outerFace || []).map(String));
     var movableVertices = [];
@@ -146,8 +143,8 @@
     return movableVertices;
   }
 
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel) {
-    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
+  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
+    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
     var label = failureLabel || 'layout';
     if (!augmented || !augmented.ok) {
       return { ok: false, reason: (augmented && augmented.reason) || (label + ' augmentation failed') };
@@ -184,17 +181,78 @@
     return faceKey(face);
   }
 
-  function prepareTriangulatedLayoutContext(cy, config) {
+  function createAugmentationDebugState(graph, outerFace, augmented, posById) {
+    var baseGraph = graph || { nodeIds: [], edgePairs: [] };
+    var aug = augmented || { nodeIds: [], edgePairs: [], dummyFaceVerticesById: {} };
+    var positions = posById || {};
+    var originalEdgeSet = {};
+    var i;
+
+    for (i = 0; i < baseGraph.edgePairs.length; i += 1) {
+      var a = String(baseGraph.edgePairs[i][0]);
+      var b = String(baseGraph.edgePairs[i][1]);
+      var key = a < b ? a + '::' + b : b + '::' + a;
+      originalEdgeSet[key] = true;
+    }
+
+    var dummyFaceVerticesById = aug.dummyFaceVerticesById || {};
+    var dummyIds = Object.keys(dummyFaceVerticesById).map(String);
+    var dummySet = new Set(dummyIds);
+    var dummyLabelById = {};
+    var dummyPositionsById = {};
+    for (i = 0; i < dummyIds.length; i += 1) {
+      var dummyId = dummyIds[i];
+      dummyLabelById[dummyId] = String(i);
+      if (positions[dummyId] && Number.isFinite(positions[dummyId].x) && Number.isFinite(positions[dummyId].y)) {
+        dummyPositionsById[dummyId] = { x: positions[dummyId].x, y: positions[dummyId].y };
+      }
+    }
+
+    var addedEdgePairs = [];
+    for (i = 0; i < aug.edgePairs.length; i += 1) {
+      var u = String(aug.edgePairs[i][0]);
+      var v = String(aug.edgePairs[i][1]);
+      var edgeKey = u < v ? u + '::' + v : v + '::' + u;
+      if (!originalEdgeSet[edgeKey]) {
+        addedEdgePairs.push([u, v]);
+      }
+    }
+
+    return {
+      outerFace: Array.isArray(outerFace) ? outerFace.slice().map(String) : [],
+      originalNodeIds: (baseGraph.nodeIds || []).map(String),
+      originalEdgePairs: (baseGraph.edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; }),
+      augmentedNodeIds: (aug.nodeIds || []).map(String),
+      augmentedEdgePairs: (aug.edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; }),
+      addedEdgePairs: addedEdgePairs,
+      dummyIds: dummyIds,
+      dummySet: dummySet,
+      dummyLabelById: dummyLabelById,
+      dummyPositionsById: dummyPositionsById,
+      dummyFaceVerticesById: dummyFaceVerticesById,
+      dummyCount: aug.dummyCount || 0
+    };
+  }
+
+  function prepareTriangulatedLayoutData(graph, config, cy) {
     var cfg = config || {};
     var label = String(cfg.failureLabel || 'Layout');
     var minNodeCount = Number.isFinite(cfg.minNodeCount) ? Math.max(1, Math.floor(cfg.minNodeCount)) : 3;
     var usesDefaultSeed = typeof cfg.initPositions !== 'function';
     var initPositions = usesDefaultSeed
-      ? function (nodeIds, edgePairs, outerFace, localCy) {
-        return buildUniformBarycentricSeed(nodeIds, edgePairs, outerFace, localCy, cfg.seedOptions || {
+      ? function (nodeIds, edgePairs, outerFace, localCy, context) {
+        var opts = cfg.seedOptions || {
           maxIters: 1000,
-          tolerance: 1e-7,
-          useSeedOuter: false
+          tolerance: 1e-7
+        };
+        return global.PlanarVibeBarycentricCore.computeBarycentricLayout(nodeIds, edgePairs, {
+          outerFace: outerFace,
+          embedding: context && context.augmented ? context.augmented.embedding : null,
+          maxIters: opts.maxIters,
+          tolerance: opts.tolerance,
+          initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+            useSeedOuter: false
+          })
         });
       }
       : cfg.initPositions;
@@ -206,28 +264,35 @@
       return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
     }
     if (usesDefaultSeed && (!global.PlanarVibeBarycentricCore ||
-        !global.PlanarVibeBarycentricCore.buildUniformWeights ||
-        !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout ||
-        !global.PlanarVibeBarycentricCore.currentPositionsFromCy)) {
+        typeof global.PlanarVibeBarycentricCore.computeBarycentricLayout !== 'function' ||
+        typeof global.PlanarVibeBarycentricCore.defaultOuterInitOptions !== 'function')) {
       return { ok: false, message: 'Barycentric core is missing. Check script load order' };
     }
 
-    var graph = graphFromCy(cy);
     if (graph.nodeIds.length < minNodeCount) {
       return { ok: false, message: label + ' requires at least ' + minNodeCount + ' vertices' };
     }
 
-    var baseEmbedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+    var baseEmbedding = cfg.baseEmbedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
     if (!baseEmbedding || !baseEmbedding.ok) {
       return { ok: false, message: label + ' requires a planar graph' };
     }
 
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
+    var outerFace = Array.isArray(cfg.outerFace) && cfg.outerFace.length >= 3
+      ? cfg.outerFace.slice().map(String)
+      : global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer boundary for ' + label };
     }
 
-    var augmented = prepareAugmentedTriangulation(graph.nodeIds, graph.edgePairs, baseEmbedding, outerFace, label);
+    var augmented = prepareAugmentedTriangulation(
+      graph.nodeIds,
+      graph.edgePairs,
+      baseEmbedding,
+      outerFace,
+      label,
+      cfg.augmentationOptions || null
+    );
     if (!augmented.ok) {
       return { ok: false, message: augmented.reason || (label + ' augmentation failed') };
     }
@@ -250,8 +315,13 @@
       outerFace: outerFace,
       augmented: augmented,
       posById: alignOuterFace(init.pos, outerFace),
-      movableVertices: collectMovableVertices(augmented.nodeIds, outerFace)
+      movableVertices: collectMovableVertices(augmented.nodeIds, outerFace),
+      initResult: init
     };
+  }
+
+  function prepareTriangulatedLayoutContext(cy, config) {
+    return prepareTriangulatedLayoutData(graphFromCy(cy), config, cy);
   }
 
   global.PlanarVibePlanarCommon = {
@@ -264,10 +334,11 @@
     orientFaceCCW: orientFaceCCW,
     alignOuterFace: alignOuterFace,
     outerFaceDiameter: outerFaceDiameter,
-    buildUniformBarycentricSeed: buildUniformBarycentricSeed,
     collectMovableVertices: collectMovableVertices,
     prepareAugmentedTriangulation: prepareAugmentedTriangulation,
     originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
+    createAugmentationDebugState: createAugmentationDebugState,
+    prepareTriangulatedLayoutData: prepareTriangulatedLayoutData,
     prepareTriangulatedLayoutContext: prepareTriangulatedLayoutContext
   };
 })(window);

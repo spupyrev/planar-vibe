@@ -556,7 +556,15 @@
     return {
       ok: true,
       stopReason: stopReason,
-      message: 'Applied ReweightTutte (' + outer.length + '-vertex outer face, +' + augmented.dummyCount + ' dummy, ' + totalInnerIters + ' iters, ' + performedOuterIters + ' steps, ' + stopReason + ')'
+      message: 'Applied ReweightTutte (' + outer.length + '-vertex outer face, +' + augmented.dummyCount + ' dummy, ' + totalInnerIters + ' iters, ' + performedOuterIters + ' steps, ' + stopReason + ')',
+      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
+        ? PlanarCommon.createAugmentationDebugState(
+          g,
+          outer,
+          augmented,
+          finalPos
+        )
+        : null
     };
   }
 

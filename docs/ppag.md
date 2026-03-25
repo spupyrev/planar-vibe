@@ -282,9 +282,12 @@ Pipeline:
 
 # Ideas for SIMPLICITY AND QUALITY improvements
 
+Items tagged `[TAKEN]` were adopted into the current PPAG after full-benchmark comparison.
+Items tagged `[TAKEN via ...]` are covered by an earlier accepted change.
+
 ## 1) How to make it simpler
 
-### A. Collapse the stopping logic to 3 rules
+### A. Collapse the stopping logic to 3 rules [TAKEN]
 
 Right now you have:
 
@@ -308,7 +311,7 @@ This lets you delete:
 
 That is a large simplicity win with little practical loss.
 
-### B. Make `state` triangle-only
+### B. Make `state` triangle-only [TAKEN]
 
 `computePPAGState` currently does two jobs:
 
@@ -329,7 +332,7 @@ So simplify `state` to:
 
 Drop `gradient` and `maxGradNorm` entirely. That removes `createGradientMap` from the main flow and makes `computePPAGState` much easier to explain. 
 
-### C. Inline “trial move” instead of copying all positions
+### C. Inline “trial move” instead of copying all positions [TAKEN]
 
 `buildVertexTrialPosition` clones the whole position map for every trial step. 
 
@@ -342,7 +345,7 @@ For simplicity and speed, do this instead:
 
 That removes one helper and a lot of object churn. It also fits incremental UI just fine, since you only publish after accepted moves or after a sweep.
 
-### D. Separate “solver core event” from UI/runtime event
+### D. Separate “solver core event” from UI/runtime event [TAKEN]
 
 `solvePPAG` currently knows too much about reporting shape: `onIteration`, `onStepComplete`, renderer yield decisions, move stats payload size. `applyPPAGLayout` also wraps that again. 
 
@@ -352,7 +355,7 @@ Keep incrementality, but reduce the interface to one callback:
 
 Then let `applyPPAGLayout` adapt that to the renderer/UI. Same behavior, smaller mental model.
 
-### E. Reduce options to a short “control panel”
+### E. Reduce options to a short “control panel” [TAKEN]
 
 The real core knobs are only:
 
@@ -366,7 +369,7 @@ The real core knobs are only:
 
 Everything else is advanced noise. Even if you keep internal defaults, don’t expose them all.
 
-### F. Remove dead-feeling option: `initialMoveRel`
+### F. Remove dead-feeling option: `initialMoveRel` [TAKEN]
 
 I do not see `initialMoveRel` actually used in the solver. If that’s correct, delete it. 
 
@@ -400,7 +403,7 @@ Implementation-wise, it only changes the local 2×2 solve:
 
 So complexity barely changes.
 
-### C. Use a better vertex order each sweep
+### C. Use a better vertex order each sweep [TAKEN]
 
 Current order is fixed by `movableVertices`. 
 That makes the solver order-dependent.
@@ -478,7 +481,7 @@ Why this is attractive:
 * same accept/reject structure,
 * easy to evaluate only on incident triangles.
 
-### 2. Update vertices by **worst local error first**
+### 2. Update vertices by **worst local error first** [TAKEN via 2C]
 
 Right now the per-vertex move is already based on incident triangle residuals. 
 So the cheapest quality improvement is to reorder vertices each sweep by something like:
@@ -529,7 +532,7 @@ This barely changes the design:
 
 Even easier: don’t put the shape term into the linearized solve at first. Just use it in **accept/reject**. That is simpler than differentiating it immediately.
 
-### B. Sort vertices each sweep by local badness
+### B. Sort vertices each sweep by local badness [TAKEN via 2C]
 
 This is almost free and improves both intermediate and final quality.
 
@@ -552,7 +555,7 @@ Example policy:
 
 Since you must stay incremental, I’d simplify in ways that do **not** change that architecture:
 
-### 1. Remove gradient-based stopping entirely
+### 1. Remove gradient-based stopping entirely [TAKEN via 1B]
 
 You compute a global gradient map and max gradient norm in `computePPAGState(...)`, but the core move already uses only local incident data. 
 This is the easiest chunk to remove.
@@ -566,7 +569,7 @@ Then `computePPAGState(...)` becomes just:
 
 Much simpler.
 
-### 2. Remove plateau/stall machinery
+### 2. Remove plateau/stall machinery [TAKEN via 1A]
 
 `classifyPPAGState(...)` and the related counters/options are a lot of complexity for limited value. 
 
@@ -578,7 +581,7 @@ Use only:
 
 That is enough for an incremental UI algorithm.
 
-### 3. Trial moves should be in-place + revert
+### 3. Trial moves should be in-place + revert [TAKEN via 1C]
 
 `buildVertexTrialPosition(...)` copies the full position map for each trial step. 
 That is both more code and more churn than needed.
@@ -591,4 +594,3 @@ Simpler:
 * keep or restore
 
 That preserves your incremental reporting model perfectly.
-
