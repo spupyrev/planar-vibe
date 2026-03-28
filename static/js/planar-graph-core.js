@@ -329,6 +329,36 @@
     return -1;
   }
 
+  function outerFaceEdgeKey(u, v) {
+    return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
+  }
+
+  function buildOuterFaceEdgeSet(edgePairs) {
+    var out = {};
+    if (!Array.isArray(edgePairs)) return out;
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var e = edgePairs[i];
+      if (!e || e.length < 2) continue;
+      out[outerFaceEdgeKey(e[0], e[1])] = true;
+    }
+    return out;
+  }
+
+  function faceChordCount(face, edgeSet) {
+    if (!Array.isArray(face) || face.length < 4) return 0;
+    var count = 0;
+    for (var i = 0; i < face.length; i += 1) {
+      for (var j = i + 1; j < face.length; j += 1) {
+        var isBoundaryEdge = (j === i + 1) || (i === 0 && j === face.length - 1);
+        if (isBoundaryEdge) continue;
+        if (edgeSet[outerFaceEdgeKey(face[i], face[j])]) {
+          count += 1;
+        }
+      }
+    }
+    return count;
+  }
+
   function chooseOuterFace(nodeIds, adjacency) {
     if (global.PlanarVibePlanarityTest && global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       var edgePairs = [];
@@ -360,54 +390,26 @@
   }
 
   function chooseOuterFaceFromEmbedding(embedding) {
-    function edgeKey(u, v) {
-      return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
-    }
-    function buildEdgeSet(edgePairs) {
-      var out = {};
-      if (!Array.isArray(edgePairs)) return out;
-      for (var i = 0; i < edgePairs.length; i += 1) {
-        var e = edgePairs[i];
-        if (!e || e.length < 2) continue;
-        out[edgeKey(e[0], e[1])] = true;
-      }
-      return out;
-    }
-    function faceHasChord(face, edgeSet) {
-      if (!Array.isArray(face) || face.length < 4) return false;
-      for (var i = 0; i < face.length; i += 1) {
-        for (var j = i + 1; j < face.length; j += 1) {
-          var isBoundaryEdge = (j === i + 1) || (i === 0 && j === face.length - 1);
-          if (isBoundaryEdge) continue;
-          if (edgeSet[edgeKey(face[i], face[j])]) {
-            return true;
-          }
-        }
-      }
-      return false;
-    }
-    function bestChordlessFace(faces, edgeSet) {
-      var best = null;
-      for (var i = 0; i < faces.length; i += 1) {
-        var face = faces[i];
-        if (!Array.isArray(face) || face.length < 3) continue;
-        var mapped = face.slice().map(String);
-        if (faceHasChord(mapped, edgeSet)) continue;
-        if (!best || mapped.length > best.length) best = mapped;
-      }
-      return best;
-    }
-
     if (!embedding) {
       return null;
     }
-    var edgeSet = buildEdgeSet(embedding.edges);
-    if (Array.isArray(embedding.outerFace) && embedding.outerFace.length >= 3) {
-      var explicit = embedding.outerFace.slice().map(String);
-      if (!Array.isArray(embedding.edges) || !faceHasChord(explicit, edgeSet)) return explicit;
+    var explicit = Array.isArray(embedding.outerFace) && embedding.outerFace.length >= 3
+      ? embedding.outerFace.slice().map(String)
+      : null;
+    var edgeSet = buildOuterFaceEdgeSet(embedding.edges);
+    if (explicit && (!Array.isArray(embedding.edges) || faceChordCount(explicit, edgeSet) === 0)) {
+      return explicit;
     }
     if (Array.isArray(embedding.faces) && embedding.faces.length > 0) {
-      return bestChordlessFace(embedding.faces, edgeSet);
+      var best = null;
+      for (var i = 0; i < embedding.faces.length; i += 1) {
+        var face = embedding.faces[i];
+        if (!Array.isArray(face) || face.length < 3) continue;
+        var mapped = face.slice().map(String);
+        if (faceChordCount(mapped, edgeSet) !== 0) continue;
+        if (!best || mapped.length > best.length) best = mapped;
+      }
+      return best;
     }
     return null;
   }
