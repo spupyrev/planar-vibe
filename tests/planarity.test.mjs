@@ -506,6 +506,35 @@ test('face stellation adds one dummy vertex for every non-triangular face includ
   }
 });
 
+test('triangulated augmentation removes degree-3 dummy vertices from the final graph', () => {
+  const text = Generator.getSample('sample5');
+  const graph = parseEdgeListText(text);
+  const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  const outerFace = PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
+  const prepared = PlanarGraphCore.prepareTriangulatedByFaceStellation(
+    graph.nodeIds,
+    graph.edgePairs,
+    embedding,
+    outerFace
+  );
+
+  assert.equal(prepared.ok, true);
+
+  const degreeById = {};
+  for (const id of prepared.nodeIds) {
+    degreeById[String(id)] = 0;
+  }
+  for (const [a, b] of prepared.edgePairs) {
+    degreeById[String(a)] += 1;
+    degreeById[String(b)] += 1;
+  }
+
+  const dummyIds = Object.keys(prepared.dummyFaceVerticesById || {});
+  const degreeThreeDummies = dummyIds.filter((dummyId) => degreeById[String(dummyId)] === 3);
+
+  assert.equal(degreeThreeDummies.length, 0);
+});
+
 test('common outer-face helper prefers a chordless explicit outer face and otherwise falls back to the longest chordless face', () => {
   const explicit = PlanarGraphCore.chooseOuterFaceFromEmbedding({
     outerFace: ['a', 'b', 'c'],

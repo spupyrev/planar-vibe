@@ -638,16 +638,9 @@
     var dummyCount = 0;
     var dummyFaceVerticesById = {};
     var outerIndex = findOuterFaceIndex(embedding.faces, outerFace);
+    var outerVertexSet = new Set((outerFace || []).map(String));
     var opts = options || {};
-    var cycleGadgetSize = Number.isFinite(opts.cycleGadgetSize)
-      ? Math.max(3, Math.floor(opts.cycleGadgetSize))
-      : 0;
-    var cycleGadgetThreshold = Number.isFinite(opts.cycleGadgetThreshold)
-      ? Math.max(cycleGadgetSize + 1, Math.floor(opts.cycleGadgetThreshold))
-      : Infinity;
-    var pathGadgetMaxDegree = Number.isFinite(opts.pathGadgetMaxDegree)
-      ? Math.max(5, Math.floor(opts.pathGadgetMaxDegree))
-      : 5;
+    var forceSingleDummyPerFace = !!opts.forceSingleDummyPerFace;
 
     for (var i = 0; i < edges.length; i += 1) {
       edgeSet.add(canonicalUndirectedEdgeKey(edges[i][0], edges[i][1]));
@@ -672,21 +665,7 @@
       edges.push([u, v]);
     }
 
-    function faceChain(face, startIndex, endIndex) {
-      var out = [];
-      var n = face.length;
-      var idx = startIndex;
-      while (true) {
-        out.push(String(face[idx % n]));
-        if (idx === endIndex) {
-          break;
-        }
-        idx += 1;
-      }
-      return out;
-    }
-
-    function buildNonSeparatingDummyBlocks(face) {
+    function buildTriangleAvoidingBlocks(face) {
       var boundary = face.map(String);
       var n = boundary.length;
       if (n <= 3) {
@@ -697,28 +676,34 @@
       var current = [boundary[0]];
       for (var step = 1; step < n; step += 1) {
         var candidate = boundary[step];
-        var forbidden = false;
+        var createsTriangle = false;
         for (var j = 0; j < current.length - 1; j += 1) {
           // The final boundary edge back to the starting vertex is part of the
-          // intended fan, not a premature separating triangle.
+          // intended one-dummy fan, not a premature separating triangle.
           if (j === 0 && current[0] === boundary[0] && candidate === boundary[n - 1]) {
             continue;
           }
+          // Boundary shortcuts between two chosen outer-face vertices are not
+          // treated as premature triangles for block splitting.
+          if (outerVertexSet.has(current[j]) && outerVertexSet.has(candidate)) {
+            continue;
+          }
           if (edgeSet.has(canonicalUndirectedEdgeKey(current[j], candidate))) {
-            forbidden = true;
+            createsTriangle = true;
             break;
           }
         }
-        if (forbidden) {
-          if (current.length < 2) {
-            return null;
-          }
-          blocks.push(current.slice());
-          current = [current[current.length - 1], candidate];
-        } else {
+        if (!createsTriangle) {
           current.push(candidate);
+          continue;
         }
+        if (current.length < 2) {
+          return null;
+        }
+        blocks.push(current.slice());
+        current = [current[current.length - 1], candidate];
       }
+
       if (current.length < 2) {
         return null;
       }
@@ -726,8 +711,10 @@
       return blocks;
     }
 
-    function augmentFaceWithDummyBlocks(face) {
-      var blocks = buildNonSeparatingDummyBlocks(face);
+    function augmentFaceWithPath(face) {
+      var blocks = forceSingleDummyPerFace
+        ? [face.slice().map(String)]
+        : buildTriangleAvoidingBlocks(face);
       if (!Array.isArray(blocks) || blocks.length === 0) {
         return false;
       }
@@ -749,163 +736,19 @@
         }
       }
 
-      if (dummies.length === 1) {
-        return true;
-      }
-
       for (bi = 0; bi < dummies.length - 1; bi += 1) {
         addEdge(dummies[bi], dummies[bi + 1]);
       }
 
-      // As with the bounded-degree path gadget, the dummy blocks triangulate
-      // the boundary chains but leave one residual cap polygon
-      // [apex, d0, d1, ..., d{k-1}]. Triangulate that cap explicitly.
+      if (dummies.length === 1) {
+        return true;
+      }
+
+      // The greedy blocks triangulate the boundary chains but leave one cap
+      // polygon [apex, d0, d1, ..., d{k-1}]. Triangulate it explicitly.
       var apex = String(blocks[0][0]);
       for (bi = 1; bi < dummies.length; bi += 1) {
         addEdge(apex, dummies[bi]);
-      }
-      return true;
-    }
-
-    function faceCutIndices(n, k) {
-      var cuts = [];
-      for (var ci = 0; ci < k; ci += 1) {
-        cuts.push(Math.floor((ci * n) / k));
-      }
-      for (ci = 1; ci < cuts.length; ci += 1) {
-        if (!(cuts[ci - 1] < cuts[ci])) {
-          return null;
-        }
-      }
-      return cuts;
-    }
-
-    function resolvedPathGadgetLength(n) {
-      if (!(pathGadgetMaxDegree >= 5)) {
-        return 0;
-      }
-      if (n <= pathGadgetMaxDegree) {
-        return 0;
-      }
-
-      // Use the fewest path dummies that keep the boundary chains balanced.
-      // With evenly spaced cuts, each chain length differs by at most one.
-      // The current path gadget gives each internal dummy degree about
-      // chainVertexCount + 3, so a degree cap D allows chains of at most D - 3
-      // vertices. We use the smallest path satisfying that cap.
-      var maxChainVertices = Math.max(2, pathGadgetMaxDegree - 3);
-      var chainCount = Math.ceil(n / maxChainVertices);
-      return Math.max(2, chainCount - 1);
-    }
-
-    function connectSplitChain(leftDummy, rightDummy, chain) {
-      if (!Array.isArray(chain) || chain.length === 0) {
-        return;
-      }
-      if (!leftDummy && !rightDummy) {
-        return;
-      }
-      if (!rightDummy) {
-        for (var onlyLeft = 0; onlyLeft < chain.length; onlyLeft += 1) {
-          addEdge(leftDummy, chain[onlyLeft]);
-        }
-        return;
-      }
-      if (!leftDummy) {
-        for (var onlyRight = 0; onlyRight < chain.length; onlyRight += 1) {
-          addEdge(rightDummy, chain[onlyRight]);
-        }
-        return;
-      }
-
-      var split = Math.floor((chain.length - 1) / 2);
-      var idx;
-      for (idx = 0; idx <= split; idx += 1) {
-        addEdge(leftDummy, chain[idx]);
-      }
-      for (idx = split; idx < chain.length; idx += 1) {
-        addEdge(rightDummy, chain[idx]);
-      }
-    }
-
-    function augmentLargeFaceWithCycle(face) {
-      var n = face.length;
-      if (!(cycleGadgetSize >= 3) || n < cycleGadgetThreshold) {
-        return false;
-      }
-      var cuts = faceCutIndices(n, cycleGadgetSize);
-      if (!cuts) {
-        return false;
-      }
-
-      var dummies = [];
-      var di;
-      for (di = 0; di < cycleGadgetSize; di += 1) {
-        var dummy = nextDummyId();
-        dummies.push(dummy);
-        nodes.push(dummy);
-        dummyFaceVerticesById[dummy] = face.slice().map(String);
-      }
-
-      for (di = 0; di < cycleGadgetSize; di += 1) {
-        addEdge(dummies[di], dummies[(di + 1) % cycleGadgetSize]);
-      }
-      for (di = 2; di < cycleGadgetSize - 1; di += 1) {
-        addEdge(dummies[0], dummies[di]);
-      }
-
-      for (var ci = 0; ci < cycleGadgetSize; ci += 1) {
-        var startIndex = cuts[ci];
-        var endIndex = (ci === cycleGadgetSize - 1) ? cuts[0] + n : cuts[ci + 1];
-        var chain = faceChain(face, startIndex, endIndex);
-        for (var cj = 0; cj < chain.length; cj += 1) {
-          addEdge(dummies[ci], chain[cj]);
-        }
-      }
-      return true;
-    }
-
-    function augmentLargeFaceWithPath(face) {
-      var n = face.length;
-      var resolvedLength = resolvedPathGadgetLength(n);
-      if (!(resolvedLength >= 2)) {
-        return false;
-      }
-      var cuts = faceCutIndices(n, resolvedLength + 1);
-      if (!cuts) {
-        return false;
-      }
-
-      var dummies = [];
-      var di;
-      for (di = 0; di < resolvedLength; di += 1) {
-        var dummy = nextDummyId();
-        dummies.push(dummy);
-        nodes.push(dummy);
-        dummyFaceVerticesById[dummy] = face.slice().map(String);
-      }
-
-      for (di = 0; di < resolvedLength - 1; di += 1) {
-        addEdge(dummies[di], dummies[di + 1]);
-      }
-
-      var chain = faceChain(face, cuts[0], cuts[1]);
-      connectSplitChain(null, dummies[0], chain);
-
-      for (di = 1; di < resolvedLength; di += 1) {
-        chain = faceChain(face, cuts[di], cuts[di + 1]);
-        connectSplitChain(dummies[di - 1], dummies[di], chain);
-      }
-
-      chain = faceChain(face, cuts[resolvedLength], cuts[0] + n);
-      connectSplitChain(dummies[resolvedLength - 1], null, chain);
-
-      // The path fans triangulate the boundary chains, but they leave one
-      // residual cap polygon at the shared cut vertex face[cuts[0]]:
-      // [apex, d0, d1, ..., d{k-1}]. Triangulate that cap explicitly.
-      var apex = String(face[cuts[0]]);
-      for (di = 1; di < resolvedLength - 1; di += 1) {
-        addEdge(apex, dummies[di]);
       }
 
       return true;
@@ -920,24 +763,14 @@
         continue;
       }
 
-      if (augmentFaceWithDummyBlocks(face)) {
-        continue;
-      }
-
-      if (augmentLargeFaceWithPath(face)) {
-        continue;
-      }
-
-      if (augmentLargeFaceWithCycle(face)) {
-        continue;
-      }
-
-      var dummy = nextDummyId();
-      nodes.push(dummy);
-      dummyFaceVerticesById[dummy] = face.slice().map(String);
-      for (var j = 0; j < face.length; j += 1) {
-        var u = String(face[j]);
-        addEdge(dummy, u);
+      if (!augmentFaceWithPath(face)) {
+        return {
+          nodeIds: nodes,
+          edgePairs: edges,
+          dummyCount: 0,
+          dummyFaceVerticesById: {},
+          reason: 'Path augmentation failed for face ' + face.join(',')
+        };
       }
     }
 
@@ -946,6 +779,84 @@
       edgePairs: edges,
       dummyCount: dummyCount,
       dummyFaceVerticesById: dummyFaceVerticesById
+    };
+  }
+
+  function removeDegreeThreeDummyVertices(nodeIds, edgePairs, dummyFaceVerticesById, outerFace) {
+    var nodes = (nodeIds || []).map(String);
+    var edges = cloneEdgePairs(edgePairs || []);
+    var dummyMap = {};
+    var dummyIds = Object.keys(dummyFaceVerticesById || {});
+    var outerSet = new Set((outerFace || []).map(String));
+    var i;
+
+    for (i = 0; i < dummyIds.length; i += 1) {
+      var dummyId = String(dummyIds[i]);
+      dummyMap[dummyId] = (dummyFaceVerticesById[dummyId] || []).map(String);
+    }
+
+    function buildAdjacency() {
+      var adjacency = {};
+      var ni;
+      for (ni = 0; ni < nodes.length; ni += 1) {
+        adjacency[String(nodes[ni])] = new Set();
+      }
+      for (ni = 0; ni < edges.length; ni += 1) {
+        var a = String(edges[ni][0]);
+        var b = String(edges[ni][1]);
+        if (!adjacency[a]) {
+          adjacency[a] = new Set();
+        }
+        if (!adjacency[b]) {
+          adjacency[b] = new Set();
+        }
+        adjacency[a].add(b);
+        adjacency[b].add(a);
+      }
+      return adjacency;
+    }
+
+    var removedDummyIds = [];
+    while (true) {
+      var adjacency = buildAdjacency();
+      var removable = [];
+      var currentDummyIds = Object.keys(dummyMap);
+      for (i = 0; i < currentDummyIds.length; i += 1) {
+        var currentDummyId = String(currentDummyIds[i]);
+        if (outerSet.has(currentDummyId)) {
+          continue;
+        }
+        if (!adjacency[currentDummyId]) {
+          delete dummyMap[currentDummyId];
+          continue;
+        }
+        if (adjacency[currentDummyId].size === 3) {
+          removable.push(currentDummyId);
+        }
+      }
+      if (removable.length === 0) {
+        break;
+      }
+
+      var removeSet = new Set(removable);
+      nodes = nodes.filter(function (id) {
+        return !removeSet.has(String(id));
+      });
+      edges = edges.filter(function (edge) {
+        return !removeSet.has(String(edge[0])) && !removeSet.has(String(edge[1]));
+      });
+      for (i = 0; i < removable.length; i += 1) {
+        delete dummyMap[String(removable[i])];
+        removedDummyIds.push(String(removable[i]));
+      }
+    }
+
+    return {
+      nodeIds: nodes,
+      edgePairs: edges,
+      dummyFaceVerticesById: dummyMap,
+      dummyCount: Object.keys(dummyMap).length,
+      removedDummyIds: removedDummyIds
     };
   }
 
@@ -974,7 +885,6 @@
       };
     }
 
-    var totalDummyCount = 0;
     var dummyFaceVerticesById = {};
     var round = 0;
     var maxRounds = 1000;
@@ -1003,7 +913,6 @@
 
       nodes = step.nodeIds.map(String);
       edges = cloneEdgePairs(step.edgePairs);
-      totalDummyCount += step.dummyCount || 0;
       var stepDummyFaceVerticesById = step.dummyFaceVerticesById || {};
       var dummyIds = Object.keys(stepDummyFaceVerticesById);
       for (var i = 0; i < dummyIds.length; i += 1) {
@@ -1022,12 +931,30 @@
       round += 1;
     }
 
+    var simplified = removeDegreeThreeDummyVertices(nodes, edges, dummyFaceVerticesById, selectedOuterFace);
+    nodes = simplified.nodeIds.map(String);
+    edges = cloneEdgePairs(simplified.edgePairs);
+    dummyFaceVerticesById = simplified.dummyFaceVerticesById || {};
+
+    emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
+    if (!emb || !emb.ok) {
+      return {
+        ok: false,
+        reason: 'Augmentation simplification failed: resulting graph is not planar'
+      };
+    }
+    if (!isTriangulatedEmbeddingExceptOuter(emb, selectedOuterFace)) {
+      return {
+        ok: false,
+        reason: 'Augmentation simplification failed to preserve triangulation'
+      };
+    }
     emb.outerFace = selectedOuterFace.slice();
     return {
       ok: true,
       nodeIds: nodes,
       edgePairs: edges,
-      dummyCount: totalDummyCount,
+      dummyCount: Object.keys(dummyFaceVerticesById).length,
       dummyFaceVerticesById: dummyFaceVerticesById,
       embedding: emb
     };

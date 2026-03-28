@@ -210,15 +210,18 @@
 
   function solveBalancedPosition(vertexId, airData, posById, opts) {
     var p = { x: posById[vertexId].x, y: posById[vertexId].y };
-    var entries = airData.incident[vertexId] || [];
+    var entries = opts.entries || airData.incident[vertexId] || [];
     var maxNewtonIter = opts.maxNewtonIter;
     var tolForceVertex = opts.tolForceVertex;
     var tolAreaPositive = opts.tolAreaPositive;
     var armijo = opts.armijo;
     var minStep = opts.minStep;
+    var state = opts.initialState || null;
 
     for (var iter = 0; iter < maxNewtonIter; iter += 1) {
-      var state = evaluateLocalState(entries, airData.triangles, posById, p, tolAreaPositive);
+      if (!state) {
+        state = evaluateLocalState(entries, airData.triangles, posById, p, tolAreaPositive);
+      }
       if (!state.feasible) {
         return { pos: p, forceNorm: Infinity, stalled: true };
       }
@@ -255,6 +258,7 @@
         if (qState.feasible &&
             qState.entropy >= state.entropy + armijo * alpha * dot(g, d)) {
           p = q;
+          state = qState;
           accepted = true;
           break;
         }
@@ -266,7 +270,7 @@
       }
     }
 
-    var finalState = evaluateLocalState(entries, airData.triangles, posById, p, tolAreaPositive);
+    var finalState = state || evaluateLocalState(entries, airData.triangles, posById, p, tolAreaPositive);
     return {
       pos: p,
       forceNorm: finalState.feasible ? norm(finalState.force) : Infinity,
@@ -337,10 +341,13 @@
     var opts = options || {};
     return {
       interactive: opts.interactive !== false,
+      augmentationOptions: opts && typeof opts.augmentationOptions === 'object' && opts.augmentationOptions
+        ? Object.assign({}, opts.augmentationOptions)
+        : null,
       maxSweeps: Number.isFinite(opts.maxSweeps) ? Math.max(1, Math.floor(opts.maxSweeps)) : 200,
-      maxNewtonIter: Number.isFinite(opts.maxNewtonIter) ? Math.max(1, Math.floor(opts.maxNewtonIter)) : 40,
+      maxNewtonIter: Number.isFinite(opts.maxNewtonIter) ? Math.max(1, Math.floor(opts.maxNewtonIter)) : 10,
       tolForceGlobal: Number.isFinite(opts.tolForceGlobal) ? Math.max(0, opts.tolForceGlobal) : 1e-8,
-      tolForceVertex: Number.isFinite(opts.tolForceVertex) ? Math.max(0, opts.tolForceVertex) : 1e-10,
+      tolForceVertex: Number.isFinite(opts.tolForceVertex) ? Math.max(0, opts.tolForceVertex) : 1e-6,
       tolAreaGlobal: Number.isFinite(opts.tolAreaGlobal) ? Math.max(0, opts.tolAreaGlobal) : 1e-3,
       tolAreaPositive: Number.isFinite(opts.tolAreaPositive) ? Math.max(0, opts.tolAreaPositive) : 1e-15,
       tolMove: Number.isFinite(opts.tolMove) ? Math.max(0, opts.tolMove) : 1e-12,
@@ -368,6 +375,7 @@
     var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
       failureLabel: 'Air layout',
       minNodeCount: 3,
+      augmentationOptions: opts.augmentationOptions,
       seedOptions: {
         maxIters: 1000,
         tolerance: 1e-7,
@@ -476,7 +484,6 @@
     }
 
     for (var sweep = 1; sweep <= opts.maxSweeps; sweep += 1) {
-      var prevSweepPos = PlanarCommon.copyPositions(posById);
       var acceptedCount = 0;
       var sumMove = 0;
       var maxMove = 0;
@@ -490,6 +497,8 @@
         }
 
         var solved = solveBalancedPosition(v, airData, posById, {
+          entries: airData.incident[v] || [],
+          initialState: currentState,
           maxNewtonIter: opts.maxNewtonIter,
           tolForceVertex: opts.tolForceVertex,
           tolAreaPositive: opts.tolAreaPositive,
@@ -511,13 +520,9 @@
           };
           var candidateState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, candidate, opts.tolAreaPositive);
           if (candidateState.feasible) {
-            posById[v] = candidate;
-            if (!originalDrawingHasCrossings(posById, g.edgePairs)) {
-              acceptedPos = candidate;
-              break;
-            }
+            acceptedPos = candidate;
+            break;
           }
-          posById[v] = basePos;
           stepScale *= 0.5;
         }
         if (acceptedPos) {
@@ -535,9 +540,11 @@
         }
       }
 
-      lastMoveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
-        ? global.PlanarGraphCore.computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: opts.tolMove })
-        : { movedVertices: 0, avgMove: 0, maxMove: 0 };
+      lastMoveStats = {
+        movedVertices: acceptedCount,
+        avgMove: 0,
+        maxMove: 0
+      };
       lastMoveStats.maxMove = maxMove;
       lastMoveStats.avgMove = acceptedCount > 0 ? (sumMove / acceptedCount) : 0;
       lastMoveStats.acceptedCount = acceptedCount;
