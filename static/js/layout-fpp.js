@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
   var collectGraphFromCy = PlaygroundUtils.graphFromCy;
 
   function prepareTriangulatedEmbedding(nodeIds, edgePairs) {

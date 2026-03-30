@@ -1,15 +1,9 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
   var buildAdjacency = global.GraphUtils.buildAdjacency;
   var triangleArea2 = global.GraphUtils.triangleArea2;
-
-  function canonicalEdgeKey(u, v) {
-    var a = String(u);
-    var b = String(v);
-    return a < b ? a + '::' + b : b + '::' + a;
-  }
 
   function pointEquals(a, b, eps) {
     return Math.abs(a.x - b.x) <= eps && Math.abs(a.y - b.y) <= eps;
@@ -255,7 +249,7 @@
     var augmentedEdgePairs = context.augmented.edgePairs.slice();
     var pos = context.posById;
     var adjOrig = buildAdjacency(nodeIds, edgePairs);
-    var movable = PlaygroundUtils.collectMovableVertices(nodeIds, outerFace);
+    var movable = global.GraphUtils.collectMovableVertices(nodeIds, outerFace);
 
     var i;
 

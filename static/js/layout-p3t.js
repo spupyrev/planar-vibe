@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
 
   function cliqueKey(a, b, c, indexById) {
     var arr = [a, b, c];

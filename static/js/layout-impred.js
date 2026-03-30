@@ -1,8 +1,8 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
-  var edgeKey = global.GraphUtils.edgeKey;
+  var PlaygroundUtils = global.PlaygroundUtils;
+  var polygonAreaAbs = global.GraphUtils.polygonAreaAbs;
   var collectGraphFromCy = PlaygroundUtils.graphFromCy;
   var currentPositionsFromCy = PlaygroundUtils.currentPositionsFromCy;
 
@@ -53,22 +53,6 @@
     return sum / cnt;
   }
 
-  function polygonAreaAbs(face, posById) {
-    if (!face || face.length < 3) {
-      return 0;
-    }
-    var s = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      var b = posById[String(face[(i + 1) % face.length])];
-      if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) {
-        return 0;
-      }
-      s += a.x * b.y - b.x * a.y;
-    }
-    return Math.abs(s) / 2;
-  }
-
   function chooseCurrentOuterFaceByArea(embedding, posById) {
     if (!embedding || !embedding.faces || embedding.faces.length === 0) {
       return embedding && embedding.outerFace ? embedding.outerFace.slice() : null;
@@ -104,37 +88,8 @@
     return best || (Array.isArray(embedding.outerFace) ? embedding.outerFace.slice() : null);
   }
 
-  function dot(ax, ay, bx, by) {
-    return ax * bx + ay * by;
-  }
-
   function cross(ax, ay, bx, by) {
     return ax * by - ay * bx;
-  }
-
-  function distancePointToSegment(px, py, ax, ay, bx, by) {
-    var vx = bx - ax;
-    var vy = by - ay;
-    var wx = px - ax;
-    var wy = py - ay;
-    var c1 = dot(wx, wy, vx, vy);
-    if (c1 <= 0) {
-      var dx0 = px - ax;
-      var dy0 = py - ay;
-      return Math.sqrt(dx0 * dx0 + dy0 * dy0);
-    }
-    var c2 = dot(vx, vy, vx, vy);
-    if (c2 <= c1) {
-      var dx1 = px - bx;
-      var dy1 = py - by;
-      return Math.sqrt(dx1 * dx1 + dy1 * dy1);
-    }
-    var t = c1 / c2;
-    var qx = ax + t * vx;
-    var qy = ay + t * vy;
-    var dx = px - qx;
-    var dy = py - qy;
-    return Math.sqrt(dx * dx + dy * dy);
   }
 
   function projectPointOnSegment(px, py, ax, ay, bx, by) {

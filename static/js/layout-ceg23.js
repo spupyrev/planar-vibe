@@ -1,13 +1,14 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
-  var GraphCore = global.GraphUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
+  var GraphUtils = global.GraphUtils;
   var Tutte = global.PlanarVibeTutteAlgorithm || {};
   var PlanarityTest = global.PlanarVibePlanarityTest || {};
-  var buildAdjacency = GraphCore.buildAdjacency;
-  var edgeKey = GraphCore.edgeKey;
-  var chooseOuterFaceFromEmbedding = GraphCore.chooseOuterFaceFromEmbedding;
+  var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
+  var buildAdjacency = GraphUtils.buildAdjacency;
+  var edgeKey = GraphUtils.edgeKey;
+  var chooseOuterFaceFromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding;
   var computePlanarEmbedding = PlanarityTest.computePlanarEmbedding;
 
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
@@ -193,7 +194,7 @@
     if (!out.ok) {
       return { ok: false, message: out.message || 'CEG23-bfs solver failed' };
     }
-    out.pos = PlaygroundUtils.alignOuterFace(out.pos, outerFace);
+    out.pos = alignOuterFaceEdgeHorizontally(out.pos, outerFace);
 
     return {
       ok: true,
@@ -251,7 +252,7 @@
     if (!base.ok) {
       return { ok: false, message: base.message || 'CEG23-xy baseline solve failed' };
     }
-    base.pos = PlaygroundUtils.alignOuterFace(base.pos, outerFace);
+    base.pos = alignOuterFaceEdgeHorizontally(base.pos, outerFace);
 
     var xRank = rankByAxis(ids, base.pos, 'x');
     var yRank = rankByAxis(ids, base.pos, 'y');
@@ -276,7 +277,7 @@
     if (!xySolve.ok) {
       return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };
     }
-    xySolve.pos = PlaygroundUtils.alignOuterFace(xySolve.pos, outerFace);
+    xySolve.pos = alignOuterFaceEdgeHorizontally(xySolve.pos, outerFace);
 
     return {
       ok: true,
@@ -290,10 +291,10 @@
   }
 
   function applyCEG23BfsLayout(cy, options) {
-    if (!PlaygroundUtils || typeof PlaygroundUtils.graphFromCy !== 'function' || typeof PlaygroundUtils.currentPositionsFromCy !== 'function' || typeof PlaygroundUtils.alignOuterFace !== 'function') {
+    if (!PlaygroundUtils || typeof PlaygroundUtils.graphFromCy !== 'function' || typeof PlaygroundUtils.currentPositionsFromCy !== 'function') {
       return { ok: false, message: 'Shared planar utilities are missing. Check script load order' };
     }
-    if (typeof buildAdjacency !== 'function' || typeof edgeKey !== 'function' || typeof chooseOuterFaceFromEmbedding !== 'function') {
+    if (typeof buildAdjacency !== 'function' || typeof edgeKey !== 'function' || typeof chooseOuterFaceFromEmbedding !== 'function' || typeof alignOuterFaceEdgeHorizontally !== 'function') {
       return { ok: false, message: 'GraphUtils is missing. Check script load order' };
     }
     if (typeof computePlanarEmbedding !== 'function') {
@@ -328,10 +329,10 @@
   }
 
   function applyCEG23XyLayout(cy, options) {
-    if (!PlaygroundUtils || typeof PlaygroundUtils.graphFromCy !== 'function' || typeof PlaygroundUtils.currentPositionsFromCy !== 'function' || typeof PlaygroundUtils.alignOuterFace !== 'function') {
+    if (!PlaygroundUtils || typeof PlaygroundUtils.graphFromCy !== 'function' || typeof PlaygroundUtils.currentPositionsFromCy !== 'function') {
       return { ok: false, message: 'Shared planar utilities are missing. Check script load order' };
     }
-    if (typeof buildAdjacency !== 'function' || typeof edgeKey !== 'function' || typeof chooseOuterFaceFromEmbedding !== 'function') {
+    if (typeof buildAdjacency !== 'function' || typeof edgeKey !== 'function' || typeof chooseOuterFaceFromEmbedding !== 'function' || typeof alignOuterFaceEdgeHorizontally !== 'function') {
       return { ok: false, message: 'GraphUtils is missing. Check script load order' };
     }
     if (typeof computePlanarEmbedding !== 'function') {

@@ -1,45 +1,6 @@
 (function (global) {
   'use strict';
 
-  function faceCanonicalKey(face) {
-    if (!face || face.length === 0) {
-      return '';
-    }
-    var arr = face.map(String);
-    var n = arr.length;
-
-    function bestRotation(seq) {
-      var best = null;
-      for (var i = 0; i < n; i += 1) {
-        var rot = seq.slice(i).concat(seq.slice(0, i)).join('|');
-        if (best === null || rot < best) {
-          best = rot;
-        }
-      }
-      return best;
-    }
-
-    var forward = bestRotation(arr);
-    var backward = bestRotation(arr.slice().reverse());
-    return forward < backward ? forward : backward;
-  }
-
-  function polygonAreaAbs(face, posById) {
-    if (!face || face.length < 3) {
-      return 0;
-    }
-    var sum = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      var b = posById[String(face[(i + 1) % face.length])];
-      if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) {
-        return 0;
-      }
-      sum += a.x * b.y - b.x * a.y;
-    }
-    return Math.abs(sum) / 2;
-  }
-
   function normalizeDistribution(rawValues) {
     var total = 0;
     for (var i = 0; i < rawValues.length; i += 1) {
@@ -170,6 +131,10 @@
   }
 
   function computeUniformFaceAreaScore(nodeIds, edgePairs, posById) {
+    var graphUtils = global.GraphUtils;
+    if (typeof graphUtils.polygonAreaAbs !== 'function') {
+      return { ok: false, reason: 'Graph utilities are missing.' };
+    }
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, reason: 'Planarity utilities are missing.' };
     }
@@ -189,7 +154,7 @@
       if (i === outerFaceIdx) {
         continue;
       }
-      var a = polygonAreaAbs(face, posById);
+      var a = graphUtils.polygonAreaAbs(face, posById);
       if (a > 1e-12) {
         areas.push(a);
         idealWeights.push(Math.max(1, face.length - 2));

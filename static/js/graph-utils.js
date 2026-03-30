@@ -49,6 +49,70 @@
     return sum;
   }
 
+  function polygonAreaAbs(face, posById) {
+    return Math.abs(polygonArea2(face, posById)) / 2;
+  }
+
+  function pointAdd(p, q) {
+    return { x: p.x + q.x, y: p.y + q.y };
+  }
+
+  function pointSub(p, q) {
+    return { x: p.x - q.x, y: p.y - q.y };
+  }
+
+  function pointScale(s, p) {
+    return { x: s * p.x, y: s * p.y };
+  }
+
+  function pointDot(p, q) {
+    return p.x * q.x + p.y * q.y;
+  }
+
+  function pointRot90(p) {
+    return { x: -p.y, y: p.x };
+  }
+
+  function pointNorm(p) {
+    return Math.sqrt(pointDot(p, p));
+  }
+
+  function vecDot(a, b) {
+    var s = 0;
+    for (var i = 0; i < a.length; i += 1) {
+      s += a[i] * b[i];
+    }
+    return s;
+  }
+
+  function vecNorm(a) {
+    return Math.sqrt(vecDot(a, a));
+  }
+
+  function vecAddScaled(a, b, alpha) {
+    var out = new Array(a.length);
+    for (var i = 0; i < a.length; i += 1) {
+      out[i] = a[i] + alpha * b[i];
+    }
+    return out;
+  }
+
+  function vecSub(a, b) {
+    var out = new Array(a.length);
+    for (var i = 0; i < a.length; i += 1) {
+      out[i] = a[i] - b[i];
+    }
+    return out;
+  }
+
+  function vecScale(a, alpha) {
+    var out = new Array(a.length);
+    for (var i = 0; i < a.length; i += 1) {
+      out[i] = alpha * a[i];
+    }
+    return out;
+  }
+
   function orientFaceCCW(face, posById) {
     var out = face.slice().map(String);
     if (polygonArea2(out, posById) < 0) {
@@ -581,6 +645,18 @@
       out[id] = { x: p.x, y: p.y };
     }
     return out;
+  }
+
+  function collectMovableVertices(nodeIds, outerFace) {
+    var outerSet = new Set((outerFace || []).map(String));
+    var movable = [];
+    for (var i = 0; i < (nodeIds || []).length; i += 1) {
+      var id = String(nodeIds[i]);
+      if (!outerSet.has(id)) {
+        movable.push(id);
+      }
+    }
+    return movable;
   }
 
   function computeFaceCentroid(posById, face) {
@@ -1255,6 +1331,18 @@
     PlanarGraph: PlanarGraph,
     faceKey: faceKey,
     polygonArea2: polygonArea2,
+    polygonAreaAbs: polygonAreaAbs,
+    pointAdd: pointAdd,
+    pointSub: pointSub,
+    pointScale: pointScale,
+    pointDot: pointDot,
+    pointRot90: pointRot90,
+    pointNorm: pointNorm,
+    vecDot: vecDot,
+    vecNorm: vecNorm,
+    vecAddScaled: vecAddScaled,
+    vecSub: vecSub,
+    vecScale: vecScale,
     orientFaceCCW: orientFaceCCW,
     outerFaceDiameter: outerFaceDiameter,
     edgeKey: edgeKey,
@@ -1269,6 +1357,8 @@
     embeddingHasFace: embeddingHasFace,
     cloneEdgePairs: cloneEdgePairs,
     computeDrawingDiameter: computeDrawingDiameter,
+    copyPositions: copyPositionMap,
+    collectMovableVertices: collectMovableVertices,
     alignOuterFaceEdgeHorizontally: alignOuterFaceEdgeHorizontally,
     computePositionMoveStats: computePositionMoveStats,
     createMovementConvergenceTracker: createMovementConvergenceTracker,

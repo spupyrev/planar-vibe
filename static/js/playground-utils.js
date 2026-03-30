@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var GraphUtils = global.GraphUtils || {};
+  var GraphUtils = global.GraphUtils;
 
   function isDummyCyNode(node) {
     return !!(node && typeof node.hasClass === 'function' && node.hasClass('dummy-node'));
@@ -41,35 +41,6 @@
       out[id] = { x: p.x, y: p.y };
     }
     return out;
-  }
-
-  function copyPositions(pos) {
-    var out = {};
-    var keys = Object.keys(pos || {});
-    for (var i = 0; i < keys.length; i += 1) {
-      var key = keys[i];
-      out[key] = { x: pos[key].x, y: pos[key].y };
-    }
-    return out;
-  }
-
-  function alignOuterFace(pos, outerFace) {
-    if (GraphUtils && typeof GraphUtils.alignOuterFaceEdgeHorizontally === 'function') {
-      return GraphUtils.alignOuterFaceEdgeHorizontally(pos, outerFace);
-    }
-    return copyPositions(pos);
-  }
-
-  function collectMovableVertices(nodeIds, outerFace) {
-    var outerSet = new Set((outerFace || []).map(String));
-    var movableVertices = [];
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var nodeId = String(nodeIds[i]);
-      if (!outerSet.has(nodeId)) {
-        movableVertices.push(nodeId);
-      }
-    }
-    return movableVertices;
   }
 
   function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
@@ -364,8 +335,8 @@
       baseEmbedding: baseEmbedding,
       outerFace: outerFace,
       augmented: augmented,
-      posById: alignOuterFace(init.pos, outerFace),
-      movableVertices: collectMovableVertices(augmented.nodeIds, outerFace),
+      posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.pos, outerFace),
+      movableVertices: GraphUtils.collectMovableVertices(augmented.nodeIds, outerFace),
       initResult: init
     };
   }
@@ -377,9 +348,6 @@
   global.PlaygroundUtils = {
     graphFromCy: graphFromCy,
     currentPositionsFromCy: currentPositionsFromCy,
-    copyPositions: copyPositions,
-    alignOuterFace: alignOuterFace,
-    collectMovableVertices: collectMovableVertices,
     prepareAugmentedTriangulation: prepareAugmentedTriangulation,
     originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
     createAugmentationDebugState: createAugmentationDebugState,

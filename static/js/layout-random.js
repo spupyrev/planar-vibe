@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
 
   function hashString(value, seed) {
     var hash = seed >>> 0;

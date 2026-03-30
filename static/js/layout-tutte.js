@@ -1,14 +1,14 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
-  var GraphCore = global.GraphUtils;
-  var buildAdjacency = GraphCore.buildAdjacency;
-  var edgeKey = GraphCore.edgeKey;
-  var normalizeNodeIds = GraphCore.normalizeNodeIds;
-  var normalizeEdgePairs = GraphCore.normalizeEdgePairs;
-  var normalizeOuterFace = GraphCore.normalizeOuterFace;
-  var embeddingHasFace = GraphCore.embeddingHasFace;
+  var PlaygroundUtils = global.PlaygroundUtils;
+  var GraphUtils = global.GraphUtils;
+  var buildAdjacency = GraphUtils.buildAdjacency;
+  var edgeKey = GraphUtils.edgeKey;
+  var normalizeNodeIds = GraphUtils.normalizeNodeIds;
+  var normalizeEdgePairs = GraphUtils.normalizeEdgePairs;
+  var normalizeOuterFace = GraphUtils.normalizeOuterFace;
+  var embeddingHasFace = GraphUtils.embeddingHasFace;
 
   function buildUniformWeights(edgePairs, value) {
     var pairs = normalizeEdgePairs(edgePairs);
@@ -211,7 +211,7 @@
         if (!embeddingHasFace(embedding, outerFace)) {
           return { ok: false, message: 'Provided outer face is not a face of the embedding' };
         }
-        var connectivity = GraphCore.analyzeInternallyThreeConnected(solveNodeIds, solveEdgePairs, outerFace);
+        var connectivity = GraphUtils.analyzeInternallyThreeConnected(solveNodeIds, solveEdgePairs, outerFace);
         if (!connectivity || !connectivity.ok) {
           return {
             ok: false,

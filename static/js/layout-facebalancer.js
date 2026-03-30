@@ -1,41 +1,16 @@
 (function (global) {
   'use strict';
 
-  var FACEBALANCER_REV = 'fb-edgeuniform-20260323';
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
   var faceKey = global.GraphUtils.faceKey;
   var buildAdjacency = global.GraphUtils.buildAdjacency;
   var polygonArea2 = global.GraphUtils.polygonArea2;
   var orientFaceCCW = global.GraphUtils.orientFaceCCW;
-  var copyPositions = PlaygroundUtils.copyPositions;
-
-  function dot(a, b) {
-    var s = 0;
-    for (var i = 0; i < a.length; i += 1) s += a[i] * b[i];
-    return s;
-  }
-
-  function norm(a) {
-    return Math.sqrt(dot(a, a));
-  }
-
-  function addScaled(a, b, alpha) {
-    var out = new Array(a.length);
-    for (var i = 0; i < a.length; i += 1) out[i] = a[i] + alpha * b[i];
-    return out;
-  }
-
-  function subtractVec(a, b) {
-    var out = new Array(a.length);
-    for (var i = 0; i < a.length; i += 1) out[i] = a[i] - b[i];
-    return out;
-  }
-
-  function scaleVec(a, alpha) {
-    var out = new Array(a.length);
-    for (var i = 0; i < a.length; i += 1) out[i] = alpha * a[i];
-    return out;
-  }
+  var vecAddScaled = global.GraphUtils.vecAddScaled;
+  var vecDot = global.GraphUtils.vecDot;
+  var vecNorm = global.GraphUtils.vecNorm;
+  var vecScale = global.GraphUtils.vecScale;
+  var vecSub = global.GraphUtils.vecSub;
 
   function buildInitialPositions(nodeIds, edgePairs, outerFace, cy) {
     function solveExactWeightedBarycentricLayout(input) {
@@ -786,7 +761,7 @@
       ok: true,
       E: E,
       gradVec: gradVec,
-      gradNorm: norm(gradVec),
+      gradNorm: vecNorm(gradVec),
       x: x,
       y: y,
       faceAreas: faceAreas,
@@ -799,20 +774,20 @@
     var alpha = new Array(m);
     var q = g.slice();
     for (var i = m - 1; i >= 0; i -= 1) {
-      alpha[i] = Rho[i] * dot(S[i], q);
-      q = subtractVec(q, scaleVec(Y[i], alpha[i]));
+      alpha[i] = Rho[i] * vecDot(S[i], q);
+      q = vecSub(q, vecScale(Y[i], alpha[i]));
     }
     var gamma = 1;
     if (m > 0) {
-      var denom = dot(Y[m - 1], Y[m - 1]);
-      if (denom > 1e-14) gamma = dot(S[m - 1], Y[m - 1]) / denom;
+      var denom = vecDot(Y[m - 1], Y[m - 1]);
+      if (denom > 1e-14) gamma = vecDot(S[m - 1], Y[m - 1]) / denom;
     }
-    var r = scaleVec(q, gamma);
+    var r = vecScale(q, gamma);
     for (i = 0; i < m; i += 1) {
-      var beta = Rho[i] * dot(Y[i], r);
-      r = addScaled(r, S[i], alpha[i] - beta);
+      var beta = Rho[i] * vecDot(Y[i], r);
+      r = vecAddScaled(r, S[i], alpha[i] - beta);
     }
-    return scaleVec(r, -1);
+    return vecScale(r, -1);
   }
 
   async function optimizeTheta(q0, data, opts) {
@@ -845,13 +820,13 @@
       var prevX = current.x;
       var prevY = current.y;
       var d = lbfgsDirection(current.gradVec, S, Y, Rho);
-      if (!(dot(current.gradVec, d) < 0)) d = scaleVec(current.gradVec, -1);
+      if (!(vecDot(current.gradVec, d) < 0)) d = vecScale(current.gradVec, -1);
 
       var alpha = 1.0;
       var accepted = null;
-      var gtd = dot(current.gradVec, d);
+      var gtd = vecDot(current.gradVec, d);
       while (alpha >= 1e-12) {
-        var qTrial = addScaled(q, d, alpha);
+        var qTrial = vecAddScaled(q, d, alpha);
         var trial = evaluateObjectiveAndGradient(qTrial, data);
         if (trial.ok && trial.E <= current.E + lineSearchC1 * alpha * gtd) {
           accepted = { q: qTrial, eval: trial };
@@ -864,9 +839,9 @@
         break;
       }
 
-      var s = subtractVec(accepted.q, q);
-      var y = subtractVec(accepted.eval.gradVec, current.gradVec);
-      var stepNorm = norm(s);
+      var s = vecSub(accepted.q, q);
+      var y = vecSub(accepted.eval.gradVec, current.gradVec);
+      var stepNorm = vecNorm(s);
       q = accepted.q;
       current = accepted.eval;
       if (current.E < best.E) {
@@ -903,7 +878,7 @@
         break;
       }
 
-      var ys = dot(y, s);
+      var ys = vecDot(y, s);
       if (ys > 1e-14) {
         if (S.length === memory) {
           S.shift();
@@ -1059,7 +1034,7 @@
       return {
         ok: false,
         stopReason: result.stopReason,
-        message: 'FaceBalancer [' + FACEBALANCER_REV + '] produced a non-plane drawing'
+        message: 'FaceBalancer produced a non-plane drawing'
       };
     }
     var faceScore = global.PlanarVibeMetrics && global.PlanarVibeMetrics.computeUniformFaceAreaScore
@@ -1069,7 +1044,7 @@
       ok: true,
       stopReason: result.stopReason,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
-      message: 'Applied FaceBalancer [' + FACEBALANCER_REV + '] (' + data.boundedFaceKeys.length + ' bounded faces, +' + augmented.dummyCount + ' dummy, ' +
+      message: 'Applied FaceBalancer (' + data.boundedFaceKeys.length + ' bounded faces, +' + augmented.dummyCount + ' dummy, ' +
         iterationCount + ' iters, ' + result.stopReason + ', obj ' + result.E.toFixed(3) + ')',
       debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
         ? PlaygroundUtils.createAugmentationDebugState(

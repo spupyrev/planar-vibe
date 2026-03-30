@@ -2,7 +2,7 @@
   'use strict';
 
   var PPAG_REV = 'ppag-20260323';
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
   var orientFaceCCW = global.GraphUtils.orientFaceCCW;
   var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
   var polygonArea2 = global.GraphUtils.polygonArea2;
@@ -323,7 +323,7 @@
 
     var iter;
     for (iter = 1; iter <= opts.maxIters && status === 'max_iters'; iter += 1) {
-      var prevSweepPos = PlaygroundUtils.copyPositions(posById);
+      var prevSweepPos = global.GraphUtils.copyPositions(posById);
       var acceptedCount = 0;
       var acceptedStepSum = 0;
       var lineSearchSteps = 0;

@@ -1,10 +1,12 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
+  var alignOuterFaceEdgeHorizontally = global.GraphUtils.alignOuterFaceEdgeHorizontally;
   var buildAdjacency = global.GraphUtils.buildAdjacency;
   var edgeKey = global.GraphUtils.edgeKey;
   var faceKey = global.GraphUtils.faceKey;
+  var polygonAreaAbs = global.GraphUtils.polygonAreaAbs;
 
   function canonicalizeCycleOrder(face) {
     if (!face || face.length === 0) return [];
@@ -31,18 +33,6 @@
       }
     }
     return best || arr.slice();
-  }
-
-  function polygonAreaAbs(face, posById) {
-    if (!face || face.length < 3) return 0;
-    var s = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      var b = posById[String(face[(i + 1) % face.length])];
-      if (!a || !b) return 0;
-      s += a.x * b.y - b.x * a.y;
-    }
-    return Math.abs(s) / 2;
   }
 
   function longestFace(faces) {
@@ -73,7 +63,7 @@
         pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
       }
     }
-    return PlaygroundUtils.alignOuterFace(pos, outerFace);
+    return alignOuterFaceEdgeHorizontally(pos, outerFace);
   }
 
   function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, seedPos, fixedOuterPos) {

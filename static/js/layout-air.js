@@ -1,36 +1,18 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var PlaygroundUtils = global.PlaygroundUtils;
   var faceKey = global.GraphUtils.faceKey;
   var polygonArea2 = global.GraphUtils.polygonArea2;
+  var pointAdd = global.GraphUtils.pointAdd;
+  var pointDot = global.GraphUtils.pointDot;
+  var pointNorm = global.GraphUtils.pointNorm;
+  var pointRot90 = global.GraphUtils.pointRot90;
+  var pointScale = global.GraphUtils.pointScale;
+  var pointSub = global.GraphUtils.pointSub;
   var orientFaceCCW = global.GraphUtils.orientFaceCCW;
   var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
   var triangleArea2 = global.GraphUtils.triangleArea2;
-
-  function add(p, q) {
-    return { x: p.x + q.x, y: p.y + q.y };
-  }
-
-  function sub(p, q) {
-    return { x: p.x - q.x, y: p.y - q.y };
-  }
-
-  function mul(s, p) {
-    return { x: s * p.x, y: s * p.y };
-  }
-
-  function dot(p, q) {
-    return p.x * q.x + p.y * q.y;
-  }
-
-  function rot90(p) {
-    return { x: -p.y, y: p.x };
-  }
-
-  function norm(p) {
-    return Math.sqrt(dot(p, p));
-  }
 
   var originalFaceKeyForAugmentedFace = PlaygroundUtils.originalFaceKeyForAugmentedFace;
 
@@ -144,9 +126,9 @@
         continue;
       }
 
-      var s = sub(leftPos, rightPos);
-      var r = rot90(s);
-      var delta = sub(point, rightPos);
+      var s = pointSub(leftPos, rightPos);
+      var r = pointRot90(s);
+      var delta = pointSub(point, rightPos);
       var area = 0.5 * (s.x * delta.y - s.y * delta.x);
       areas.push(area);
       if (!(area > tolAreaPositive)) {
@@ -194,7 +176,7 @@
         return { pos: p, forceNorm: Infinity, stalled: true };
       }
 
-      var forceNorm = norm(state.force);
+      var forceNorm = pointNorm(state.force);
       if (forceNorm <= tolForceVertex) {
         return { pos: p, forceNorm: forceNorm, stalled: false };
       }
@@ -214,17 +196,17 @@
         d = { x: g.x, y: g.y };
       }
 
-      if (dot(g, d) <= 0) {
+      if (pointDot(g, d) <= 0) {
         d = { x: g.x, y: g.y };
       }
 
       var alpha = 1;
       var accepted = false;
       while (alpha >= minStep) {
-        var q = add(p, mul(alpha, d));
+        var q = pointAdd(p, pointScale(alpha, d));
         var qState = evaluateLocalState(entries, airData.triangles, posById, q, tolAreaPositive);
         if (qState.feasible &&
-            qState.entropy >= state.entropy + armijo * alpha * dot(g, d)) {
+            qState.entropy >= state.entropy + armijo * alpha * pointDot(g, d)) {
           p = q;
           state = qState;
           accepted = true;
@@ -241,7 +223,7 @@
     var finalState = state || evaluateLocalState(entries, airData.triangles, posById, p, tolAreaPositive);
     return {
       pos: p,
-      forceNorm: finalState.feasible ? norm(finalState.force) : Infinity,
+      forceNorm: finalState.feasible ? pointNorm(finalState.force) : Infinity,
       stalled: false
     };
   }
@@ -282,7 +264,7 @@
     for (i = 0; i < movableVertices.length; i += 1) {
       var v = movableVertices[i];
       var state = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, posById[v], tolAreaPositive);
-      var f = state.feasible ? norm(state.force) : Infinity;
+      var f = state.feasible ? pointNorm(state.force) : Infinity;
       if (f > maxForce) {
         maxForce = f;
       }
@@ -459,7 +441,7 @@
       for (var vi = 0; vi < movableVertices.length; vi += 1) {
         var v = movableVertices[vi];
         var currentState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, posById[v], opts.tolAreaPositive);
-        var currentForce = currentState.feasible ? norm(currentState.force) : Infinity;
+        var currentForce = currentState.feasible ? pointNorm(currentState.force) : Infinity;
         if (currentForce <= opts.tolForceGlobal) {
           continue;
         }
