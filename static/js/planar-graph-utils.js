@@ -1,6 +1,24 @@
 (function (global) {
   'use strict';
 
+  function normalizeNodeIds(nodeIds) {
+    return (nodeIds || []).map(String);
+  }
+
+  function normalizeEdgePairs(edgePairs) {
+    return (edgePairs || []).map(function (edge) {
+      return [String(edge[0]), String(edge[1])];
+    });
+  }
+
+  function normalizeOuterFace(outerFace) {
+    return Array.isArray(outerFace) ? outerFace.slice().map(String) : [];
+  }
+
+  function edgeKey(u, v) {
+    return u < v ? u + '::' + v : v + '::' + u;
+  }
+
   function createEmptyAdjacency(nodeIds) {
     var adj = {};
     for (var i = 0; i < nodeIds.length; i += 1) {
@@ -18,6 +36,16 @@
     }
     adjacency[source].push(target);
     adjacency[target].push(source);
+  }
+
+  function buildAdjacency(nodeIds, edgePairs) {
+    var ids = normalizeNodeIds(nodeIds);
+    var pairs = normalizeEdgePairs(edgePairs);
+    var adjacency = createEmptyAdjacency(ids);
+    for (var i = 0; i < pairs.length; i += 1) {
+      addUndirectedEdge(adjacency, pairs[i][0], pairs[i][1]);
+    }
+    return adjacency;
   }
 
   function createEmptyAdjacencySets(nodeIds) {
@@ -327,6 +355,16 @@
       }
     }
     return -1;
+  }
+
+  function embeddingHasFace(embedding, face) {
+    var faces = embedding && Array.isArray(embedding.faces) ? embedding.faces : [];
+    for (var i = 0; i < faces.length; i += 1) {
+      if (sameCyclicEitherDirection(face, faces[i])) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function outerFaceEdgeKey(u, v) {
@@ -1212,6 +1250,15 @@
     PlanarEdge: PlanarEdge,
     PlanarFace: PlanarFace,
     PlanarGraph: PlanarGraph,
+    edgeKey: edgeKey,
+    buildAdjacency: buildAdjacency,
+    normalizeNodeIds: normalizeNodeIds,
+    normalizeEdgePairs: normalizeEdgePairs,
+    normalizeOuterFace: normalizeOuterFace,
+    sameCyclicDirection: sameCyclicDirection,
+    sameCyclicEitherDirection: sameCyclicEitherDirection,
+    findOuterFaceIndex: findOuterFaceIndex,
+    embeddingHasFace: embeddingHasFace,
     graphFromCy: graphFromCy,
     cloneEdgePairs: cloneEdgePairs,
     computeDrawingDiameter: computeDrawingDiameter,

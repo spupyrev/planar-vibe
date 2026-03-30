@@ -55,10 +55,10 @@
     var scale = Number.isFinite(a) && a > 0 ? a : 1;
     var ratio = Number.isFinite(r) && r > 1 ? r : 1.35;
     var mode = String(edgeDepthMode || 'min');
-    if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.edgeKey) {
+    if (!global.PlanarGraphCore || !global.PlanarGraphCore.edgeKey) {
       return weights;
     }
-    var edgeKey = global.PlanarVibeBarycentricCore.edgeKey;
+    var edgeKey = global.PlanarGraphCore.edgeKey;
 
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
@@ -105,7 +105,7 @@
     var a = Number.isFinite(alpha) && alpha > 0 ? alpha : 0.5;
     var b = Number.isFinite(beta) && beta >= 0 ? beta : 1.0;
     var weights = {};
-    var ek = global.PlanarVibeBarycentricCore.edgeKey;
+    var ek = global.PlanarGraphCore.edgeKey;
 
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
@@ -126,7 +126,7 @@
     var out = {};
     var lam = Number.isFinite(lambdaA) ? Math.max(0, Math.min(1, lambdaA)) : 0.5;
     var lamB = 1 - lam;
-    var ek = global.PlanarVibeBarycentricCore.edgeKey;
+    var ek = global.PlanarGraphCore.edgeKey;
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
       var v = String(edgePairs[i][1]);
@@ -153,8 +153,8 @@
         typeof global.PlanarGraphCore.chooseOuterFaceFromEmbedding !== 'function') {
       return { ok: false, message: 'PlanarGraphCore is missing. Check script load order' };
     }
-    if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout) {
-      return { ok: false, message: 'Barycentric core is missing. Check script load order' };
+    if (!global.PlanarVibeTutteAlgorithm || !global.PlanarVibeTutteAlgorithm.computeBarycentricPositions) {
+      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
     }
 
     var nodes = cy.nodes().toArray();
@@ -185,18 +185,21 @@
 
     var depthById = bfsDepthFromOuter(nodeIds, adjacency, outerFace, DEPTH_SOURCE);
     var weights = buildDepthWeights(edgePairs, depthById, A, R, EDGE_DEPTH_MODE);
-    var out = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-      nodeIds: nodeIds,
-      adjacency: adjacency,
-      outerFace: outerFace,
-      weights: weights,
-      maxIters: MAX_ITERS,
-      tolerance: 1e-8,
-      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-        useSeedOuter: false,
-        seedPos: PlanarCommon.currentPositionsFromCy(cy)
-      })
-    });
+    var out = global.PlanarVibeTutteAlgorithm.computeBarycentricPositions(
+      nodeIds,
+      edgePairs,
+      outerFace,
+      {
+        adjacency: adjacency,
+        weights: weights,
+        maxIters: MAX_ITERS,
+        tolerance: 1e-8,
+        initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
+          useSeedOuter: false,
+          seedPos: PlanarCommon.currentPositionsFromCy(cy)
+        })
+      }
+    );
     if (!out.ok) {
       return { ok: false, message: out.message || 'CEG23-bfs solver failed' };
     }
@@ -231,8 +234,8 @@
         typeof global.PlanarGraphCore.chooseOuterFaceFromEmbedding !== 'function') {
       return { ok: false, message: 'PlanarGraphCore is missing. Check script load order' };
     }
-    if (!global.PlanarVibeBarycentricCore || !global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout) {
-      return { ok: false, message: 'Barycentric core is missing. Check script load order' };
+    if (!global.PlanarVibeTutteAlgorithm || !global.PlanarVibeTutteAlgorithm.computeBarycentricPositions) {
+      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
     }
 
     var nodes = cy.nodes().toArray();
@@ -260,19 +263,22 @@
     var lambdaX = Number.isFinite(tuning.lambdaX) ? tuning.lambdaX : 0.5;
 
     var seed = PlanarCommon.currentPositionsFromCy(cy);
-    var uniformWeights = global.PlanarVibeBarycentricCore.buildUniformWeights(edgePairs, 1);
-    var base = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-      nodeIds: nodeIds,
-      adjacency: adjacency,
-      outerFace: outerFace,
-      weights: uniformWeights,
-      maxIters: maxIters,
-      tolerance: 1e-8,
-      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-        useSeedOuter: false,
-        seedPos: seed
-      })
-    });
+    var uniformWeights = global.PlanarVibeTutteAlgorithm.buildUniformWeights(edgePairs, 1);
+    var base = global.PlanarVibeTutteAlgorithm.computeBarycentricPositions(
+      nodeIds,
+      edgePairs,
+      outerFace,
+      {
+        adjacency: adjacency,
+        weights: uniformWeights,
+        maxIters: maxIters,
+        tolerance: 1e-8,
+        initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
+          useSeedOuter: false,
+          seedPos: seed
+        })
+      }
+    );
     if (!base.ok) {
       return { ok: false, message: base.message || 'CEG23-xy baseline solve failed' };
     }
@@ -283,18 +289,21 @@
     var wx = buildSpreadWeights(edgePairs, xRank, alpha, beta);
     var wy = buildSpreadWeights(edgePairs, yRank, alpha, beta);
     var wxy = combineWeights(edgePairs, wx, wy, lambdaX);
-    var xySolve = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-      nodeIds: nodeIds,
-      adjacency: adjacency,
-      outerFace: outerFace,
-      weights: wxy,
-      maxIters: maxIters,
-      tolerance: 1e-8,
-      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-        useSeedOuter: false,
-        seedPos: base.pos
-      })
-    });
+    var xySolve = global.PlanarVibeTutteAlgorithm.computeBarycentricPositions(
+      nodeIds,
+      edgePairs,
+      outerFace,
+      {
+        adjacency: adjacency,
+        weights: wxy,
+        maxIters: maxIters,
+        tolerance: 1e-8,
+        initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
+          useSeedOuter: false,
+          seedPos: base.pos
+        })
+      }
+    );
     if (!xySolve.ok) {
       return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };
     }

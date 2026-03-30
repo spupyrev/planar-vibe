@@ -2,16 +2,8 @@
   'use strict';
 
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
-
-  function edgeKey(u, v) {
-    var a = String(u);
-    var b = String(v);
-    return a < b ? a + '::' + b : b + '::' + a;
-  }
-
-  function faceKey(face) {
-    return PlanarCommon.faceKey(face);
-  }
+  var edgeKey = global.PlanarGraphCore.edgeKey;
+  var faceKey = PlanarCommon.faceKey;
 
   function findOuterFaceIndex(faces, outerFace) {
     if (!faces || !outerFace || faces.length === 0 || outerFace.length === 0) {
@@ -30,13 +22,8 @@
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   }
 
-  function polygonArea2(face, posById) {
-    return PlanarCommon.polygonArea2(face, posById);
-  }
-
-  function orientFaceCCW(face, posById) {
-    return PlanarCommon.orientFaceCCW(face, posById);
-  }
+  var polygonArea2 = PlanarCommon.polygonArea2;
+  var orientFaceCCW = PlanarCommon.orientFaceCCW;
 
   function add(p, q) {
     return { x: p.x + q.x, y: p.y + q.y };
@@ -62,9 +49,7 @@
     return Math.sqrt(dot(p, p));
   }
 
-  function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds) {
-    return PlanarCommon.originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds);
-  }
+  var originalFaceKeyForAugmentedFace = PlanarCommon.originalFaceKeyForAugmentedFace;
 
   function buildAirData(baseEmbedding, augmentedEmbedding, outerFace, dummyFaceKeyById, dummyFaceVerticesById, posById) {
     var outerOriginalKey = originalFaceKeyForAugmentedFace(outerFace, dummyFaceKeyById, dummyFaceVerticesById);

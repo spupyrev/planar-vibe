@@ -3,10 +3,7 @@
 
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
   var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
-
-  function collectGraphFromCy(cy) {
-    return PlanarCommon.graphFromCy(cy);
-  }
+  var collectGraphFromCy = PlanarCommon.graphFromCy;
 
   function prepareTriangulatedEmbedding(nodeIds, edgePairs) {
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {

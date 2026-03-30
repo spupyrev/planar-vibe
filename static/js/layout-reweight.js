@@ -2,16 +2,8 @@
   'use strict';
 
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
-
-  function edgeKey(u, v) {
-    var a = String(u);
-    var b = String(v);
-    return a < b ? a + '::' + b : b + '::' + a;
-  }
-
-  function faceKey(face) {
-    return PlanarCommon.faceKey(face);
-  }
+  var edgeKey = global.PlanarGraphCore.edgeKey;
+  var faceKey = PlanarCommon.faceKey;
 
   function canonicalizeCycleOrder(face) {
     if (!face || face.length === 0) return [];
@@ -40,39 +32,6 @@
     return best || arr.slice();
   }
 
-  function sameCyclicDirection(a, b) {
-    if (!a || !b || a.length !== b.length || a.length === 0) return false;
-    var n = a.length;
-    var i;
-    for (i = 0; i < n; i += 1) {
-      if (String(b[i]) === String(a[0])) break;
-    }
-    if (i === n) return false;
-    for (var j = 0; j < n; j += 1) {
-      if (String(a[j]) !== String(b[(i + j) % n])) return false;
-    }
-    return true;
-  }
-
-  function sameCyclicEitherDirection(a, b) {
-    if (sameCyclicDirection(a, b)) return true;
-    if (!a || !b || a.length !== b.length) return false;
-    var rev = b.slice().reverse();
-    return sameCyclicDirection(a, rev);
-  }
-
-  function findOuterFaceIndex(faces, outerFace) {
-    if (!faces || faces.length === 0 || !outerFace || outerFace.length === 0) return -1;
-    // Prefer exact cyclic direction match, then allow reversed direction.
-    for (var i = 0; i < faces.length; i += 1) {
-      if (sameCyclicDirection(outerFace, faces[i])) return i;
-    }
-    for (i = 0; i < faces.length; i += 1) {
-      if (sameCyclicEitherDirection(outerFace, faces[i])) return i;
-    }
-    return -1;
-  }
-
   function polygonAreaAbs(face, posById) {
     if (!face || face.length < 3) return 0;
     var s = 0;
@@ -94,19 +53,14 @@
     return best ? best.slice() : null;
   }
 
-  function buildAdjacency(nodeIds, edgePairs) {
-    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
-  }
-
-  function currentPositionsFromCy(cy) {
-    return PlanarCommon.currentPositionsFromCy(cy);
-  }
+  var buildAdjacency = PlanarCommon.buildAdjacency;
+  var currentPositionsFromCy = PlanarCommon.currentPositionsFromCy;
 
   function initOuterCoords(nodeIds, outerFace, fixedOuterPos) {
-    var pos = global.PlanarVibeBarycentricCore.initOuterCoords(
+    var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(
       nodeIds,
       outerFace,
-      global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+      global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
         useSeedOuter: false
       })
     );
@@ -389,10 +343,10 @@
     var outerFaceForEmbedding = outer;
 
     var faces = embAug.faces || [];
-    var outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
+    var outerFaceIdx = global.PlanarGraphCore.findOuterFaceIndex(faces, outerFaceForEmbedding);
     if (outerFaceIdx < 0) {
       outerFaceForEmbedding = longestFace(faces);
-      outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
+      outerFaceIdx = global.PlanarGraphCore.findOuterFaceIndex(faces, outerFaceForEmbedding);
     }
     if (outerFaceIdx < 0 || !outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
       return { ok: false, message: 'Could not determine augmented outer face' };

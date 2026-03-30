@@ -85,10 +85,9 @@ function loadBrowserModules() {
     'static/js/graph-generator.js',
     'static/js/planarity-test.js',
     'static/js/metrics.js',
-    'static/js/planar-graph-core.js',
+    'static/js/planar-graph-utils.js',
     'static/js/layout-runtime.js',
-    'static/js/layout-planar-common.js',
-    'static/js/layout-barycentric-core.js',
+    'static/js/layout-playground-utils.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
@@ -597,13 +596,13 @@ test('shared movement convergence helper stops after enough stable iterations', 
 test('shared outer-face positioning ignores seed positions when useSeedOuter is false', () => {
   const nodeIds = ['1', '2', '3', '4'];
   const outerFace = ['1', '2', '3', '4'];
-  const baseline = modules.PlanarVibeBarycentricCore.initOuterCoords(nodeIds, outerFace, {
+  const baseline = modules.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(nodeIds, outerFace, {
     useSeedOuter: false,
     defaultCenterX: 2000,
     defaultCenterY: 2000,
     defaultRadius: 1000
   });
-  const withSeed = modules.PlanarVibeBarycentricCore.initOuterCoords(nodeIds, outerFace, {
+  const withSeed = modules.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(nodeIds, outerFace, {
     useSeedOuter: false,
     seedPos: {
       '1': { x: 0, y: 0 },

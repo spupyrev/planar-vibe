@@ -2,15 +2,12 @@
   'use strict';
 
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
+  var buildAdjacency = PlanarCommon.buildAdjacency;
 
   function canonicalEdgeKey(u, v) {
     var a = String(u);
     var b = String(v);
     return a < b ? a + '::' + b : b + '::' + a;
-  }
-
-  function buildAdjacency(nodeIds, edgePairs) {
-    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
   }
 
   function triangleArea2(a, b, c) {

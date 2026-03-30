@@ -299,10 +299,11 @@ body {
 }
 
 .layout-toolbar {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  justify-content: stretch;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .layout-group {
@@ -313,8 +314,12 @@ body {
   background: #fbfdff;
 }
 
+.layout-group-planar {
+  min-width: 0;
+}
+
 .layout-group + .layout-group {
-  margin-left: 10px;
+  margin-left: 0;
 }
 
 .layout-group-title {
@@ -341,7 +346,7 @@ body {
 
 .layout-group-buttons.planar-layout-buttons {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
   justify-items: center;
 }
@@ -819,13 +824,19 @@ body {
   }
 
   .layout-toolbar {
+    display: flex;
     justify-content: stretch;
     gap: 10px;
+    flex-wrap: wrap;
   }
 
   .layout-group {
     width: 100%;
     padding: 14px 6px 6px;
+  }
+
+  .layout-group-planar {
+    flex: 1 1 auto;
   }
 
   .layout-group + .layout-group {

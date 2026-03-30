@@ -1,6 +1,8 @@
 (function (global) {
   'use strict';
 
+  var buildAdjacency = global.PlanarGraphCore.buildAdjacency;
+
   function faceKey(face) {
     if (!face || face.length === 0) return '';
     var arr = face.map(String);
@@ -57,23 +59,6 @@
       out[id] = { x: p.x, y: p.y };
     }
     return out;
-  }
-
-  function buildAdjacency(nodeIds, edgePairs) {
-    var adj = {};
-    var i;
-    for (i = 0; i < nodeIds.length; i += 1) {
-      adj[String(nodeIds[i])] = [];
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!adj[u]) adj[u] = [];
-      if (!adj[v]) adj[v] = [];
-      adj[u].push(v);
-      adj[v].push(u);
-    }
-    return adj;
   }
 
   function copyPositions(pos) {
@@ -245,15 +230,32 @@
           maxIters: 1000,
           tolerance: 1e-7
         };
-        return global.PlanarVibeBarycentricCore.computeBarycentricLayout(nodeIds, edgePairs, {
-          outerFace: outerFace,
-          embedding: context && context.augmented ? context.augmented.embedding : null,
+        var embedding = context && context.augmented ? context.augmented.embedding : null;
+        if (!embedding || !embedding.ok) {
+          return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
+        }
+        if (!global.PlanarGraphCore.embeddingHasFace(embedding, outerFace)) {
+          return { ok: false, message: 'Provided outer face is not a face of the embedding' };
+        }
+        var connectivity = global.PlanarGraphCore.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
+        if (!connectivity || !connectivity.ok) {
+          return {
+            ok: false,
+            message: (connectivity && connectivity.reason) || 'Barycentric layout requires an internally 3-connected planar graph'
+          };
+        }
+        return global.PlanarVibeTutteAlgorithm.computeBarycentricPositions(
+          nodeIds,
+          edgePairs,
+          outerFace,
+          {
           maxIters: opts.maxIters,
           tolerance: opts.tolerance,
-          initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+          initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
             useSeedOuter: false
           })
-        });
+          }
+        );
       }
       : cfg.initPositions;
 
@@ -263,10 +265,10 @@
     if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
       return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
     }
-    if (usesDefaultSeed && (!global.PlanarVibeBarycentricCore ||
-        typeof global.PlanarVibeBarycentricCore.computeBarycentricLayout !== 'function' ||
-        typeof global.PlanarVibeBarycentricCore.defaultOuterInitOptions !== 'function')) {
-      return { ok: false, message: 'Barycentric core is missing. Check script load order' };
+    if (usesDefaultSeed && (!global.PlanarVibeTutteAlgorithm ||
+        typeof global.PlanarVibeTutteAlgorithm.computeBarycentricPositions !== 'function' ||
+        typeof global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions !== 'function')) {
+      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
     }
 
     if (graph.nodeIds.length < minNodeCount) {

@@ -868,7 +868,7 @@
       clearSpacingUniformity();
     }
 
-    function renderFaceAreaPlot(values, ideal, showLine) {
+    function renderFaceAreaPlot(values, idealValues, showLine) {
       var size = getFacePlotSize();
       var W = size.width;
       var H = size.height;
@@ -879,7 +879,9 @@
       var PW = W - L - R;
       var PH = H - T - B;
       var maxY = 5;
-      var safeIdeal = Math.max(ideal, 1e-12);
+      var ideals = Array.isArray(idealValues) && idealValues.length === values.length
+        ? idealValues.slice()
+        : values.map(function () { return Number.isFinite(idealValues) ? idealValues : 1; });
       var i;
 
       function sx(idx) {
@@ -894,6 +896,7 @@
 
       var pts = '';
       for (i = 0; i < values.length; i += 1) {
+        var safeIdeal = Math.max(ideals[i], 1e-12);
         var normalizedY = values[i] / safeIdeal;
         pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(normalizedY, maxY));
       }
@@ -1134,7 +1137,7 @@
         clearFaceAreaPlot(result.reason || 'No data');
         return;
       }
-      renderFaceAreaPlot(result.values, result.ideal, !hasCrossings);
+      renderFaceAreaPlot(result.values, result.idealValues || result.ideal, !hasCrossings);
       updateFaceAreaQuality(result.values);
     }
 

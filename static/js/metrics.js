@@ -24,59 +24,6 @@
     return forward < backward ? forward : backward;
   }
 
-  function sameCyclicDirection(a, b) {
-    if (!a || !b || a.length !== b.length || a.length === 0) {
-      return false;
-    }
-    var aa = a.map(String);
-    var bb = b.map(String);
-    var n = aa.length;
-    var start = -1;
-    for (var i = 0; i < n; i += 1) {
-      if (bb[i] === aa[0]) {
-        start = i;
-        break;
-      }
-    }
-    if (start === -1) {
-      return false;
-    }
-    for (i = 0; i < n; i += 1) {
-      if (aa[i] !== bb[(start + i) % n]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function sameCyclicEitherDirection(a, b) {
-    if (sameCyclicDirection(a, b)) {
-      return true;
-    }
-    if (!a || !b || a.length !== b.length) {
-      return false;
-    }
-    return sameCyclicDirection(a, b.slice().reverse());
-  }
-
-  function findOuterFaceIndex(faces, outerFace) {
-    if (!faces || !outerFace || faces.length === 0 || outerFace.length === 0) {
-      return -1;
-    }
-    var i;
-    for (i = 0; i < faces.length; i += 1) {
-      if (sameCyclicDirection(outerFace, faces[i])) {
-        return i;
-      }
-    }
-    for (i = 0; i < faces.length; i += 1) {
-      if (sameCyclicEitherDirection(outerFace, faces[i])) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
   function polygonAreaAbs(face, posById) {
     if (!face || face.length < 3) {
       return 0;
@@ -175,6 +122,53 @@
     };
   }
 
+  function buildWeightedDistributionResult(rawValues, rawIdealWeights, noDataReason, degenerateReason) {
+    if (!rawValues || rawValues.length === 0 || !rawIdealWeights || rawIdealWeights.length !== rawValues.length) {
+      return { ok: false, reason: noDataReason };
+    }
+
+    var valueTotal = 0;
+    var weightTotal = 0;
+    var i;
+    for (i = 0; i < rawValues.length; i += 1) {
+      valueTotal += rawValues[i];
+      weightTotal += rawIdealWeights[i];
+    }
+    if (!(valueTotal > 0) || !(weightTotal > 0)) {
+      return { ok: false, reason: degenerateReason };
+    }
+
+    var pairs = [];
+    for (i = 0; i < rawValues.length; i += 1) {
+      var value = rawValues[i] / valueTotal;
+      var ideal = rawIdealWeights[i] / weightTotal;
+      if (!Number.isFinite(value) || !Number.isFinite(ideal) || !(ideal > 0)) {
+        return { ok: false, reason: degenerateReason };
+      }
+      pairs.push({
+        value: value,
+        ideal: ideal
+      });
+    }
+    pairs.sort(function (a, b) {
+      if (a.ideal !== b.ideal) {
+        return a.ideal - b.ideal;
+      }
+      return a.value - b.value;
+    });
+
+    var normalized = pairs.map(function (pair) { return pair.value; });
+    var idealValues = pairs.map(function (pair) { return pair.ideal; });
+
+    return {
+      ok: true,
+      values: normalized,
+      ideal: idealValues.length > 0 ? (1 / idealValues.length) : null,
+      idealValues: idealValues,
+      quality: computeUniformityScore(normalized, idealValues)
+    };
+  }
+
   function computeUniformFaceAreaScore(nodeIds, edgePairs, posById) {
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, reason: 'Planarity utilities are missing.' };
@@ -187,8 +181,9 @@
       return { ok: false, reason: 'No faces available' };
     }
 
-    var outerFaceIdx = findOuterFaceIndex(emb.faces, emb.outerFace || []);
+    var outerFaceIdx = global.PlanarGraphCore.findOuterFaceIndex(emb.faces, emb.outerFace || []);
     var areas = [];
+    var idealWeights = [];
     for (var i = 0; i < emb.faces.length; i += 1) {
       var face = emb.faces[i];
       if (i === outerFaceIdx) {
@@ -197,10 +192,11 @@
       var a = polygonAreaAbs(face, posById);
       if (a > 1e-12) {
         areas.push(a);
+        idealWeights.push(Math.max(1, face.length - 2));
       }
     }
 
-    var result = buildUniformDistributionResult(areas, 'No bounded face areas available', 'Degenerate face areas');
+    var result = buildWeightedDistributionResult(areas, idealWeights, 'No bounded face areas available', 'Degenerate face areas');
     if (!result.ok) {
       return result;
     }
@@ -415,18 +411,8 @@
       return { ok: false, reason: 'Graph is not planar' };
     }
 
-    var adjacency = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adjacency[String(nodeIds[i])] = [];
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (!adjacency[u]) adjacency[u] = [];
-      if (!adjacency[v]) adjacency[v] = [];
-      adjacency[u].push(v);
-      adjacency[v].push(u);
-    }
+    var adjacency = global.PlanarGraphCore.buildAdjacency(nodeIds, edgePairs);
+    var i;
 
     var outerSet = new Set((emb.outerFace || []).map(String));
     var allValues = [];
@@ -584,21 +570,14 @@
   }
 
   function isBipartiteGraph(nodeIds, edgePairs) {
-    var adjacency = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adjacency[String(nodeIds[i])] = [];
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
+    for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
       var v = String(edgePairs[i][1]);
       if (u === v) {
         return false;
       }
-      if (!adjacency[u]) adjacency[u] = [];
-      if (!adjacency[v]) adjacency[v] = [];
-      adjacency[u].push(v);
-      adjacency[v].push(u);
     }
+    var adjacency = global.PlanarGraphCore.buildAdjacency(nodeIds, edgePairs);
 
     var color = {};
     for (i = 0; i < nodeIds.length; i += 1) {

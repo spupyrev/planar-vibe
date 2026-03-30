@@ -12,50 +12,6 @@
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   }
 
-  function sameCyclicDirection(a, b) {
-    if (!a || !b || a.length !== b.length || a.length === 0) return false;
-    var arrA = a.map(String);
-    var arrB = b.map(String);
-    var n = arrA.length;
-    var start = -1;
-    for (var i = 0; i < n; i += 1) {
-      if (arrB[i] === arrA[0]) {
-        start = i;
-        break;
-      }
-    }
-    if (start < 0) return false;
-    for (i = 0; i < n; i += 1) {
-      if (arrA[i] !== arrB[(start + i) % n]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function sameCyclicEitherDirection(a, b) {
-    if (sameCyclicDirection(a, b)) return true;
-    if (!a || !b || a.length !== b.length) return false;
-    return sameCyclicDirection(a, b.slice().reverse());
-  }
-
-  function findOuterFaceIndex(faces, outerFace) {
-    if (!Array.isArray(faces) || !Array.isArray(outerFace) || outerFace.length === 0) {
-      return -1;
-    }
-    for (var i = 0; i < faces.length; i += 1) {
-      if (sameCyclicDirection(outerFace, faces[i])) {
-        return i;
-      }
-    }
-    for (i = 0; i < faces.length; i += 1) {
-      if (sameCyclicEitherDirection(outerFace, faces[i])) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
   function buildPPAGData(augmentedEmbedding, outerFace, posById) {
     var incidentTrianglesByVertex = {};
     var triangles = [];
@@ -64,7 +20,7 @@
       incidentTrianglesByVertex[String(augmentedEmbedding.idByIndex[i])] = [];
     }
 
-    var outerIndex = findOuterFaceIndex(augmentedEmbedding.faces || [], outerFace);
+    var outerIndex = global.PlanarGraphCore.findOuterFaceIndex(augmentedEmbedding.faces || [], outerFace);
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
       if (!face || face.length < 3) {

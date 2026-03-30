@@ -22,6 +22,7 @@ function loadMetricsModules() {
 
   const files = [
     'static/js/planarity-test.js',
+    'static/js/planar-graph-utils.js',
     'static/js/metrics.js'
   ];
 
@@ -32,10 +33,15 @@ function loadMetricsModules() {
     script.runInContext(context);
   }
 
-  return window.PlanarVibeMetrics;
+  return {
+    Metrics: window.PlanarVibeMetrics,
+    PlanarityTest: window.PlanarVibePlanarityTest
+  };
 }
 
-const Metrics = loadMetricsModules();
+const loaded = loadMetricsModules();
+const Metrics = loaded.Metrics;
+const PlanarityTest = loaded.PlanarityTest;
 
 test('computeUniformityScore: uniform distribution scores 1', () => {
   const values = [0.25, 0.25, 0.25, 0.25];
@@ -101,7 +107,7 @@ test('computeEdgeLengthRatio fails with no valid lengths', () => {
   assert.equal(result.ok, false);
 });
 
-test('computeUniformFaceAreaScore returns two equal bounded faces on a triangulated square', () => {
+test('computeUniformFaceAreaScore uses bounded-face weights from the embedding', () => {
   const nodeIds = ['1', '2', '3', '4'];
   const edgePairs = [
     ['1', '2'],
@@ -118,12 +124,51 @@ test('computeUniformFaceAreaScore returns two equal bounded faces on a triangula
   };
 
   const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
+  const emb = PlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
   assert.equal(result.ok, true);
   assert.equal(result.values.length, 2);
-  assert.ok(Math.abs(result.values[0] - 0.5) < 1e-9);
-  assert.ok(Math.abs(result.values[1] - 0.5) < 1e-9);
-  assert.equal(result.ideal, 0.5);
+  const outerFace = emb.outerFace || [];
+  const bounded = emb.faces.filter((face) => face.join('|') !== outerFace.join('|') && face.slice().reverse().join('|') !== outerFace.join('|'));
+  const expectedIdeal = bounded
+    .map((face) => Math.max(1, face.length - 2))
+    .map((w, _, arr) => w / arr.reduce((s, x) => s + x, 0))
+    .sort((a, b) => a - b);
+  assert.deepEqual(result.idealValues, expectedIdeal);
+  assert.equal(result.idealValues.length, 2);
+  assert.deepEqual(result.values, expectedIdeal);
   assert.equal(result.quality, 1);
+});
+
+test('computeUniformFaceAreaScore uses |f|-2 weights for non-triangular bounded faces', () => {
+  const nodeIds = ['1', '2', '3', '4', '5'];
+  const edgePairs = [
+    ['1', '2'],
+    ['2', '3'],
+    ['3', '4'],
+    ['4', '5'],
+    ['5', '1'],
+    ['1', '3']
+  ];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 3, y: 1 },
+    '4': { x: 1.5, y: 3 },
+    '5': { x: -1, y: 2 }
+  };
+
+  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
+  const emb = PlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
+  assert.equal(result.ok, true);
+  assert.equal(result.values.length, 2);
+  assert.equal(result.idealValues.length, 2);
+  const outerFace = emb.outerFace || [];
+  const bounded = emb.faces.filter((face) => face.join('|') !== outerFace.join('|') && face.slice().reverse().join('|') !== outerFace.join('|'));
+  const expectedIdeal = bounded
+    .map((face) => Math.max(1, face.length - 2))
+    .map((w, _, arr) => w / arr.reduce((s, x) => s + x, 0))
+    .sort((a, b) => a - b);
+  assert.deepEqual(result.idealValues, expectedIdeal);
 });
 
 test('computeUniformFaceAreaScore fails for non-planar graph', () => {

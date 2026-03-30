@@ -3,26 +3,11 @@
 
   var FACEBALANCER_REV = 'fb-edgeuniform-20260323';
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
-
-  function faceKey(face) {
-    return PlanarCommon.faceKey(face);
-  }
-
-  function buildAdjacency(nodeIds, edgePairs) {
-    return PlanarCommon.buildAdjacency(nodeIds, edgePairs);
-  }
-
-  function copyPositions(pos) {
-    return PlanarCommon.copyPositions(pos);
-  }
-
-  function polygonArea2(face, posById) {
-    return PlanarCommon.polygonArea2(face, posById);
-  }
-
-  function orientFaceCCW(face, posById) {
-    return PlanarCommon.orientFaceCCW(face, posById);
-  }
+  var faceKey = PlanarCommon.faceKey;
+  var buildAdjacency = PlanarCommon.buildAdjacency;
+  var copyPositions = PlanarCommon.copyPositions;
+  var polygonArea2 = PlanarCommon.polygonArea2;
+  var orientFaceCCW = PlanarCommon.orientFaceCCW;
 
   function dot(a, b) {
     var s = 0;
@@ -58,7 +43,7 @@
       var adjacency = (input && input.adjacency) ? input.adjacency : {};
       var face = (input && input.outerFace) ? input.outerFace.map(String) : [];
       var initOptions = input && input.initOptions ? input.initOptions : {};
-      var pos = global.PlanarVibeBarycentricCore.initOuterCoords(ids, face, initOptions);
+      var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(ids, face, initOptions);
       var outerSet = new Set(face);
       var interiorIds = [];
       var interiorIndexById = {};
@@ -119,7 +104,7 @@
       nodeIds: nodeIds,
       adjacency: adjacency,
       outerFace: outerFace,
-      initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
+      initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
         useSeedOuter: false,
         seedPos: seedPos
       })
@@ -956,9 +941,9 @@
     var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5;
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 80;
 
-    if (!global.PlanarVibeBarycentricCore ||
-        !global.PlanarVibeBarycentricCore.defaultOuterInitOptions) {
-      return { ok: false, message: 'Barycentric core is missing. Check script load order' };
+    if (!global.PlanarVibeTutteAlgorithm ||
+        !global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions) {
+      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
     }
 
     var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {

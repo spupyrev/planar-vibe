@@ -3,16 +3,9 @@
 
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
   var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+  var collectGraphFromCy = PlanarCommon.graphFromCy;
 
-  function collectGraphFromCy(cy) {
-    return PlanarCommon.graphFromCy(cy);
-  }
-
-  function edgeKey(u, v) {
-    var a = String(u);
-    var b = String(v);
-    return a < b ? a + '::' + b : b + '::' + a;
-  }
+  var edgeKey = global.PlanarGraphCore.edgeKey;
 
   function buildAdjacency(nodeIds, edgePairs) {
     var base = PlanarCommon.buildAdjacency(nodeIds, edgePairs);

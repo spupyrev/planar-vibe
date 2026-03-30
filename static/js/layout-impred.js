@@ -2,20 +2,9 @@
   'use strict';
 
   var PlanarCommon = global.PlanarVibePlanarCommon || {};
-
-  function edgeKey(u, v) {
-    var a = String(u);
-    var b = String(v);
-    return a < b ? a + '::' + b : b + '::' + a;
-  }
-
-  function collectGraphFromCy(cy) {
-    return PlanarCommon.graphFromCy(cy);
-  }
-
-  function currentPositionsFromCy(cy) {
-    return PlanarCommon.currentPositionsFromCy(cy);
-  }
+  var edgeKey = global.PlanarGraphCore.edgeKey;
+  var collectGraphFromCy = PlanarCommon.graphFromCy;
+  var currentPositionsFromCy = PlanarCommon.currentPositionsFromCy;
 
   function buildAdjacency(nodeIds, edgePairs) {
     var arrayAdj = PlanarCommon.buildAdjacency(nodeIds, edgePairs);
@@ -487,23 +476,26 @@
       if (
         emb && emb.ok &&
         initialHadCrossings &&
-        global.PlanarVibeBarycentricCore &&
-        typeof global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout === 'function' &&
-        typeof global.PlanarVibeBarycentricCore.buildUniformWeights === 'function'
+        global.PlanarVibeTutteAlgorithm &&
+        typeof global.PlanarVibeTutteAlgorithm.computeBarycentricPositions === 'function' &&
+        typeof global.PlanarVibeTutteAlgorithm.buildUniformWeights === 'function'
       ) {
         var initOuter = chooseLongestEmbeddingFace(emb);
         if (initOuter && initOuter.length >= 3) {
-          var initSolve = global.PlanarVibeBarycentricCore.solveWeightedBarycentricLayout({
-            nodeIds: g.nodeIds.slice(),
-            adjacency: adjacencyToArrayMap(adj),
-            outerFace: initOuter,
-            weights: global.PlanarVibeBarycentricCore.buildUniformWeights(g.edgePairs, 1),
-            maxIters: 4000,
-            tolerance: 1e-8,
-            initOptions: global.PlanarVibeBarycentricCore.defaultOuterInitOptions({
-              useSeedOuter: false
-            })
-          });
+          var initSolve = global.PlanarVibeTutteAlgorithm.computeBarycentricPositions(
+            g.nodeIds.slice(),
+            g.edgePairs.slice(),
+            initOuter,
+            {
+              adjacency: adjacencyToArrayMap(adj),
+              weights: global.PlanarVibeTutteAlgorithm.buildUniformWeights(g.edgePairs, 1),
+              maxIters: 4000,
+              tolerance: 1e-8,
+              initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
+                useSeedOuter: false
+              })
+            }
+          );
           if (initSolve && initSolve.ok && initSolve.pos) {
             posById = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
               ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(initSolve.pos, initOuter)
