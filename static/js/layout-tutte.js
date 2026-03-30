@@ -1,9 +1,8 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
-  var GraphCore = global.PlanarGraphCore;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var GraphCore = global.GraphUtils;
   var buildAdjacency = GraphCore.buildAdjacency;
   var edgeKey = GraphCore.edgeKey;
   var normalizeNodeIds = GraphCore.normalizeNodeIds;
@@ -188,14 +187,14 @@
       };
     }
 
-    if (!PlanarCommon || typeof PlanarCommon.prepareTriangulatedLayoutData !== 'function') {
+    if (!PlaygroundUtils || typeof PlaygroundUtils.prepareTriangulatedLayoutData !== 'function') {
       return {
         ok: false,
         message: 'Shared planar prep is missing. Check script load order'
       };
     }
 
-    var prepared = PlanarCommon.prepareTriangulatedLayoutData({
+    var prepared = PlaygroundUtils.prepareTriangulatedLayoutData({
       nodeIds: ids,
       edgePairs: pairs
     }, {
@@ -266,14 +265,14 @@
   }
 
   function applyTutteLayout(cy) {
-    var graph = PlanarCommon.graphFromCy(cy);
+    var graph = PlaygroundUtils.graphFromCy(cy);
     var result = computeTutteLayout(graph.nodeIds, graph.edgePairs);
     if (!result || !result.ok) {
       return result || { ok: false, message: 'Tutte failed' };
     }
 
-    if (typeof LayoutRuntime.applyAndFit === 'function') {
-      LayoutRuntime.applyAndFit(cy, result.nodeIds, result.pos, 24);
+    if (typeof PlaygroundUtils.applyAndFit === 'function') {
+      PlaygroundUtils.applyAndFit(cy, result.pos, 24);
     } else {
       var nodes = cy.nodes().toArray();
       for (var i = 0; i < nodes.length; i += 1) {
@@ -288,8 +287,8 @@
     return {
       ok: true,
       message: 'Applied Tutte (' + result.outerFace.length + '-vertex outer face, ' + result.iters + ' iters)',
-      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-        ? PlanarCommon.createAugmentationDebugState(
+      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+        ? PlaygroundUtils.createAugmentationDebugState(
           result.graph,
           result.outerFace,
           result.augmented,

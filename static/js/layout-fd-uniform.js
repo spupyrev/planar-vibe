@@ -1,17 +1,14 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var buildAdjacency = PlanarCommon.buildAdjacency;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var buildAdjacency = global.GraphUtils.buildAdjacency;
+  var triangleArea2 = global.GraphUtils.triangleArea2;
 
   function canonicalEdgeKey(u, v) {
     var a = String(u);
     var b = String(v);
     return a < b ? a + '::' + b : b + '::' + a;
-  }
-
-  function triangleArea2(a, b, c) {
-    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   }
 
   function pointEquals(a, b, eps) {
@@ -202,7 +199,7 @@
   }
 
   function applyFDUniformLayout(cy, options) {
-    var runtime = global.PlanarVibeLayoutRuntime;
+    var runtime = PlaygroundUtils;
     if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
       return { ok: false, message: 'Layout runtime is missing' };
     }
@@ -230,7 +227,7 @@
     var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 5;
     var onIteration = typeof opts.onIteration === 'function' ? opts.onIteration : null;
 
-    var graph = PlanarCommon.graphFromCy(cy);
+    var graph = PlaygroundUtils.graphFromCy(cy);
     var nodeIds = graph.nodeIds.slice();
     if (nodeIds.length < 3) {
       return { ok: false, message: 'FD-uniform requires at least 3 vertices' };
@@ -240,7 +237,7 @@
       return { ok: false, message: 'FD-uniform requires at least 3 edges' };
     }
 
-    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+    var context = PlaygroundUtils.prepareTriangulatedLayoutContext(cy, {
       failureLabel: 'FD-uniform',
       minNodeCount: 3,
       seedOptions: {
@@ -258,7 +255,7 @@
     var augmentedEdgePairs = context.augmented.edgePairs.slice();
     var pos = context.posById;
     var adjOrig = buildAdjacency(nodeIds, edgePairs);
-    var movable = PlanarCommon.collectMovableVertices(nodeIds, outerFace);
+    var movable = PlaygroundUtils.collectMovableVertices(nodeIds, outerFace);
 
     var i;
 
@@ -289,8 +286,8 @@
     var diameter = computeDrawingDiameter(nodeIds, pos);
     var h = Number.isFinite(opts.initialStep) ? Math.max(1e-8, opts.initialStep) : 0.02 * diameter;
     var hMin = Number.isFinite(opts.minStep) ? Math.max(1e-10, opts.minStep) : 1e-5 * diameter;
-    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
-      ? global.PlanarGraphCore.createMovementConvergenceTracker({
+    var movementTracker = (global.GraphUtils && typeof global.GraphUtils.createMovementConvergenceTracker === 'function')
+      ? global.GraphUtils.createMovementConvergenceTracker({
         minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 30,
         stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 8,
         maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-4 * diameter,
@@ -481,8 +478,8 @@
         ok: true,
         stopReason: stopReason,
         message: 'Applied FD-uniform (' + performedIters + ' iters, accepted ' + acceptedTotal + ', rejected ' + rejectedTotal + ', ' + stopReason + ')',
-        debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-          ? PlanarCommon.createAugmentationDebugState(
+        debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+          ? PlaygroundUtils.createAugmentationDebugState(
             graph,
             outerFace,
             context.augmented,
@@ -500,8 +497,8 @@
         var rejected = step.rejected;
         acceptedTotal += accepted;
         rejectedTotal += rejected;
-        var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
-          ? global.PlanarGraphCore.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
+        var moveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
+          ? global.GraphUtils.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
           : { maxMove: 0, avgMove: 0 };
         var movementStatus = movementTracker ? movementTracker.update({
           maxMove: moveStats.maxMove,
@@ -549,8 +546,8 @@
         var rejected = step.rejected;
         acceptedTotal += accepted;
         rejectedTotal += rejected;
-        var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
-          ? global.PlanarGraphCore.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
+        var moveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
+          ? global.GraphUtils.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
           : { maxMove: 0, avgMove: 0 };
         var movementStatus = movementTracker ? movementTracker.update({
           maxMove: moveStats.maxMove,

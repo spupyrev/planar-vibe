@@ -1762,42 +1762,6 @@
       return tempCy;
     }
 
-    global.PlanarVibePlugin.exportCurrentPPAGAugmentation = function (options) {
-      if (!cy && (!currentParsed || !currentParsed.elements)) {
-        return { ok: false, message: 'Load a graph first' };
-      }
-      if (!global.PlanarVibePPAG || typeof global.PlanarVibePPAG.exportPPAGAugmentedGraph !== 'function') {
-        return { ok: false, message: 'PPAG module is missing. Check script load order' };
-      }
-      var exportCy = cy || buildTemporaryCyFromCurrentParsed();
-      if (!exportCy) {
-        return { ok: false, message: 'Load a graph first' };
-      }
-      try {
-        return global.PlanarVibePPAG.exportPPAGAugmentedGraph(exportCy, options || {});
-      } finally {
-        if (!cy && exportCy && typeof exportCy.destroy === 'function') {
-          exportCy.destroy();
-        }
-      }
-    };
-
-    global.PlanarVibePlugin.visualizeCurrentPPAGAugmentation = function (options) {
-      var exported = global.PlanarVibePlugin.exportCurrentPPAGAugmentation(options);
-      if (!exported || !exported.ok) {
-        return exported || { ok: false, message: 'Could not export PPAG augmentation' };
-      }
-      global.$('#dotfile').val(exported.text);
-      drawGraph();
-      setStatus(
-        'Visualizing PPAG augmented graph H (' +
-          exported.boundedFaceCount + ' bounded triangles, +' +
-          exported.dummyCount + ' dummy)',
-        false
-      );
-      return exported;
-    };
-
     function checkTextArea() {
       var value = global.$('#dotfile').val().trim();
       if (!value) {

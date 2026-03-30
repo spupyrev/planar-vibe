@@ -2,12 +2,12 @@
   'use strict';
 
   var FACEBALANCER_REV = 'fb-edgeuniform-20260323';
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var faceKey = PlanarCommon.faceKey;
-  var buildAdjacency = PlanarCommon.buildAdjacency;
-  var copyPositions = PlanarCommon.copyPositions;
-  var polygonArea2 = PlanarCommon.polygonArea2;
-  var orientFaceCCW = PlanarCommon.orientFaceCCW;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var faceKey = global.GraphUtils.faceKey;
+  var buildAdjacency = global.GraphUtils.buildAdjacency;
+  var polygonArea2 = global.GraphUtils.polygonArea2;
+  var orientFaceCCW = global.GraphUtils.orientFaceCCW;
+  var copyPositions = PlaygroundUtils.copyPositions;
 
   function dot(a, b) {
     var s = 0;
@@ -99,7 +99,7 @@
     }
 
     var adjacency = buildAdjacency(nodeIds, edgePairs);
-    var seedPos = PlanarCommon.currentPositionsFromCy(cy);
+    var seedPos = PlaygroundUtils.currentPositionsFromCy(cy);
     return solveExactWeightedBarycentricLayout({
       nodeIds: nodeIds,
       adjacency: adjacency,
@@ -929,7 +929,7 @@
   }
 
   async function applyFaceBalancerLayout(cy, options) {
-    var runtime = global.PlanarVibeLayoutRuntime;
+    var runtime = PlaygroundUtils;
     if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
       return { ok: false, message: 'Layout runtime is missing. Check script load order' };
     }
@@ -946,7 +946,7 @@
       return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
     }
 
-    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+    var context = PlaygroundUtils.prepareTriangulatedLayoutContext(cy, {
       failureLabel: 'FaceBalancer layout',
       minNodeCount: 3,
       initPositions: buildInitialPositions
@@ -988,13 +988,13 @@
       data.minEdgeLength2 = 0;
     }
     if (data.boundedFaceKeys.length === 0) {
-      runtime.applyPositionsToCy(cy, g.nodeIds, initPos);
+      runtime.applyPositionsToCy(cy, initPos);
       cy.fit(undefined, 24);
       return {
         ok: true,
         message: 'Applied FaceBalancer (no bounded faces to balance)',
-        debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-          ? PlanarCommon.createAugmentationDebugState(
+        debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+          ? PlaygroundUtils.createAugmentationDebugState(
             g,
             outerFace,
             augmented,
@@ -1005,11 +1005,11 @@
     }
 
     var q0 = createZeroVector(data.qSize);
-    var movementScale = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computeDrawingDiameter === 'function')
-      ? global.PlanarGraphCore.computeDrawingDiameter(augmented.nodeIds, initPos)
+    var movementScale = (global.GraphUtils && typeof global.GraphUtils.computeDrawingDiameter === 'function')
+      ? global.GraphUtils.computeDrawingDiameter(augmented.nodeIds, initPos)
       : 1;
-    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
-      ? global.PlanarGraphCore.createMovementConvergenceTracker({
+    var movementTracker = (global.GraphUtils && typeof global.GraphUtils.createMovementConvergenceTracker === 'function')
+      ? global.GraphUtils.createMovementConvergenceTracker({
         minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop)
           ? Math.max(1, Math.floor(opts.minItersBeforeStop))
           : Math.max(20, Math.min(maxIters, 40)),
@@ -1071,8 +1071,8 @@
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       message: 'Applied FaceBalancer [' + FACEBALANCER_REV + '] (' + data.boundedFaceKeys.length + ' bounded faces, +' + augmented.dummyCount + ' dummy, ' +
         iterationCount + ' iters, ' + result.stopReason + ', obj ' + result.E.toFixed(3) + ')',
-      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-        ? PlanarCommon.createAugmentationDebugState(
+      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+        ? PlaygroundUtils.createAugmentationDebugState(
           g,
           outerFace,
           augmented,

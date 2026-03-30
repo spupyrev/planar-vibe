@@ -1,9 +1,8 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
-  var collectGraphFromCy = PlanarCommon.graphFromCy;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var collectGraphFromCy = PlaygroundUtils.graphFromCy;
 
   function prepareTriangulatedEmbedding(nodeIds, edgePairs) {
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
@@ -12,9 +11,9 @@
         reason: 'Planarity utilities are missing'
       };
     }
-    if (!global.PlanarGraphCore ||
-        !global.PlanarGraphCore.isTriangulatedEmbedding ||
-        !global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation) {
+    if (!global.GraphUtils ||
+        !global.GraphUtils.isTriangulatedEmbedding ||
+        !global.GraphUtils.prepareFullyTriangulatedByFaceStellation) {
       return {
         ok: false,
         reason: 'Planar graph utilities are missing'
@@ -28,7 +27,7 @@
         reason: 'Graph is not planar'
       };
     }
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
+    var outerFace = global.GraphUtils.chooseOuterFaceFromEmbedding(embedding);
     if (!outerFace || outerFace.length < 3) {
       return {
         ok: false,
@@ -41,8 +40,8 @@
       edgePairs: edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
       dummyCount: 0
     };
-    if (!global.PlanarGraphCore.isTriangulatedEmbedding(embedding)) {
-      var prepared = global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding, outerFace);
+    if (!global.GraphUtils.isTriangulatedEmbedding(embedding)) {
+      var prepared = global.GraphUtils.prepareFullyTriangulatedByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding, outerFace);
       if (!prepared || !prepared.ok) {
         return {
           ok: false,
@@ -591,8 +590,8 @@
         y: (maxY - coords[pid].y) * SCALE + 20
       };
     }
-    if (typeof LayoutRuntime.applyAndFit === 'function') {
-      LayoutRuntime.applyAndFit(cy, Object.keys(screenPos), screenPos, 24);
+    if (typeof PlaygroundUtils.applyAndFit === 'function') {
+      PlaygroundUtils.applyAndFit(cy, screenPos, 24);
     } else {
       cy.nodes().forEach(function (node) {
         var id = String(node.id());
@@ -635,7 +634,7 @@
   }
 
   global.PlanarVibeFPP = {
-    augmentPlanarByFaceStellation: global.PlanarGraphCore ? global.PlanarGraphCore.augmentByFaceStellation : null,
+    augmentPlanarByFaceStellation: global.GraphUtils ? global.GraphUtils.augmentByFaceStellation : null,
     prepareTriangulatedEmbedding: prepareTriangulatedEmbedding,
     computeCanonicalOrdering: computeCanonicalOrdering,
     applyFPPLayout: applyFPPLayout

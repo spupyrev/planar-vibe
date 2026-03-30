@@ -1,9 +1,10 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var edgeKey = global.PlanarGraphCore.edgeKey;
-  var faceKey = PlanarCommon.faceKey;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var buildAdjacency = global.GraphUtils.buildAdjacency;
+  var edgeKey = global.GraphUtils.edgeKey;
+  var faceKey = global.GraphUtils.faceKey;
 
   function canonicalizeCycleOrder(face) {
     if (!face || face.length === 0) return [];
@@ -53,8 +54,7 @@
     return best ? best.slice() : null;
   }
 
-  var buildAdjacency = PlanarCommon.buildAdjacency;
-  var currentPositionsFromCy = PlanarCommon.currentPositionsFromCy;
+  var currentPositionsFromCy = PlaygroundUtils.currentPositionsFromCy;
 
   function initOuterCoords(nodeIds, outerFace, fixedOuterPos) {
     var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(
@@ -73,7 +73,7 @@
         pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
       }
     }
-    return PlanarCommon.alignOuterFace(pos, outerFace);
+    return PlaygroundUtils.alignOuterFace(pos, outerFace);
   }
 
   function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, seedPos, fixedOuterPos) {
@@ -321,14 +321,13 @@
   }
 
   async function applyReweightTutteLayout(cy, options) {
-    var runtime = global.PlanarVibeLayoutRuntime;
+    var runtime = PlaygroundUtils;
     if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
       return { ok: false, message: 'Layout runtime is missing' };
     }
 
     var opts = options || {};
-    var tuning = opts.tuning || {};
-    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+    var context = PlaygroundUtils.prepareTriangulatedLayoutContext(cy, {
       failureLabel: 'ReweightTutte++',
       minNodeCount: 3
     });
@@ -343,10 +342,10 @@
     var outerFaceForEmbedding = outer;
 
     var faces = embAug.faces || [];
-    var outerFaceIdx = global.PlanarGraphCore.findOuterFaceIndex(faces, outerFaceForEmbedding);
+    var outerFaceIdx = global.GraphUtils.findOuterFaceIndex(faces, outerFaceForEmbedding);
     if (outerFaceIdx < 0) {
       outerFaceForEmbedding = longestFace(faces);
-      outerFaceIdx = global.PlanarGraphCore.findOuterFaceIndex(faces, outerFaceForEmbedding);
+      outerFaceIdx = global.GraphUtils.findOuterFaceIndex(faces, outerFaceForEmbedding);
     }
     if (outerFaceIdx < 0 || !outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
       return { ok: false, message: 'Could not determine augmented outer face' };
@@ -370,20 +369,20 @@
     var boundedSet = {};
     for (i = 0; i < boundedFaceIdx.length; i += 1) boundedSet[boundedFaceIdx[i]] = true;
 
-    var MAX_OUTER_ITERS = Number.isFinite(tuning.maxOuterIters) ? Math.max(1, Math.floor(tuning.maxOuterIters)) : 8;
-    var PRESSURE_STEP = Number.isFinite(tuning.pressureStep) ? Math.max(0, tuning.pressureStep) : 0.16;
-    var PRESSURE_CLAMP = Number.isFinite(tuning.pressureClamp) ? Math.max(0.05, tuning.pressureClamp) : 1.20;
-    var PRESSURE_BETA = Number.isFinite(tuning.pressureBeta) ? Math.max(0, tuning.pressureBeta) : 0.18;
-    var WARM_ITERS = Number.isFinite(tuning.warmIters) ? Math.max(1, Math.floor(tuning.warmIters)) : 2000;
-    var WARM_FILL_PASSES = Number.isFinite(tuning.warmFillPasses) ? Math.max(1, Math.floor(tuning.warmFillPasses)) : 5;
-    var INNER_ITERS = Number.isFinite(tuning.innerIters) ? Math.max(1, Math.floor(tuning.innerIters)) : 3000;
-    var FINAL_ITERS = Number.isFinite(tuning.finalIters) ? Math.max(1, Math.floor(tuning.finalIters)) : 3000;
-    var DELAY_MS = Number.isFinite(tuning.delayMs) ? Math.max(0, tuning.delayMs) : 90;
-    var PRESSURE_DELTA_CLAMP = Number.isFinite(tuning.pressureDeltaClamp) ? Math.max(0.05, tuning.pressureDeltaClamp) : 0.75;
-    var SCALE_MIN = Number.isFinite(tuning.scaleMin) ? Math.max(0.01, tuning.scaleMin) : 0.25;
-    var SCALE_MAX = Number.isFinite(tuning.scaleMax) ? Math.max(SCALE_MIN, tuning.scaleMax) : 10.0;
-    var PRESSURE_SCALE_MIN = Number.isFinite(tuning.pressureScaleMin) ? Math.max(0.01, tuning.pressureScaleMin) : 1.0;
-    var PRESSURE_SCALE_MAX = Number.isFinite(tuning.pressureScaleMax) ? Math.max(PRESSURE_SCALE_MIN, tuning.pressureScaleMax) : 1.25;
+    var MAX_OUTER_ITERS = Number.isFinite(opts.maxOuterIters) ? Math.max(1, Math.floor(opts.maxOuterIters)) : 8;
+    var PRESSURE_STEP = Number.isFinite(opts.pressureStep) ? Math.max(0, opts.pressureStep) : 0.16;
+    var PRESSURE_CLAMP = Number.isFinite(opts.pressureClamp) ? Math.max(0.05, opts.pressureClamp) : 1.20;
+    var PRESSURE_BETA = Number.isFinite(opts.pressureBeta) ? Math.max(0, opts.pressureBeta) : 0.18;
+    var WARM_ITERS = Number.isFinite(opts.warmIters) ? Math.max(1, Math.floor(opts.warmIters)) : 2000;
+    var WARM_FILL_PASSES = Number.isFinite(opts.warmFillPasses) ? Math.max(1, Math.floor(opts.warmFillPasses)) : 5;
+    var INNER_ITERS = Number.isFinite(opts.innerIters) ? Math.max(1, Math.floor(opts.innerIters)) : 3000;
+    var FINAL_ITERS = Number.isFinite(opts.finalIters) ? Math.max(1, Math.floor(opts.finalIters)) : 3000;
+    var DELAY_MS = Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 90;
+    var PRESSURE_DELTA_CLAMP = Number.isFinite(opts.pressureDeltaClamp) ? Math.max(0.05, opts.pressureDeltaClamp) : 0.75;
+    var SCALE_MIN = Number.isFinite(opts.scaleMin) ? Math.max(0.01, opts.scaleMin) : 0.25;
+    var SCALE_MAX = Number.isFinite(opts.scaleMax) ? Math.max(SCALE_MIN, opts.scaleMax) : 10.0;
+    var PRESSURE_SCALE_MIN = Number.isFinite(opts.pressureScaleMin) ? Math.max(0.01, opts.pressureScaleMin) : 1.0;
+    var PRESSURE_SCALE_MAX = Number.isFinite(opts.pressureScaleMax) ? Math.max(PRESSURE_SCALE_MIN, opts.pressureScaleMax) : 1.25;
     var inner = null;
     var desired = 1 / boundedFaceIdx.length;
     var totalInnerIters = 0;
@@ -408,15 +407,15 @@
         movableVertices.push(movableId);
       }
     }
-    var movementScale = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computeDrawingDiameter === 'function')
-      ? global.PlanarGraphCore.computeDrawingDiameter(augmented.nodeIds, seedPos)
+    var movementScale = (global.GraphUtils && typeof global.GraphUtils.computeDrawingDiameter === 'function')
+      ? global.GraphUtils.computeDrawingDiameter(augmented.nodeIds, seedPos)
       : 1;
-    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
-      ? global.PlanarGraphCore.createMovementConvergenceTracker({
-        minItersBeforeStop: Number.isFinite(tuning.minItersBeforeStop) ? Math.max(1, Math.floor(tuning.minItersBeforeStop)) : 8,
-        stableIterLimit: Number.isFinite(tuning.stableIterLimit) ? Math.max(1, Math.floor(tuning.stableIterLimit)) : 4,
-        maxMoveTol: Number.isFinite(tuning.movementStopTol) && tuning.movementStopTol >= 0 ? tuning.movementStopTol : 1e-4 * movementScale,
-        avgMoveTol: Number.isFinite(tuning.avgMovementStopTol) && tuning.avgMovementStopTol >= 0 ? tuning.avgMovementStopTol : 2e-5 * movementScale
+    var movementTracker = (global.GraphUtils && typeof global.GraphUtils.createMovementConvergenceTracker === 'function')
+      ? global.GraphUtils.createMovementConvergenceTracker({
+        minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 8,
+        stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 4,
+        maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-4 * movementScale,
+        avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-5 * movementScale
       })
       : null;
     var performedOuterIters = 0;
@@ -444,8 +443,8 @@
       livePositions = pos;
       seedPos = pos;
       await renderer.onProgress({ iter: iter + 1, maxIters: MAX_OUTER_ITERS }, { forceYield: true });
-      var moveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
-        ? global.PlanarGraphCore.computePositionMoveStats(movableVertices, prevPos, pos, { moveTol: 1e-9 })
+      var moveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
+        ? global.GraphUtils.computePositionMoveStats(movableVertices, prevPos, pos, { moveTol: 1e-9 })
         : { movedVertices: 0, maxMove: 0, avgMove: 0 };
       var movementStatus = movementTracker ? movementTracker.update({
         maxMove: moveStats.maxMove,
@@ -511,8 +510,8 @@
       ok: true,
       stopReason: stopReason,
       message: 'Applied ReweightTutte (' + outer.length + '-vertex outer face, +' + augmented.dummyCount + ' dummy, ' + totalInnerIters + ' iters, ' + performedOuterIters + ' steps, ' + stopReason + ')',
-      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-        ? PlanarCommon.createAugmentationDebugState(
+      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+        ? PlaygroundUtils.createAugmentationDebugState(
           g,
           outer,
           augmented,

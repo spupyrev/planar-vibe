@@ -1,14 +1,13 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
-  var collectGraphFromCy = PlanarCommon.graphFromCy;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var collectGraphFromCy = PlaygroundUtils.graphFromCy;
 
-  var edgeKey = global.PlanarGraphCore.edgeKey;
+  var edgeKey = global.GraphUtils.edgeKey;
 
   function buildAdjacency(nodeIds, edgePairs) {
-    var base = PlanarCommon.buildAdjacency(nodeIds, edgePairs);
+    var base = global.GraphUtils.buildAdjacency(nodeIds, edgePairs);
     var adj = {};
     var ids = Object.keys(base);
     for (var i = 0; i < ids.length; i += 1) {
@@ -50,7 +49,7 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, reason: 'Planarity utilities are missing' };
     }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation) {
+    if (!global.GraphUtils || !global.GraphUtils.prepareFullyTriangulatedByFaceStellation) {
       return { ok: false, reason: 'Planar graph utilities are missing' };
     }
 
@@ -60,11 +59,11 @@
     if (!emb || !emb.ok) {
       return { ok: false, reason: 'Graph is not planar' };
     }
-    var outerFace = global.PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
+    var outerFace = global.GraphUtils.chooseOuterFaceFromEmbedding(emb);
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, reason: 'Could not determine outer face' };
     }
-    if (global.PlanarGraphCore.isTriangulatedEmbedding && global.PlanarGraphCore.isTriangulatedEmbedding(emb)) {
+    if (global.GraphUtils.isTriangulatedEmbedding && global.GraphUtils.isTriangulatedEmbedding(emb)) {
       emb.outerFace = outerFace.slice();
       return {
         ok: true,
@@ -74,7 +73,7 @@
       };
     }
 
-    var prepared = global.PlanarGraphCore.prepareFullyTriangulatedByFaceStellation(nodes, edges, emb, outerFace);
+    var prepared = global.GraphUtils.prepareFullyTriangulatedByFaceStellation(nodes, edges, emb, outerFace);
     if (!prepared || !prepared.ok) {
       return { ok: false, reason: (prepared && prepared.reason) || 'Augmentation failed' };
     }
@@ -367,8 +366,8 @@
     if (!screenPos) {
       return false;
     }
-    if (typeof LayoutRuntime.applyAndFit === 'function') {
-      LayoutRuntime.applyAndFit(cy, nodeIds, screenPos, 24);
+    if (typeof PlaygroundUtils.applyAndFit === 'function') {
+      PlaygroundUtils.applyAndFit(cy, screenPos, 24);
     } else {
       cy.nodes().forEach(function (node) {
         var id = String(node.id());
@@ -417,8 +416,8 @@
   }
 
   function applyScreenPositions(cy, posById) {
-    if (typeof LayoutRuntime.applyAndFit === 'function') {
-      LayoutRuntime.applyAndFit(cy, Object.keys(posById || {}), posById, 24);
+    if (typeof PlaygroundUtils.applyAndFit === 'function') {
+      PlaygroundUtils.applyAndFit(cy, posById, 24);
     } else {
       cy.nodes().forEach(function (node) {
         var id = String(node.id());
@@ -592,7 +591,7 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing' };
     }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+    if (!global.GraphUtils || !global.GraphUtils.prepareTriangulatedByFaceStellation) {
       return { ok: false, message: 'Planar graph utilities are missing' };
     }
     var g = collectGraphFromCy(cy);
@@ -601,8 +600,8 @@
         var twoPos = {};
         twoPos[g.nodeIds[0]] = { x: 20, y: 20 };
         twoPos[g.nodeIds[1]] = { x: 50, y: 20 };
-        if (typeof LayoutRuntime.applyAndFit === 'function') {
-          LayoutRuntime.applyAndFit(cy, g.nodeIds, twoPos, 24);
+        if (typeof PlaygroundUtils.applyAndFit === 'function') {
+          PlaygroundUtils.applyAndFit(cy, twoPos, 24);
         } else {
           var map = {};
           cy.nodes().forEach(function (n) { map[String(n.id())] = n; });

@@ -2,15 +2,15 @@
   'use strict';
 
   var PPAG_REV = 'ppag-20260323';
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var orientFaceCCW = global.GraphUtils.orientFaceCCW;
+  var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
+  var polygonArea2 = global.GraphUtils.polygonArea2;
+  var triangleArea2 = global.GraphUtils.triangleArea2;
   var PPAG_INTERNAL = {
     tolGrad: 1e-8,
     acceptanceTol: 1e-12
   };
-
-  function triangleArea2(a, b, c) {
-    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-  }
 
   function buildPPAGData(augmentedEmbedding, outerFace, posById) {
     var incidentTrianglesByVertex = {};
@@ -20,7 +20,7 @@
       incidentTrianglesByVertex[String(augmentedEmbedding.idByIndex[i])] = [];
     }
 
-    var outerIndex = global.PlanarGraphCore.findOuterFaceIndex(augmentedEmbedding.faces || [], outerFace);
+    var outerIndex = global.GraphUtils.findOuterFaceIndex(augmentedEmbedding.faces || [], outerFace);
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
       if (!face || face.length < 3) {
@@ -29,7 +29,7 @@
       if (i === outerIndex) {
         continue;
       }
-      var oriented = PlanarCommon.orientFaceCCW(face, posById);
+      var oriented = orientFaceCCW(face, posById);
       if (oriented.length !== 3) {
         return { ok: false, reason: 'PPAG requires all bounded faces of H to be triangles' };
       }
@@ -57,7 +57,7 @@
       };
     }
 
-    var outerArea = Math.abs(PlanarCommon.polygonArea2(outerFace, posById)) / 2;
+    var outerArea = Math.abs(polygonArea2(outerFace, posById)) / 2;
     if (!(outerArea > 1e-12)) {
       return { ok: false, reason: 'PPAG initialization failed: outer face has zero area' };
     }
@@ -244,9 +244,9 @@
     };
   }
 
-  function preparePPAGFromGeneralPlaneGraph(cy, options) {
+  function preparePPAGState(graph, options, cy) {
     var opts = normalizePPAGOptions(options);
-    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
       failureLabel: 'PPAG layout',
       minNodeCount: 3,
       seedOptions: {
@@ -254,7 +254,7 @@
         tolerance: 1e-7,
         useSeedOuter: false
       }
-    });
+    }, cy);
     if (!context || !context.ok) {
       return context || { ok: false, message: 'PPAG setup failed' };
     }
@@ -297,13 +297,13 @@
     };
   }
 
-  async function solvePPAG(prepared, options) {
+  async function runPPAGIterations(prepared, options) {
     var opts = Object.assign({}, prepared && prepared.opts ? prepared.opts : {}, options || {});
     var g = prepared.graph;
     var posById = prepared.posById;
     var ppagData = prepared.ppagData;
     var movableVertices = prepared.movableVertices || [];
-    var outerDiameter = PlanarCommon.outerFaceDiameter(posById, prepared.outerFace || ppagData.outerFace || []);
+    var outerDiameter = outerFaceDiameter(posById, prepared.outerFace || ppagData.outerFace || []);
     opts.maxVertexMove = opts.maxVertexMoveRel * outerDiameter;
     var status = 'max_iters';
     var lastMoveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
@@ -323,7 +323,7 @@
 
     var iter;
     for (iter = 1; iter <= opts.maxIters && status === 'max_iters'; iter += 1) {
-      var prevSweepPos = PlanarCommon.copyPositions(posById);
+      var prevSweepPos = PlaygroundUtils.copyPositions(posById);
       var acceptedCount = 0;
       var acceptedStepSum = 0;
       var lineSearchSteps = 0;
@@ -369,8 +369,8 @@
         }
       }
 
-      lastMoveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
-        ? global.PlanarGraphCore.computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: 0 })
+      lastMoveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
+        ? global.GraphUtils.computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: 0 })
         : { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
       lastMoveStats.acceptedCount = acceptedCount;
 
@@ -422,57 +422,34 @@
     };
   }
 
-  async function applyPPAGLayout(cy, options) {
-    var runtime = global.PlanarVibeLayoutRuntime;
-    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
-      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
-    }
-
-    var prepared = preparePPAGFromGeneralPlaneGraph(cy, options);
+  async function computePPAGPositions(nodeIds, edgePairs, options) {
+    var opts = options || {};
+    var prepared = preparePPAGState({
+      nodeIds: (nodeIds || []).map(String),
+      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
+    }, opts, opts.cy || null);
     if (!prepared || !prepared.ok) {
       return prepared || { ok: false, message: 'PPAG setup failed' };
     }
 
     if (prepared.ppagData.triangles.length === 0) {
-      runtime.applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
-      cy.fit(undefined, 24);
       return {
         ok: true,
-        message: 'Applied PPAG (no bounded faces to balance)',
-        debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-          ? PlanarCommon.createAugmentationDebugState(
-            prepared.graph,
-            prepared.outerFace,
-            prepared.augmented,
-            prepared.posById
-          )
-          : null
+        status: 'realized',
+        positions: prepared.posById,
+        graph: prepared.graph,
+        outerFace: prepared.outerFace,
+        augmented: prepared.augmented,
+        ppagData: prepared.ppagData,
+        boundedFaceCount: 0,
+        dummyCount: prepared.augmented.dummyCount,
+        iters: 0,
+        maxRelError: 0,
+        faceAreaScore: null
       };
     }
 
-    var opts = prepared.opts;
-    var renderer = runtime.createIncrementalRenderer({
-      cy: cy,
-      nodeIds: prepared.graph.nodeIds,
-      getPositions: function () { return prepared.posById; },
-      interactive: opts.interactive,
-      delayMs: opts.delayMs,
-      renderEvery: opts.renderEvery,
-      yieldEvery: opts.yieldEvery,
-      fitPadding: 24
-    });
-    await renderer.begin();
-
-    var result = await solvePPAG(prepared, Object.assign({}, opts, {
-      onSweep: async function (progress) {
-        if (opts.onIteration) {
-          opts.onIteration(progress);
-        }
-        await renderer.onProgress(progress, { forceYield: !!(opts.onIteration || opts.delayMs > 0) });
-      }
-    }));
-
-    renderer.finish();
+    var result = await runPPAGIterations(prepared, prepared.opts);
 
     if (!result.ok && result.reason) {
       return {
@@ -509,73 +486,81 @@
     return {
       ok: true,
       status: result.status,
+      positions: prepared.posById,
+      graph: prepared.graph,
+      outerFace: prepared.outerFace,
+      augmented: prepared.augmented,
+      ppagData: prepared.ppagData,
       iters: result.iters,
       message: message,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
       boundedFaceCount: prepared.ppagData.triangles.length,
-      dummyCount: prepared.augmented.dummyCount,
-      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-        ? PlanarCommon.createAugmentationDebugState(
-          prepared.graph,
-          prepared.outerFace,
-          prepared.augmented,
-          prepared.posById
+      dummyCount: prepared.augmented.dummyCount
+    };
+  }
+
+  async function applyPPAGLayout(cy, options) {
+    var runtime = PlaygroundUtils;
+    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
+      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
+    }
+
+    var graph = PlaygroundUtils.graphFromCy(cy);
+    var renderer = runtime.createIncrementalRenderer({
+      cy: cy,
+      nodeIds: graph.nodeIds,
+      getPositions: function () { return currentPositions; },
+      interactive: options && options.interactive !== false,
+      delayMs: Number.isFinite(options && options.delayMs) ? Math.max(0, options.delayMs) : 0,
+      renderEvery: Number.isFinite(options && options.renderEvery) ? Math.max(1, Math.floor(options.renderEvery)) : 4,
+      yieldEvery: Number.isFinite(options && options.yieldEvery) ? Math.max(1, Math.floor(options.yieldEvery)) : 5,
+      fitPadding: 24
+    });
+    var currentPositions = {};
+    await renderer.begin();
+
+    var result = await computePPAGPositions(graph.nodeIds, graph.edgePairs, Object.assign({}, options || {}, {
+      cy: cy,
+      onSweep: async function (progress) {
+        currentPositions = progress.positions || currentPositions;
+        if (options && typeof options.onIteration === 'function') {
+          options.onIteration(progress);
+        }
+        await renderer.onProgress(progress, { forceYield: !!((options && options.onIteration) || (options && options.delayMs > 0)) });
+      }
+    }));
+
+    renderer.finish();
+
+    if (!result || !result.ok) {
+      return result || { ok: false, message: 'PPAG failed' };
+    }
+
+    runtime.applyPositionsToCy(cy, result.positions);
+    cy.fit(undefined, 24);
+    return {
+      ok: true,
+      status: result.status,
+      iters: result.iters,
+      message: result.message,
+      faceAreaScore: result.faceAreaScore,
+      maxRelError: result.maxRelError,
+      boundedFaceCount: result.boundedFaceCount,
+      dummyCount: result.dummyCount,
+      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+        ? PlaygroundUtils.createAugmentationDebugState(
+          result.graph,
+          result.outerFace,
+          result.augmented,
+          result.positions
         )
         : null
     };
   }
 
-  function exportPPAGAugmentedGraph(cy, options) {
-    var prepared = preparePPAGFromGeneralPlaneGraph(cy, options);
-    if (!prepared || !prepared.ok) {
-      return prepared || { ok: false, message: 'PPAG setup failed' };
-    }
-
-    var lines = [
-      '# PPAG augmented graph H',
-      '# original vertices: ' + prepared.graph.nodeIds.length,
-      '# augmented vertices: ' + prepared.augmented.nodeIds.length,
-      '# dummy vertices: ' + prepared.augmented.dummyCount
-    ];
-    var nodeIds = prepared.augmented.nodeIds || [];
-    var edgePairs = prepared.augmented.edgePairs || [];
-    var dummySet = new Set(Object.keys((prepared.augmented && prepared.augmented.dummyFaceVerticesById) || {}));
-    var dummyDisplayIndex = 0;
-    var dummyLabelById = {};
-
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var nodeId = String(nodeIds[i]);
-      var p = prepared.posById[nodeId];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      if (dummySet.has(nodeId)) {
-        dummyLabelById[nodeId] = String(dummyDisplayIndex);
-        lines.push('v ' + nodeId + ' ' + p.x + ' ' + p.y + ' ' + dummyLabelById[nodeId] + ' dummy-node');
-        var face = prepared.augmented.dummyFaceVerticesById[nodeId] || [];
-        lines.push('# dummy ' + dummyLabelById[nodeId] + ' (' + nodeId + ') <- [' + face.map(String).join(' ') + ']');
-        dummyDisplayIndex += 1;
-      } else {
-        lines.push('v ' + nodeId + ' ' + p.x + ' ' + p.y);
-      }
-    }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      lines.push(String(edgePairs[i][0]) + ' ' + String(edgePairs[i][1]));
-    }
-
-    return {
-      ok: true,
-      text: lines.join('\n'),
-      dummyCount: prepared.augmented.dummyCount || 0,
-      boundedFaceCount: prepared.ppagData ? prepared.ppagData.triangles.length : 0
-    };
-  }
-
   global.PlanarVibePPAG = {
-    preparePPAGFromGeneralPlaneGraph: preparePPAGFromGeneralPlaneGraph,
-    solvePPAG: solvePPAG,
-    applyPPAGLayout: applyPPAGLayout,
-    exportPPAGAugmentedGraph: exportPPAGAugmentedGraph
+    computePPAGPositions: computePPAGPositions,
+    applyPPAGLayout: applyPPAGLayout
   };
 })(window);

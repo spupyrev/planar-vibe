@@ -181,7 +181,7 @@
       return { ok: false, reason: 'No faces available' };
     }
 
-    var outerFaceIdx = global.PlanarGraphCore.findOuterFaceIndex(emb.faces, emb.outerFace || []);
+    var outerFaceIdx = global.GraphUtils.findOuterFaceIndex(emb.faces, emb.outerFace || []);
     var areas = [];
     var idealWeights = [];
     for (var i = 0; i < emb.faces.length; i += 1) {
@@ -411,7 +411,7 @@
       return { ok: false, reason: 'Graph is not planar' };
     }
 
-    var adjacency = global.PlanarGraphCore.buildAdjacency(nodeIds, edgePairs);
+    var adjacency = global.GraphUtils.buildAdjacency(nodeIds, edgePairs);
     var i;
 
     var outerSet = new Set((emb.outerFace || []).map(String));
@@ -577,7 +577,7 @@
         return false;
       }
     }
-    var adjacency = global.PlanarGraphCore.buildAdjacency(nodeIds, edgePairs);
+    var adjacency = global.GraphUtils.buildAdjacency(nodeIds, edgePairs);
 
     var color = {};
     for (i = 0; i < nodeIds.length; i += 1) {

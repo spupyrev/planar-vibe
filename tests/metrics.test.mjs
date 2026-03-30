@@ -22,7 +22,7 @@ function loadMetricsModules() {
 
   const files = [
     'static/js/planarity-test.js',
-    'static/js/planar-graph-utils.js',
+    'static/js/graph-utils.js',
     'static/js/metrics.js'
   ];
 

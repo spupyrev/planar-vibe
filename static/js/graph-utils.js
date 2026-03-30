@@ -19,6 +19,66 @@
     return u < v ? u + '::' + v : v + '::' + u;
   }
 
+  function faceKey(face) {
+    if (!face || face.length === 0) return '';
+    var arr = face.map(String);
+    var n = arr.length;
+    var best = null;
+    var i;
+    for (i = 0; i < n; i += 1) {
+      var rot = arr.slice(i).concat(arr.slice(0, i)).join('|');
+      if (best === null || rot < best) best = rot;
+    }
+    var rev = arr.slice().reverse();
+    for (i = 0; i < n; i += 1) {
+      var rrot = rev.slice(i).concat(rev.slice(0, i)).join('|');
+      if (best === null || rrot < best) best = rrot;
+    }
+    return best || '';
+  }
+
+  function polygonArea2(face, posById) {
+    if (!face || face.length < 3) return 0;
+    var sum = 0;
+    for (var i = 0; i < face.length; i += 1) {
+      var a = posById[String(face[i])];
+      var b = posById[String(face[(i + 1) % face.length])];
+      if (!a || !b) return 0;
+      sum += a.x * b.y - b.x * a.y;
+    }
+    return sum;
+  }
+
+  function orientFaceCCW(face, posById) {
+    var out = face.slice().map(String);
+    if (polygonArea2(out, posById) < 0) {
+      out.reverse();
+    }
+    return out;
+  }
+
+  function outerFaceDiameter(posById, outerFace) {
+    var face = Array.isArray(outerFace) ? outerFace : [];
+    var diameter = 0;
+    for (var i = 0; i < face.length; i += 1) {
+      var a = posById[String(face[i])];
+      if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y)) continue;
+      for (var j = i + 1; j < face.length; j += 1) {
+        var b = posById[String(face[j])];
+        if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
+        var dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (dist > diameter) {
+          diameter = dist;
+        }
+      }
+    }
+    return diameter > 1e-12 ? diameter : 1;
+  }
+
+  function triangleArea2(a, b, c) {
+    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  }
+
   function createEmptyAdjacency(nodeIds) {
     var adj = {};
     for (var i = 0; i < nodeIds.length; i += 1) {
@@ -293,24 +353,6 @@
       }
     }
     return null;
-  }
-
-  function faceKey(face) {
-    if (!face || face.length === 0) return '';
-    var arr = face.map(String);
-    var n = arr.length;
-    var best = null;
-    var i;
-    for (i = 0; i < n; i += 1) {
-      var rot = arr.slice(i).concat(arr.slice(0, i)).join('|');
-      if (best === null || rot < best) best = rot;
-    }
-    var rev = arr.slice().reverse();
-    for (i = 0; i < n; i += 1) {
-      var rrot = rev.slice(i).concat(rev.slice(0, i)).join('|');
-      if (best === null || rrot < best) best = rrot;
-    }
-    return best || '';
   }
 
   function sameCyclicDirection(a, b) {
@@ -1206,51 +1248,17 @@
     return edgeId ? this.edgesById[edgeId] : null;
   };
 
-  function graphFromCy(cy) {
-    var nodeIds = cy.nodes().map(function (node) {
-      return String(node.id());
-    });
-    var adjacency = createEmptyAdjacency(nodeIds);
-    var graph = new PlanarGraph(nodeIds, adjacency);
-
-    cy.nodes().forEach(function (node) {
-      var id = String(node.id());
-      var label = node.data('label');
-      graph.verticesById[id] = new PlanarVertex(id, label);
-    });
-
-    cy.edges().forEach(function (edge) {
-      var s = String(edge.source().id());
-      var t = String(edge.target().id());
-      var edgeId = String(edge.id() || ('e:' + s + ':' + t + ':' + graph.numberOfEdges()));
-
-      if (graph.edgesById[edgeId]) {
-        return;
-      }
-
-      addUndirectedEdge(adjacency, s, t);
-      graph.edgesById[edgeId] = new PlanarEdge(edgeId, s, t, false);
-      graph.edgeIdByUndirectedKey[canonicalUndirectedEdgeKey(s, t)] = edgeId;
-
-      if (graph.verticesById[s]) {
-        graph.verticesById[s].addEdge(edgeId);
-      }
-      if (graph.verticesById[t]) {
-        graph.verticesById[t].addEdge(edgeId);
-      }
-    });
-
-    var outer = graph.chooseOuterFace();
-    graph.outerFace = outer ? new PlanarFace(outer, []) : null;
-    return graph;
-  }
-
-  global.PlanarGraphCore = {
+  global.GraphUtils = {
     PlanarVertex: PlanarVertex,
     PlanarEdge: PlanarEdge,
     PlanarFace: PlanarFace,
     PlanarGraph: PlanarGraph,
+    faceKey: faceKey,
+    polygonArea2: polygonArea2,
+    orientFaceCCW: orientFaceCCW,
+    outerFaceDiameter: outerFaceDiameter,
     edgeKey: edgeKey,
+    triangleArea2: triangleArea2,
     buildAdjacency: buildAdjacency,
     normalizeNodeIds: normalizeNodeIds,
     normalizeEdgePairs: normalizeEdgePairs,
@@ -1259,7 +1267,6 @@
     sameCyclicEitherDirection: sameCyclicEitherDirection,
     findOuterFaceIndex: findOuterFaceIndex,
     embeddingHasFace: embeddingHasFace,
-    graphFromCy: graphFromCy,
     cloneEdgePairs: cloneEdgePairs,
     computeDrawingDiameter: computeDrawingDiameter,
     alignOuterFaceEdgeHorizontally: alignOuterFaceEdgeHorizontally,

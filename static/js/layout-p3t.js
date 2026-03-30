@@ -1,8 +1,7 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+  var PlaygroundUtils = global.PlaygroundUtils || {};
 
   function cliqueKey(a, b, c, indexById) {
     var arr = [a, b, c];
@@ -20,7 +19,7 @@
       };
     }
 
-    var graph = PlanarCommon.graphFromCy(cy);
+    var graph = PlaygroundUtils.graphFromCy(cy);
     var nodeIds = graph.nodeIds.slice();
     var edgePairs = graph.edgePairs.slice();
 
@@ -104,8 +103,8 @@
 
     processClique(outer[0], outer[1], outer[2]);
 
-    if (typeof LayoutRuntime.applyAndFit === 'function') {
-      LayoutRuntime.applyAndFit(cy, nodeIds, coord, 24);
+    if (typeof PlaygroundUtils.applyAndFit === 'function') {
+      PlaygroundUtils.applyAndFit(cy, coord, 24);
     } else {
       cy.nodes().forEach(function (node) {
         var id = String(node.id());

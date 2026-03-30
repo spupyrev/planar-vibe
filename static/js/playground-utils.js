@@ -1,25 +1,7 @@
 (function (global) {
   'use strict';
 
-  var buildAdjacency = global.PlanarGraphCore.buildAdjacency;
-
-  function faceKey(face) {
-    if (!face || face.length === 0) return '';
-    var arr = face.map(String);
-    var n = arr.length;
-    var best = null;
-    var i;
-    for (i = 0; i < n; i += 1) {
-      var rot = arr.slice(i).concat(arr.slice(0, i)).join('|');
-      if (best === null || rot < best) best = rot;
-    }
-    var rev = arr.slice().reverse();
-    for (i = 0; i < n; i += 1) {
-      var rrot = rev.slice(i).concat(rev.slice(0, i)).join('|');
-      if (best === null || rrot < best) best = rrot;
-    }
-    return best || '';
-  }
+  var GraphUtils = global.GraphUtils || {};
 
   function isDummyCyNode(node) {
     return !!(node && typeof node.hasClass === 'function' && node.hasClass('dummy-node'));
@@ -71,49 +53,11 @@
     return out;
   }
 
-  function polygonArea2(face, posById) {
-    if (!face || face.length < 3) return 0;
-    var sum = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      var b = posById[String(face[(i + 1) % face.length])];
-      if (!a || !b) return 0;
-      sum += a.x * b.y - b.x * a.y;
-    }
-    return sum;
-  }
-
-  function orientFaceCCW(face, posById) {
-    var out = face.slice().map(String);
-    if (polygonArea2(out, posById) < 0) {
-      out.reverse();
-    }
-    return out;
-  }
-
   function alignOuterFace(pos, outerFace) {
-    if (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function') {
-      return global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(pos, outerFace);
+    if (GraphUtils && typeof GraphUtils.alignOuterFaceEdgeHorizontally === 'function') {
+      return GraphUtils.alignOuterFaceEdgeHorizontally(pos, outerFace);
     }
     return copyPositions(pos);
-  }
-
-  function outerFaceDiameter(posById, outerFace) {
-    var face = Array.isArray(outerFace) ? outerFace : [];
-    var diameter = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y)) continue;
-      for (var j = i + 1; j < face.length; j += 1) {
-        var b = posById[String(face[j])];
-        if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
-        var dist = Math.hypot(a.x - b.x, a.y - b.y);
-        if (dist > diameter) {
-          diameter = dist;
-        }
-      }
-    }
-    return diameter > 1e-12 ? diameter : 1;
   }
 
   function collectMovableVertices(nodeIds, outerFace) {
@@ -129,7 +73,7 @@
   }
 
   function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
-    var augmented = global.PlanarGraphCore.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
+    var augmented = GraphUtils.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
     var label = failureLabel || 'layout';
     if (!augmented || !augmented.ok) {
       return { ok: false, reason: (augmented && augmented.reason) || (label + ' augmentation failed') };
@@ -138,7 +82,7 @@
     var dummyFaceKeyById = {};
     var dummyIds = Object.keys(dummyFaceVerticesById);
     for (var i = 0; i < dummyIds.length; i += 1) {
-      dummyFaceKeyById[String(dummyIds[i])] = faceKey(dummyFaceVerticesById[dummyIds[i]]);
+      dummyFaceKeyById[String(dummyIds[i])] = GraphUtils.faceKey(dummyFaceVerticesById[dummyIds[i]]);
     }
     return {
       ok: true,
@@ -163,7 +107,7 @@
         return dummyFaceKeyById[vertexId];
       }
     }
-    return faceKey(face);
+    return GraphUtils.faceKey(face);
   }
 
   function createAugmentationDebugState(graph, outerFace, augmented, posById) {
@@ -219,6 +163,110 @@
     };
   }
 
+  function applyPositionsToCy(cy, posById) {
+    var nodes = cy.nodes().toArray();
+    for (var i = 0; i < nodes.length; i += 1) {
+      var id = String(nodes[i].id());
+      if (posById[id]) {
+        nodes[i].position(posById[id]);
+      }
+    }
+  }
+
+  function applyAndFit(cy, posById, fitPadding) {
+    applyPositionsToCy(cy, posById);
+    cy.fit(undefined, Number.isFinite(fitPadding) ? fitPadding : 24);
+  }
+
+  function waitForNextFrame(delayMs) {
+    var delay = Math.max(0, Number(delayMs) || 0);
+    return new Promise(function (resolve) {
+      var schedule = (typeof global.setTimeout === 'function')
+        ? global.setTimeout.bind(global)
+        : (typeof setTimeout === 'function' ? setTimeout : null);
+      if (!schedule) {
+        resolve();
+        return;
+      }
+      schedule(function () {
+        var raf = (typeof global.requestAnimationFrame === 'function')
+          ? global.requestAnimationFrame.bind(global)
+          : (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+        if (raf) {
+          raf(function () { resolve(); });
+        } else {
+          resolve();
+        }
+      }, delay);
+    });
+  }
+
+  function createIncrementalRenderer(config) {
+    var cy = config.cy;
+    var nodeIds = Array.isArray(config.nodeIds) ? config.nodeIds.map(String) : [];
+    var getPositions = typeof config.getPositions === 'function' ? config.getPositions : function () { return {}; };
+    var interactive = config.interactive !== false;
+    var delayMs = Math.max(0, Number(config.delayMs) || 0);
+    var renderEvery = Number.isFinite(config.renderEvery) ? Math.max(1, Math.floor(config.renderEvery)) : 4;
+    var yieldEvery = Number.isFinite(config.yieldEvery) ? Math.max(1, Math.floor(config.yieldEvery)) : 5;
+    var fitPadding = Number.isFinite(config.fitPadding) ? Math.max(0, config.fitPadding) : 24;
+    var didFit = false;
+
+    function renderCurrent() {
+      applyPositionsToCy(cy, getPositions());
+    }
+
+    function fitIfNeeded() {
+      if (!didFit) {
+        cy.fit(undefined, fitPadding);
+        didFit = true;
+      }
+    }
+
+    async function begin() {
+      if (!interactive) {
+        return;
+      }
+      renderCurrent();
+      fitIfNeeded();
+      await waitForNextFrame(delayMs);
+    }
+
+    async function onProgress(event, options) {
+      var progress = event || {};
+      var extra = options || {};
+      var iter = Number.isFinite(progress.iter) ? progress.iter : null;
+      var maxIters = Number.isFinite(progress.maxIters) ? progress.maxIters : null;
+      var isRenderable = iter !== null && maxIters !== null &&
+        (iter === 1 || iter === maxIters || (iter % renderEvery) === 0);
+      var shouldYield = iter !== null && maxIters !== null &&
+        (iter === maxIters || (iter % yieldEvery) === 0);
+
+      if (interactive && isRenderable) {
+        renderCurrent();
+        fitIfNeeded();
+        await waitForNextFrame(delayMs);
+        return;
+      }
+
+      if ((extra.forceYield || delayMs > 0) && shouldYield) {
+        await waitForNextFrame(delayMs);
+      }
+    }
+
+    function finish() {
+      renderCurrent();
+      fitIfNeeded();
+    }
+
+    return {
+      begin: begin,
+      onProgress: onProgress,
+      finish: finish,
+      didFit: function () { return didFit; }
+    };
+  }
+
   function prepareTriangulatedLayoutData(graph, config, cy) {
     var cfg = config || {};
     var label = String(cfg.failureLabel || 'Layout');
@@ -234,10 +282,10 @@
         if (!embedding || !embedding.ok) {
           return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
         }
-        if (!global.PlanarGraphCore.embeddingHasFace(embedding, outerFace)) {
+        if (!GraphUtils.embeddingHasFace(embedding, outerFace)) {
           return { ok: false, message: 'Provided outer face is not a face of the embedding' };
         }
-        var connectivity = global.PlanarGraphCore.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
+        var connectivity = GraphUtils.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
         if (!connectivity || !connectivity.ok) {
           return {
             ok: false,
@@ -262,7 +310,7 @@
     if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
     }
-    if (!global.PlanarGraphCore || !global.PlanarGraphCore.prepareTriangulatedByFaceStellation) {
+    if (!GraphUtils || !GraphUtils.prepareTriangulatedByFaceStellation) {
       return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
     }
     if (usesDefaultSeed && (!global.PlanarVibeTutteAlgorithm ||
@@ -282,7 +330,7 @@
 
     var outerFace = Array.isArray(cfg.outerFace) && cfg.outerFace.length >= 3
       ? cfg.outerFace.slice().map(String)
-      : global.PlanarGraphCore.chooseOuterFaceFromEmbedding(baseEmbedding);
+      : GraphUtils.chooseOuterFaceFromEmbedding(baseEmbedding);
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer boundary for ' + label };
     }
@@ -326,20 +374,19 @@
     return prepareTriangulatedLayoutData(graphFromCy(cy), config, cy);
   }
 
-  global.PlanarVibePlanarCommon = {
-    faceKey: faceKey,
+  global.PlaygroundUtils = {
     graphFromCy: graphFromCy,
     currentPositionsFromCy: currentPositionsFromCy,
-    buildAdjacency: buildAdjacency,
     copyPositions: copyPositions,
-    polygonArea2: polygonArea2,
-    orientFaceCCW: orientFaceCCW,
     alignOuterFace: alignOuterFace,
-    outerFaceDiameter: outerFaceDiameter,
     collectMovableVertices: collectMovableVertices,
     prepareAugmentedTriangulation: prepareAugmentedTriangulation,
     originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
     createAugmentationDebugState: createAugmentationDebugState,
+    applyPositionsToCy: applyPositionsToCy,
+    applyAndFit: applyAndFit,
+    waitForNextFrame: waitForNextFrame,
+    createIncrementalRenderer: createIncrementalRenderer,
     prepareTriangulatedLayoutData: prepareTriangulatedLayoutData,
     prepareTriangulatedLayoutContext: prepareTriangulatedLayoutContext
   };

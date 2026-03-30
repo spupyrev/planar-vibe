@@ -1,29 +1,12 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var edgeKey = global.PlanarGraphCore.edgeKey;
-  var faceKey = PlanarCommon.faceKey;
-
-  function findOuterFaceIndex(faces, outerFace) {
-    if (!faces || !outerFace || faces.length === 0 || outerFace.length === 0) {
-      return -1;
-    }
-    var target = faceKey(outerFace);
-    for (var i = 0; i < faces.length; i += 1) {
-      if (faceKey(faces[i]) === target) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  function triangleArea2(a, b, c) {
-    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-  }
-
-  var polygonArea2 = PlanarCommon.polygonArea2;
-  var orientFaceCCW = PlanarCommon.orientFaceCCW;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var faceKey = global.GraphUtils.faceKey;
+  var polygonArea2 = global.GraphUtils.polygonArea2;
+  var orientFaceCCW = global.GraphUtils.orientFaceCCW;
+  var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
+  var triangleArea2 = global.GraphUtils.triangleArea2;
 
   function add(p, q) {
     return { x: p.x + q.x, y: p.y + q.y };
@@ -49,7 +32,7 @@
     return Math.sqrt(dot(p, p));
   }
 
-  var originalFaceKeyForAugmentedFace = PlanarCommon.originalFaceKeyForAugmentedFace;
+  var originalFaceKeyForAugmentedFace = PlaygroundUtils.originalFaceKeyForAugmentedFace;
 
   function buildAirData(baseEmbedding, augmentedEmbedding, outerFace, dummyFaceKeyById, dummyFaceVerticesById, posById) {
     var outerOriginalKey = originalFaceKeyForAugmentedFace(outerFace, dummyFaceKeyById, dummyFaceVerticesById);
@@ -355,9 +338,9 @@
     };
   }
 
-  function prepareAirFromGeneralPlaneGraph(cy, options) {
+  function prepareAirState(graph, options, cy) {
     var opts = normalizeAirOptions(options);
-    var context = PlanarCommon.prepareTriangulatedLayoutContext(cy, {
+    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
       failureLabel: 'Air layout',
       minNodeCount: 3,
       augmentationOptions: opts.augmentationOptions,
@@ -366,7 +349,7 @@
         tolerance: 1e-7,
         useSeedOuter: false
       }
-    });
+    }, cy);
     if (!context || !context.ok) {
       return context || { ok: false, message: 'Air setup failed' };
     }
@@ -430,7 +413,7 @@
     };
   }
 
-  async function solveAirTriangulation(prepared, options) {
+  async function runAirIterations(prepared, options) {
     var opts = Object.assign({}, prepared && prepared.opts ? prepared.opts : {}, options || {});
     var g = prepared.graph;
     var posById = prepared.posById;
@@ -438,7 +421,7 @@
     var movableVertices = prepared.movableVertices || [];
     var status = 'max_sweeps';
     var lastStats = computeAirStats(airData, posById, movableVertices, opts.tolAreaPositive);
-    var outerDiameter = PlanarCommon.outerFaceDiameter(posById, airData.outerFace || prepared.outerFace || []);
+    var outerDiameter = outerFaceDiameter(posById, airData.outerFace || prepared.outerFace || []);
     var moveTol = opts.moveTolAbs + opts.moveTolRel * outerDiameter;
     var avgMoveTol = 0.25 * moveTol;
     var plateauErrTolAbs = opts.plateauErrTolAbs !== null ? opts.plateauErrTolAbs : opts.tolAreaGlobal;
@@ -646,56 +629,36 @@
     };
   }
 
-  async function applyAirLayout(cy, options) {
-    var runtime = global.PlanarVibeLayoutRuntime;
-    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
-      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
-    }
-
-    var prepared = prepareAirFromGeneralPlaneGraph(cy, options);
+  async function computeAirPositions(nodeIds, edgePairs, options) {
+    var opts = options || {};
+    var prepared = prepareAirState({
+      nodeIds: (nodeIds || []).map(String),
+      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
+    }, opts, opts.cy || null);
     if (!prepared || !prepared.ok) {
-      return prepared || { ok: false, message: 'Air setup failed' };
+      return prepared || { ok: false, message: 'Air failed' };
     }
 
     if (prepared.airData.originalFaceKeys.length === 0) {
-      runtime.applyPositionsToCy(cy, prepared.graph.nodeIds, prepared.posById);
-      cy.fit(undefined, 24);
       return {
         ok: true,
-        message: 'Applied Air (no bounded faces to balance)',
-        debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-          ? PlanarCommon.createAugmentationDebugState(
-            prepared.graph,
-            prepared.outerFace,
-            prepared.augmented,
-            prepared.posById
-          )
-          : null
+        status: 'realized',
+        positions: prepared.posById,
+        graph: prepared.graph,
+        outerFace: prepared.outerFace,
+        augmented: prepared.augmented,
+        airData: prepared.airData,
+        boundedFaceCount: 0,
+        dummyCount: prepared.augmented.dummyCount,
+        faceAreaScore: null,
+        maxRelError: 0
       };
     }
 
-    var opts = prepared.opts;
-    var renderer = runtime.createIncrementalRenderer({
-      cy: cy,
-      nodeIds: prepared.graph.nodeIds,
-      getPositions: function () { return prepared.posById; },
-      interactive: opts.interactive,
-      delayMs: opts.delayMs,
-      renderEvery: opts.renderEvery,
-      yieldEvery: opts.yieldEvery,
-      fitPadding: 24
-    });
-    await renderer.begin();
-
-    var solveResult = await solveAirTriangulation(prepared, Object.assign({}, opts, {
-      onSweepComplete: async function (event) {
-        await renderer.onProgress(event, { forceYield: !!(opts.onIteration || opts.delayMs > 0) });
-      }
-    }));
+    var solveResult = await runAirIterations(prepared, prepared.opts);
     var status = solveResult.status;
     var lastStats = solveResult.stats;
 
-    renderer.finish();
     if (solveResult.hasCrossings) {
       return {
         ok: false,
@@ -729,25 +692,77 @@
     return {
       ok: true,
       status: status,
+      positions: prepared.posById,
+      graph: prepared.graph,
+      outerFace: prepared.outerFace,
+      augmented: prepared.augmented,
+      airData: prepared.airData,
       message: message,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: lastStats ? lastStats.maxRelError : null,
       boundedFaceCount: prepared.airData.originalFaceKeys.length,
       dummyCount: prepared.augmented.dummyCount,
-      debugState: typeof PlanarCommon.createAugmentationDebugState === 'function'
-        ? PlanarCommon.createAugmentationDebugState(
-          prepared.graph,
-          prepared.outerFace,
-          prepared.augmented,
-          prepared.posById
+      iters: lastStats && Number.isFinite(lastStats.sweeps) ? lastStats.sweeps : null
+    };
+  }
+
+  async function applyAirLayout(cy, options) {
+    var runtime = PlaygroundUtils;
+    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
+      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
+    }
+
+    var graph = PlaygroundUtils.graphFromCy(cy);
+    var currentPositions = {};
+    var renderer = runtime.createIncrementalRenderer({
+      cy: cy,
+      nodeIds: graph.nodeIds,
+      getPositions: function () { return currentPositions; },
+      interactive: options && options.interactive !== false,
+      delayMs: Number.isFinite(options && options.delayMs) ? Math.max(0, options.delayMs) : 0,
+      renderEvery: Number.isFinite(options && options.renderEvery) ? Math.max(1, Math.floor(options.renderEvery)) : 4,
+      yieldEvery: Number.isFinite(options && options.yieldEvery) ? Math.max(1, Math.floor(options.yieldEvery)) : 5,
+      fitPadding: 24
+    });
+    await renderer.begin();
+
+    var result = await computeAirPositions(graph.nodeIds, graph.edgePairs, Object.assign({}, options || {}, {
+      cy: cy,
+      onSweepComplete: async function (event) {
+        currentPositions = event.positions || currentPositions;
+        await renderer.onProgress(event, { forceYield: !!((options && options.onIteration) || (options && options.delayMs > 0)) });
+      }
+    }));
+
+    renderer.finish();
+    if (!result || !result.ok) {
+      return result || { ok: false, message: 'Air failed' };
+    }
+
+    runtime.applyPositionsToCy(cy, result.positions);
+    cy.fit(undefined, 24);
+    return {
+      ok: true,
+      status: result.status,
+      message: result.message,
+      faceAreaScore: result.faceAreaScore,
+      maxRelError: result.maxRelError,
+      boundedFaceCount: result.boundedFaceCount,
+      dummyCount: result.dummyCount,
+      iters: result.iters,
+      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+        ? PlaygroundUtils.createAugmentationDebugState(
+          result.graph,
+          result.outerFace,
+          result.augmented,
+          result.positions
         )
         : null
     };
   }
 
   global.PlanarVibeAir = {
-    prepareAirFromGeneralPlaneGraph: prepareAirFromGeneralPlaneGraph,
-    solveAirTriangulation: solveAirTriangulation,
+    computeAirPositions: computeAirPositions,
     applyAirLayout: applyAirLayout
   };
 })(window);

@@ -1,13 +1,13 @@
 (function (global) {
   'use strict';
 
-  var PlanarCommon = global.PlanarVibePlanarCommon || {};
-  var edgeKey = global.PlanarGraphCore.edgeKey;
-  var collectGraphFromCy = PlanarCommon.graphFromCy;
-  var currentPositionsFromCy = PlanarCommon.currentPositionsFromCy;
+  var PlaygroundUtils = global.PlaygroundUtils || {};
+  var edgeKey = global.GraphUtils.edgeKey;
+  var collectGraphFromCy = PlaygroundUtils.graphFromCy;
+  var currentPositionsFromCy = PlaygroundUtils.currentPositionsFromCy;
 
   function buildAdjacency(nodeIds, edgePairs) {
-    var arrayAdj = PlanarCommon.buildAdjacency(nodeIds, edgePairs);
+    var arrayAdj = global.GraphUtils.buildAdjacency(nodeIds, edgePairs);
     var adj = {};
     var ids = Object.keys(arrayAdj);
     for (var i = 0; i < ids.length; i += 1) {
@@ -449,7 +449,7 @@
   }
 
   async function applyImPrEdLayout(cy, options) {
-    var runtime = global.PlanarVibeLayoutRuntime;
+    var runtime = PlaygroundUtils;
     if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
       return { ok: false, message: 'Layout runtime is missing. Check script load order' };
     }
@@ -497,10 +497,10 @@
             }
           );
           if (initSolve && initSolve.ok && initSolve.pos) {
-            posById = (global.PlanarGraphCore && typeof global.PlanarGraphCore.alignOuterFaceEdgeHorizontally === 'function')
-              ? global.PlanarGraphCore.alignOuterFaceEdgeHorizontally(initSolve.pos, initOuter)
+            posById = (global.GraphUtils && typeof global.GraphUtils.alignOuterFaceEdgeHorizontally === 'function')
+              ? global.GraphUtils.alignOuterFaceEdgeHorizontally(initSolve.pos, initOuter)
               : initSolve.pos;
-            runtime.applyPositionsToCy(cy, g.nodeIds, posById);
+            runtime.applyPositionsToCy(cy, posById);
           }
         }
       }
@@ -538,8 +538,8 @@
     var iter;
     var stopReason = 'max-iters';
     var lastStats = { movedNodes: 0, totalMove: 0, avgActualMove: 0, maxActualMove: 0 };
-    var movementTracker = (global.PlanarGraphCore && typeof global.PlanarGraphCore.createMovementConvergenceTracker === 'function')
-      ? global.PlanarGraphCore.createMovementConvergenceTracker({
+    var movementTracker = (global.GraphUtils && typeof global.GraphUtils.createMovementConvergenceTracker === 'function')
+      ? global.GraphUtils.createMovementConvergenceTracker({
         minItersBeforeStop: minItersBeforeStop,
         stableIterLimit: stableIterLimit,
         maxMoveTol: movementStopTol,
@@ -659,8 +659,8 @@
         }
       }
 
-      var rawMoveStats = (global.PlanarGraphCore && typeof global.PlanarGraphCore.computePositionMoveStats === 'function')
-        ? global.PlanarGraphCore.computePositionMoveStats(g.nodeIds, prevPosById, posById, { moveTol: 1e-6 })
+      var rawMoveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
+        ? global.GraphUtils.computePositionMoveStats(g.nodeIds, prevPosById, posById, { moveTol: 1e-6 })
         : { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
       lastStats = {
         movedNodes: rawMoveStats.movedVertices,

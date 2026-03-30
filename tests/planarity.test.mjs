@@ -85,9 +85,8 @@ function loadBrowserModules() {
     'static/js/graph-generator.js',
     'static/js/planarity-test.js',
     'static/js/metrics.js',
-    'static/js/planar-graph-utils.js',
-    'static/js/layout-runtime.js',
-    'static/js/layout-playground-utils.js',
+    'static/js/graph-utils.js',
+    'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
@@ -114,7 +113,7 @@ function loadBrowserModules() {
 const modules = loadBrowserModules();
 const Generator = modules.PlanarVibeGraphGenerator;
 const Planarity = modules.PlanarVibePlanarityTest;
-const PlanarGraphCore = modules.PlanarGraphCore;
+const GraphUtils = modules.GraphUtils;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
@@ -296,7 +295,7 @@ function minBoundedFaceArea(graph, positionsById) {
   if (!embedding || !embedding.ok) {
     return null;
   }
-  const outerKey = faceCanonicalKeyForTest(PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding) || []);
+  const outerKey = faceCanonicalKeyForTest(GraphUtils.chooseOuterFaceFromEmbedding(embedding) || []);
   let minArea = Infinity;
   for (const face of embedding.faces || []) {
     if (faceCanonicalKeyForTest(face) === outerKey) {
@@ -484,7 +483,7 @@ test('face stellation adds one dummy vertex for every non-triangular face includ
 
   assert.equal(embedding.ok, true);
 
-  const augmented = PlanarGraphCore.augmentByFaceStellation(graph.nodeIds, graph.edgePairs, embedding);
+  const augmented = GraphUtils.augmentByFaceStellation(graph.nodeIds, graph.edgePairs, embedding);
   const dummyIds = Object.keys(augmented.dummyFaceVerticesById || {});
 
   assert.equal(augmented.dummyCount, 2);
@@ -509,8 +508,8 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  const outerFace = PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
-  const prepared = PlanarGraphCore.prepareTriangulatedByFaceStellation(
+  const outerFace = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
+  const prepared = GraphUtils.prepareTriangulatedByFaceStellation(
     graph.nodeIds,
     graph.edgePairs,
     embedding,
@@ -535,14 +534,14 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
 });
 
 test('common outer-face helper prefers a chordless explicit outer face and otherwise falls back to the longest chordless face', () => {
-  const explicit = PlanarGraphCore.chooseOuterFaceFromEmbedding({
+  const explicit = GraphUtils.chooseOuterFaceFromEmbedding({
     outerFace: ['a', 'b', 'c'],
     edges: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['x', 'y'], ['y', 'z'], ['z', 'w'], ['w', 'x']],
     faces: [['x', 'y', 'z', 'w']]
   });
   assert.deepEqual(explicit, ['a', 'b', 'c']);
 
-  const fallback = PlanarGraphCore.chooseOuterFaceFromEmbedding({
+  const fallback = GraphUtils.chooseOuterFaceFromEmbedding({
     edges: [
       ['1', '2'], ['2', '3'], ['3', '1'],
       ['4', '5'], ['5', '6'], ['6', '7'], ['7', '4'], ['4', '6'],
@@ -554,7 +553,7 @@ test('common outer-face helper prefers a chordless explicit outer face and other
 });
 
 test('common outer-face helper ignores an explicit outer face when it contains a chord', () => {
-  const chosen = PlanarGraphCore.chooseOuterFaceFromEmbedding({
+  const chosen = GraphUtils.chooseOuterFaceFromEmbedding({
     outerFace: ['1', '2', '3', '4'],
     edges: [
       ['1', '2'], ['2', '3'], ['3', '4'], ['4', '1'], ['1', '3'],
@@ -574,11 +573,11 @@ test('shared movement convergence helper stops after enough stable iterations', 
     a: { x: 0.001, y: 0 },
     b: { x: 10.001, y: 0 }
   };
-  const stats = PlanarGraphCore.computePositionMoveStats(['a', 'b'], prev, next, { moveTol: 1e-4 });
+  const stats = GraphUtils.computePositionMoveStats(['a', 'b'], prev, next, { moveTol: 1e-4 });
   assert.ok(stats.maxMove > 0, 'expected non-zero movement');
   assert.equal(stats.movedVertices, 2);
 
-  const tracker = PlanarGraphCore.createMovementConvergenceTracker({
+  const tracker = GraphUtils.createMovementConvergenceTracker({
     minItersBeforeStop: 3,
     stableIterLimit: 2,
     maxMoveTol: 0.01,
@@ -956,7 +955,7 @@ test('ReweightTutte uses the same outer-face coordinates as Tutte', async () => 
   const graph = parseEdgeListText(text);
   const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   assert.equal(emb && emb.ok, true);
-  const outer = PlanarGraphCore.chooseOuterFaceFromEmbedding(emb);
+  const outer = GraphUtils.chooseOuterFaceFromEmbedding(emb);
 
   const cyTutte = buildMockCy(graph.nodeIds, graph.edgePairs);
   const tutte = Tutte.applyTutteLayout(cyTutte);
@@ -968,7 +967,7 @@ test('ReweightTutte uses the same outer-face coordinates as Tutte', async () => 
     const node = cyReweight.nodes().find((n) => n.id() === id);
     node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
   }
-  const reweight = await Reweight.applyReweightTutteLayout(cyReweight, { tuning: { delayMs: 0 } });
+  const reweight = await Reweight.applyReweightTutteLayout(cyReweight, { delayMs: 0 });
   assert.equal(reweight.ok, true, reweight.message || 'Reweight failed');
 
   for (const v of outer) {
@@ -1492,13 +1491,11 @@ test('CEG23-bfs parameter sweep on sample1/sample2 tunes Face Areas score', () =
     const baselineCy = buildMockCy(graph.nodeIds, graph.edgePairs);
     seedGridPositions(baselineCy, graph.nodeIds);
     const baselineRes = CEG23.applyCEG23BfsLayout(baselineCy, {
-      tuning: {
-        depthSource: 'outer-multi',
-        edgeDepthMode: 'min',
-        a: 1.0,
-        r: 1.35,
-        maxIters
-      }
+      depthSource: 'outer-multi',
+      edgeDepthMode: 'min',
+      a: 1.0,
+      r: 1.35,
+      maxIters
     });
     assert.equal(baselineRes.ok, true, `baseline CEG23-bfs failed on ${sampleName}`);
     const baselineFace = Metrics.computeUniformFaceAreaScoreFromCy(baselineCy, graph.edgePairs);
@@ -1521,7 +1518,11 @@ test('CEG23-bfs parameter sweep on sample1/sample2 tunes Face Areas score', () =
             const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
             seedGridPositions(cy, graph.nodeIds);
             const result = CEG23.applyCEG23BfsLayout(cy, {
-              tuning: { depthSource, edgeDepthMode, a, r, maxIters }
+              depthSource: depthSource,
+              edgeDepthMode: edgeDepthMode,
+              a: a,
+              r: r,
+              maxIters: maxIters
             });
             assert.equal(result.ok, true, `CEG23-bfs failed on ${sampleName} with ${depthSource}/${edgeDepthMode}/a=${a}/r=${r}`);
             const face = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
@@ -1564,11 +1565,11 @@ test('3-connectivity helpers distinguish strict and internal 3-connectivity', ()
     edgePairs: [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
   };
 
-  const strict = PlanarGraphCore.analyzeThreeConnectivity(graph.nodeIds, graph.edgePairs);
+  const strict = GraphUtils.analyzeThreeConnectivity(graph.nodeIds, graph.edgePairs);
   assert.equal(strict.ok, false);
   assert.match(String(strict.reason || ''), /3-connected/i);
 
-  const internal = PlanarGraphCore.analyzeInternallyThreeConnected(graph.nodeIds, graph.edgePairs, ['1', '2', '3', '4']);
+  const internal = GraphUtils.analyzeInternallyThreeConnected(graph.nodeIds, graph.edgePairs, ['1', '2', '3', '4']);
   assert.equal(internal.ok, true, internal.reason || 'cycle should be internally 3-connected with its outer cycle');
 });
 
@@ -1576,10 +1577,10 @@ test('Tutte uses the common outer face and succeeds on grid2x10 after augmentati
   const text = Generator.getSample('grid2x10');
   const graph = parseEdgeListText(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  const outer = PlanarGraphCore.chooseOuterFaceFromEmbedding(embedding);
+  const outer = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
   assert.equal(Array.isArray(outer), true);
   assert.equal(outer.length, 4);
-  assert.equal(PlanarGraphCore.analyzeInternallyThreeConnected(graph.nodeIds, graph.edgePairs, outer).ok, false);
+  assert.equal(GraphUtils.analyzeInternallyThreeConnected(graph.nodeIds, graph.edgePairs, outer).ok, false);
 
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
@@ -1667,7 +1668,7 @@ test('ReweightTutte quality stays above threshold on 10 random planar graphs', a
       node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
     }
 
-    const result = await Reweight.applyReweightTutteLayout(cy, { tuning: { delayMs: 0 } });
+    const result = await Reweight.applyReweightTutteLayout(cy, { delayMs: 0 });
     assert.equal(result.ok, true, `Reweight failed for seed=${seed}: ${result.message || ''}`);
 
     const face = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);

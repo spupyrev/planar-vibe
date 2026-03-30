@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  var LayoutRuntime = global.PlanarVibeLayoutRuntime || {};
+  var PlaygroundUtils = global.PlaygroundUtils || {};
 
   function hashString(value, seed) {
     var hash = seed >>> 0;
@@ -17,24 +17,38 @@
     return hashString(value, seed) / 4294967295;
   }
 
-  function applyRandomLayout(cy) {
-    var width = Math.max(cy.width(), 320);
-    var height = Math.max(cy.height(), 260);
+  function computeRandomPositions(nodeIds, width, height) {
+    var ids = (nodeIds || []).map(String);
+    var safeWidth = Number.isFinite(width) ? width : 320;
+    var safeHeight = Number.isFinite(height) ? height : 260;
+    var widthPx = Math.max(safeWidth, 320);
+    var heightPx = Math.max(safeHeight, 260);
     var margin = 26;
-    var xSpan = Math.max(width - margin * 2, 1);
-    var ySpan = Math.max(height - margin * 2, 1);
+    var xSpan = Math.max(widthPx - margin * 2, 1);
+    var ySpan = Math.max(heightPx - margin * 2, 1);
     var posById = {};
-    var nodeIds = [];
-
-    cy.nodes().forEach(function (node) {
-      var id = node.id();
-      nodeIds.push(String(id));
+    for (var i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
       var x = margin + normalizedHash(id + ':x', 2166136261) * xSpan;
       var y = margin + normalizedHash(id + ':y', 33554467) * ySpan;
-      posById[String(id)] = { x: x, y: y };
+      posById[id] = { x: x, y: y };
+    }
+    return {
+      ok: true,
+      nodeIds: ids,
+      pos: posById
+    };
+  }
+
+  function applyRandomLayout(cy) {
+    var nodeIds = [];
+    cy.nodes().forEach(function (node) {
+      nodeIds.push(String(node.id()));
     });
-    if (typeof LayoutRuntime.applyAndFit === 'function') {
-      LayoutRuntime.applyAndFit(cy, nodeIds, posById, 20);
+    var result = computeRandomPositions(nodeIds, cy.width(), cy.height());
+    var posById = result.pos;
+    if (typeof PlaygroundUtils.applyAndFit === 'function') {
+      PlaygroundUtils.applyAndFit(cy, posById, 20);
     } else {
       cy.nodes().forEach(function (node) {
         var id = String(node.id());
@@ -48,6 +62,7 @@
   }
 
   global.PlanarVibeRandom = {
+    computeRandomPositions: computeRandomPositions,
     applyRandomLayout: applyRandomLayout
   };
 })(window);
