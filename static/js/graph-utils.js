@@ -11,6 +11,26 @@
     });
   }
 
+  function normalizeSimpleEdgePairs(edgePairs) {
+    var pairs = normalizeEdgePairs(edgePairs);
+    var out = [];
+    var seen = new Set();
+    for (var i = 0; i < pairs.length; i += 1) {
+      var u = pairs[i][0];
+      var v = pairs[i][1];
+      if (u === v) {
+        continue;
+      }
+      var key = edgeKey(u, v);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      out.push([u, v]);
+    }
+    return out;
+  }
+
   function normalizeOuterFace(outerFace) {
     return Array.isArray(outerFace) ? outerFace.slice().map(String) : [];
   }
@@ -143,6 +163,35 @@
     return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   }
 
+  function pointEquals(a, b, eps) {
+    return Math.abs(a.x - b.x) <= eps && Math.abs(a.y - b.y) <= eps;
+  }
+
+  function pointOnSegment(a, b, p, eps) {
+    return (
+      Math.min(a.x, b.x) - eps <= p.x && p.x <= Math.max(a.x, b.x) + eps &&
+      Math.min(a.y, b.y) - eps <= p.y && p.y <= Math.max(a.y, b.y) + eps
+    );
+  }
+
+  function segmentsIntersectOrTouch(a, b, c, d, eps) {
+    var o1 = triangleArea2(a, b, c);
+    var o2 = triangleArea2(a, b, d);
+    var o3 = triangleArea2(c, d, a);
+    var o4 = triangleArea2(c, d, b);
+
+    if (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
+        ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps))) {
+      return true;
+    }
+
+    if (Math.abs(o1) <= eps && pointOnSegment(a, b, c, eps)) return true;
+    if (Math.abs(o2) <= eps && pointOnSegment(a, b, d, eps)) return true;
+    if (Math.abs(o3) <= eps && pointOnSegment(c, d, a, eps)) return true;
+    if (Math.abs(o4) <= eps && pointOnSegment(c, d, b, eps)) return true;
+    return false;
+  }
+
   function createEmptyAdjacency(nodeIds) {
     var adj = {};
     for (var i = 0; i < nodeIds.length; i += 1) {
@@ -162,9 +211,9 @@
     adjacency[target].push(source);
   }
 
-  function buildAdjacency(nodeIds, edgePairs) {
+  function buildAdjacencyArrays(nodeIds, edgePairs) {
     var ids = normalizeNodeIds(nodeIds);
-    var pairs = normalizeEdgePairs(edgePairs);
+    var pairs = normalizeSimpleEdgePairs(edgePairs);
     var adjacency = createEmptyAdjacency(ids);
     for (var i = 0; i < pairs.length; i += 1) {
       addUndirectedEdge(adjacency, pairs[i][0], pairs[i][1]);
@@ -180,23 +229,31 @@
     return adj;
   }
 
-  function buildSimpleAdjacencySets(nodeIds, edgePairs) {
-    var ids = nodeIds.map(String);
+  function buildAdjacencySets(nodeIds, edgePairs) {
+    var ids = normalizeNodeIds(nodeIds);
+    var pairs = normalizeSimpleEdgePairs(edgePairs);
     var adj = createEmptyAdjacencySets(ids);
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var e = edgePairs[i];
-      if (!e || e.length < 2) {
-        continue;
+    for (var i = 0; i < pairs.length; i += 1) {
+      var u = pairs[i][0];
+      var v = pairs[i][1];
+      if (!adj[u]) {
+        adj[u] = new Set();
       }
-      var u = String(e[0]);
-      var v = String(e[1]);
-      if (u === v || !adj[u] || !adj[v]) {
-        continue;
+      if (!adj[v]) {
+        adj[v] = new Set();
       }
       adj[u].add(v);
       adj[v].add(u);
     }
     return adj;
+  }
+
+  function buildAdjacency(nodeIds, edgePairs) {
+    return buildAdjacencyArrays(nodeIds, edgePairs);
+  }
+
+  function buildSimpleAdjacencySets(nodeIds, edgePairs) {
+    return buildAdjacencySets(nodeIds, edgePairs);
   }
 
   function connectivityAfterRemoving(nodeIds, adjacency, removedSet) {
@@ -252,7 +309,7 @@
       };
     }
 
-    var adj = buildSimpleAdjacencySets(ids, edgePairs);
+    var adj = buildAdjacencySets(ids, edgePairs);
     for (var i = 0; i < ids.length; i += 1) {
       if ((adj[ids[i]] ? adj[ids[i]].size : 0) < 3) {
         return {
@@ -953,30 +1010,9 @@
       dummyMap[dummyId] = (dummyFaceVerticesById[dummyId] || []).map(String);
     }
 
-    function buildAdjacency() {
-      var adjacency = {};
-      var ni;
-      for (ni = 0; ni < nodes.length; ni += 1) {
-        adjacency[String(nodes[ni])] = new Set();
-      }
-      for (ni = 0; ni < edges.length; ni += 1) {
-        var a = String(edges[ni][0]);
-        var b = String(edges[ni][1]);
-        if (!adjacency[a]) {
-          adjacency[a] = new Set();
-        }
-        if (!adjacency[b]) {
-          adjacency[b] = new Set();
-        }
-        adjacency[a].add(b);
-        adjacency[b].add(a);
-      }
-      return adjacency;
-    }
-
     var removedDummyIds = [];
     while (true) {
-      var adjacency = buildAdjacency();
+      var adjacency = buildAdjacencySets(nodes, edges);
       var removable = [];
       var currentDummyIds = Object.keys(dummyMap);
       for (i = 0; i < currentDummyIds.length; i += 1) {
@@ -1018,16 +1054,9 @@
     };
   }
 
-  function prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return {
-        ok: false,
-        reason: 'Planarity utilities are missing'
-      };
-    }
-
+  function triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
     var nodes = nodeIds.map(String);
-    var edges = cloneEdgePairs(edgePairs);
+    var edges = normalizeSimpleEdgePairs(edgePairs);
     var emb = embedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
     if (!emb || !emb.ok) {
       return {
@@ -1042,6 +1071,7 @@
         reason: 'Could not determine outer face'
       };
     }
+    var opts = options || {};
 
     var dummyFaceVerticesById = {};
     var round = 0;
@@ -1055,7 +1085,7 @@
         };
       }
 
-      var step = augmentByFaceStellation(nodes, edges, emb, selectedOuterFace, options);
+      var step = augmentByFaceStellation(nodes, edges, emb, selectedOuterFace, opts);
       if (!step || !Array.isArray(step.nodeIds) || !Array.isArray(step.edgePairs)) {
         return {
           ok: false,
@@ -1108,42 +1138,25 @@
       };
     }
     emb.outerFace = selectedOuterFace.slice();
-    return {
-      ok: true,
-      nodeIds: nodes,
-      edgePairs: edges,
-      dummyCount: Object.keys(dummyFaceVerticesById).length,
-      dummyFaceVerticesById: dummyFaceVerticesById,
-      embedding: emb
-    };
-  }
 
-  function prepareFullyTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace) {
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
+    if (!opts.triangulateOuterFace) {
       return {
-        ok: false,
-        reason: 'Planarity utilities are missing'
+        ok: true,
+        nodeIds: nodes,
+        edgePairs: edges,
+        dummyCount: Object.keys(dummyFaceVerticesById).length,
+        dummyFaceVerticesById: dummyFaceVerticesById,
+        embedding: emb
       };
     }
-
-    var prepared = prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace);
-    if (!prepared || !prepared.ok) {
-      return prepared || {
-        ok: false,
-        reason: 'Augmentation failed'
-      };
-    }
-    if (isTriangulatedEmbedding(prepared.embedding)) {
-      return prepared;
-    }
-
-    var selectedOuterFace = Array.isArray(outerFace)
-      ? outerFace.slice().map(String)
-      : (prepared.embedding && prepared.embedding.outerFace ? prepared.embedding.outerFace.slice().map(String) : null);
-    if (!selectedOuterFace || selectedOuterFace.length < 3) {
+    if (isTriangulatedEmbedding(emb)) {
       return {
-        ok: false,
-        reason: 'Could not determine outer face'
+        ok: true,
+        nodeIds: nodes,
+        edgePairs: edges,
+        dummyCount: Object.keys(dummyFaceVerticesById).length,
+        dummyFaceVerticesById: dummyFaceVerticesById,
+        embedding: emb
       };
     }
     if (selectedOuterFace.length === 3) {
@@ -1153,8 +1166,6 @@
       };
     }
 
-    var nodes = prepared.nodeIds.map(String);
-    var edges = cloneEdgePairs(prepared.edgePairs);
     var idSet = new Set(nodes);
     var outerDummyId = '@outerDummy';
     var suffix = 0;
@@ -1162,12 +1173,14 @@
       suffix += 1;
       outerDummyId = '@outerDummy' + suffix;
     }
+    nodes = nodes.slice();
+    edges = cloneEdgePairs(edges);
     nodes.push(outerDummyId);
-    for (var i = 0; i < selectedOuterFace.length; i += 1) {
+    for (i = 0; i < selectedOuterFace.length; i += 1) {
       edges.push([outerDummyId, String(selectedOuterFace[i])]);
     }
 
-    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
+    emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
     if (!emb || !emb.ok) {
       return {
         ok: false,
@@ -1181,22 +1194,21 @@
       };
     }
     emb.outerFace = [outerDummyId, selectedOuterFace[0], selectedOuterFace[1]];
-
-    var dummyFaceVerticesById = {};
-    var preparedDummyFaceVertices = prepared.dummyFaceVerticesById || {};
-    var dummyIds = Object.keys(preparedDummyFaceVertices);
+    var nextDummyFaceVerticesById = {};
+    var dummyIds = Object.keys(dummyFaceVerticesById);
     for (i = 0; i < dummyIds.length; i += 1) {
-      dummyFaceVerticesById[String(dummyIds[i])] = (preparedDummyFaceVertices[dummyIds[i]] || []).map(String);
+      nextDummyFaceVerticesById[String(dummyIds[i])] = (dummyFaceVerticesById[dummyIds[i]] || []).map(String);
     }
+    dummyFaceVerticesById = nextDummyFaceVerticesById;
     dummyFaceVerticesById[outerDummyId] = selectedOuterFace.slice();
 
     return {
       ok: true,
       nodeIds: nodes,
       edgePairs: edges,
-      dummyCount: (prepared.dummyCount || 0) + 1,
+      dummyCount: Object.keys(dummyFaceVerticesById).length,
+      outerDummyId: opts.triangulateOuterFace ? outerDummyId : undefined,
       dummyFaceVerticesById: dummyFaceVerticesById,
-      outerDummyId: outerDummyId,
       embedding: emb
     };
   }
@@ -1338,6 +1350,8 @@
     pointDot: pointDot,
     pointRot90: pointRot90,
     pointNorm: pointNorm,
+    pointEquals: pointEquals,
+    pointOnSegment: pointOnSegment,
     vecDot: vecDot,
     vecNorm: vecNorm,
     vecAddScaled: vecAddScaled,
@@ -1347,9 +1361,14 @@
     outerFaceDiameter: outerFaceDiameter,
     edgeKey: edgeKey,
     triangleArea2: triangleArea2,
+    segmentsIntersectOrTouch: segmentsIntersectOrTouch,
+    buildAdjacencyArrays: buildAdjacencyArrays,
+    buildAdjacencySets: buildAdjacencySets,
     buildAdjacency: buildAdjacency,
+    buildSimpleAdjacencySets: buildSimpleAdjacencySets,
     normalizeNodeIds: normalizeNodeIds,
     normalizeEdgePairs: normalizeEdgePairs,
+    normalizeSimpleEdgePairs: normalizeSimpleEdgePairs,
     normalizeOuterFace: normalizeOuterFace,
     sameCyclicDirection: sameCyclicDirection,
     sameCyclicEitherDirection: sameCyclicEitherDirection,
@@ -1368,8 +1387,7 @@
     isInternallyThreeConnected: isInternallyThreeConnected,
     isTriangulatedEmbedding: isTriangulatedEmbedding,
     augmentByFaceStellation: augmentByFaceStellation,
-    prepareTriangulatedByFaceStellation: prepareTriangulatedByFaceStellation,
-    prepareFullyTriangulatedByFaceStellation: prepareFullyTriangulatedByFaceStellation,
+    triangulateByFaceStellation: triangulateByFaceStellation,
     detectCycleFromAdjacency: detectCycleFromAdjacency,
     chooseOuterFace: chooseOuterFace,
     chooseOuterFaceFromEmbedding: chooseOuterFaceFromEmbedding

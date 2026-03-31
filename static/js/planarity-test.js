@@ -796,19 +796,11 @@
       return { ok: false, reason: 'Edge count does not match maximal planar graph' };
     }
 
-    var adjacency = {};
-    for (var i = 0; i < emb.idByIndex.length; i += 1) {
-      adjacency[emb.idByIndex[i]] = new Set();
-    }
-    for (i = 0; i < emb.edges.length; i += 1) {
-      var e = emb.edges[i];
-      adjacency[e[0]].add(e[1]);
-      adjacency[e[1]].add(e[0]);
-    }
+    var adjacency = global.GraphUtils.buildAdjacencySets(emb.idByIndex, emb.edges);
 
     var outerSet = new Set(outer);
     var uniqueOuterApexCount = 0;
-    for (i = 0; i < emb.idByIndex.length; i += 1) {
+    for (var i = 0; i < emb.idByIndex.length; i += 1) {
       var v = emb.idByIndex[i];
       if (outerSet.has(v)) {
         continue;

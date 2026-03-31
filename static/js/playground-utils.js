@@ -21,11 +21,11 @@
     }
     return {
       nodeIds: filteredNodes,
-      edgePairs: (cy.edges().toArray ? cy.edges().toArray() : cy.edges()).map(function (e) {
+      edgePairs: GraphUtils.normalizeSimpleEdgePairs((cy.edges().toArray ? cy.edges().toArray() : cy.edges()).map(function (e) {
         return [String(e.source().id()), String(e.target().id())];
       }).filter(function (edge) {
         return keep[edge[0]] && keep[edge[1]];
-      })
+      }))
     };
   }
 
@@ -44,7 +44,7 @@
   }
 
   function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
-    var augmented = GraphUtils.prepareTriangulatedByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
+    var augmented = GraphUtils.triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
     var label = failureLabel || 'layout';
     if (!augmented || !augmented.ok) {
       return { ok: false, reason: (augmented && augmented.reason) || (label + ' augmentation failed') };
@@ -199,7 +199,6 @@
         return;
       }
       renderCurrent();
-      fitIfNeeded();
       await waitForNextFrame(delayMs);
     }
 
@@ -238,13 +237,93 @@
     };
   }
 
-  function prepareTriangulatedLayoutData(graph, config, cy) {
+  async function runIncrementalLayout(cy, options, spec) {
+    var opts = options || {};
+    var cfg = spec || {};
+    var graph = graphFromCy(cy);
+    var livePositions = {};
+    var interactive = opts.interactive !== false;
+    var delayMs = Number.isFinite(opts.delayMs)
+      ? Math.max(0, opts.delayMs)
+      : (Number.isFinite(cfg.delayMsDefault) ? Math.max(0, cfg.delayMsDefault) : 0);
+    var renderEvery = Number.isFinite(opts.renderEvery)
+      ? Math.max(1, Math.floor(opts.renderEvery))
+      : (Number.isFinite(cfg.renderEveryDefault) ? Math.max(1, Math.floor(cfg.renderEveryDefault)) : 2);
+    var yieldEvery = Number.isFinite(opts.yieldEvery)
+      ? Math.max(1, Math.floor(opts.yieldEvery))
+      : (Number.isFinite(cfg.yieldEveryDefault) ? Math.max(1, Math.floor(cfg.yieldEveryDefault)) : 5);
+    var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
+
+    var renderer = createIncrementalRenderer({
+      cy: cy,
+      nodeIds: graph.nodeIds,
+      getPositions: function () { return livePositions; },
+      interactive: interactive,
+      delayMs: delayMs,
+      renderEvery: renderEvery,
+      yieldEvery: yieldEvery,
+      fitPadding: fitPadding
+    });
+    await renderer.begin();
+
+    async function onProgress(progress) {
+      livePositions = (progress && progress.positions) || livePositions;
+      if (typeof opts.onIteration === 'function') {
+        opts.onIteration(progress);
+      }
+      await renderer.onProgress(progress, { forceYield: !!(opts.onIteration || delayMs > 0) });
+    }
+
+    var computeOptions = Object.assign(
+      {},
+      opts,
+      typeof cfg.patchComputeOptions === 'function'
+        ? (cfg.patchComputeOptions({
+          options: opts,
+          graph: graph,
+          onProgress: onProgress
+        }) || {})
+        : {}
+    );
+
+    var result = await cfg.compute(graph.nodeIds, graph.edgePairs, computeOptions);
+    var positions = null;
+    if (result && result.ok) {
+      positions = typeof cfg.getPositions === 'function'
+        ? cfg.getPositions(result)
+        : (result.pos || result.positions);
+      livePositions = positions || livePositions;
+    }
+    renderer.finish();
+
+    if (!result || !result.ok) {
+      return result || { ok: false, message: String(cfg.failureMessage || 'Layout failed') };
+    }
+
+    if (typeof cfg.buildResult === 'function') {
+      return cfg.buildResult({
+        result: result,
+        graph: graph,
+        cy: cy,
+        options: opts,
+        positions: positions
+      });
+    }
+
+    return result;
+  }
+
+  function prepareTriangulatedLayoutData(graph, config) {
     var cfg = config || {};
     var label = String(cfg.failureLabel || 'Layout');
     var minNodeCount = Number.isFinite(cfg.minNodeCount) ? Math.max(1, Math.floor(cfg.minNodeCount)) : 3;
+    var normalizedGraph = {
+      nodeIds: GraphUtils.normalizeNodeIds(graph && graph.nodeIds),
+      edgePairs: GraphUtils.normalizeSimpleEdgePairs(graph && graph.edgePairs)
+    };
     var usesDefaultSeed = typeof cfg.initPositions !== 'function';
     var initPositions = usesDefaultSeed
-      ? function (nodeIds, edgePairs, outerFace, localCy, context) {
+      ? function (nodeIds, edgePairs, outerFace, context) {
         var opts = cfg.seedOptions || {
           maxIters: 1000,
           tolerance: 1e-7
@@ -278,23 +357,11 @@
       }
       : cfg.initPositions;
 
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
-    }
-    if (!GraphUtils || !GraphUtils.prepareTriangulatedByFaceStellation) {
-      return { ok: false, message: 'Planar graph utilities are missing. Check script load order' };
-    }
-    if (usesDefaultSeed && (!global.PlanarVibeTutteAlgorithm ||
-        typeof global.PlanarVibeTutteAlgorithm.computeBarycentricPositions !== 'function' ||
-        typeof global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions !== 'function')) {
-      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
-    }
-
-    if (graph.nodeIds.length < minNodeCount) {
+    if (normalizedGraph.nodeIds.length < minNodeCount) {
       return { ok: false, message: label + ' requires at least ' + minNodeCount + ' vertices' };
     }
 
-    var baseEmbedding = cfg.baseEmbedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+    var baseEmbedding = cfg.baseEmbedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(normalizedGraph.nodeIds, normalizedGraph.edgePairs);
     if (!baseEmbedding || !baseEmbedding.ok) {
       return { ok: false, message: label + ' requires a planar graph' };
     }
@@ -307,8 +374,8 @@
     }
 
     var augmented = prepareAugmentedTriangulation(
-      graph.nodeIds,
-      graph.edgePairs,
+      normalizedGraph.nodeIds,
+      normalizedGraph.edgePairs,
       baseEmbedding,
       outerFace,
       label,
@@ -318,8 +385,8 @@
       return { ok: false, message: augmented.reason || (label + ' augmentation failed') };
     }
 
-    var init = initPositions(augmented.nodeIds, augmented.edgePairs, outerFace, cy, {
-      graph: graph,
+    var init = initPositions(augmented.nodeIds, augmented.edgePairs, outerFace, {
+      graph: normalizedGraph,
       baseEmbedding: baseEmbedding,
       augmented: augmented,
       outerFace: outerFace,
@@ -331,7 +398,7 @@
 
     return {
       ok: true,
-      graph: graph,
+      graph: normalizedGraph,
       baseEmbedding: baseEmbedding,
       outerFace: outerFace,
       augmented: augmented,
@@ -342,7 +409,7 @@
   }
 
   function prepareTriangulatedLayoutContext(cy, config) {
-    return prepareTriangulatedLayoutData(graphFromCy(cy), config, cy);
+    return prepareTriangulatedLayoutData(graphFromCy(cy), config);
   }
 
   global.PlaygroundUtils = {
@@ -355,6 +422,7 @@
     applyAndFit: applyAndFit,
     waitForNextFrame: waitForNextFrame,
     createIncrementalRenderer: createIncrementalRenderer,
+    runIncrementalLayout: runIncrementalLayout,
     prepareTriangulatedLayoutData: prepareTriangulatedLayoutData,
     prepareTriangulatedLayoutContext: prepareTriangulatedLayoutContext
   };

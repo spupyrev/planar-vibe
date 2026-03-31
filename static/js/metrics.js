@@ -132,12 +132,6 @@
 
   function computeUniformFaceAreaScore(nodeIds, edgePairs, posById) {
     var graphUtils = global.GraphUtils;
-    if (typeof graphUtils.polygonAreaAbs !== 'function') {
-      return { ok: false, reason: 'Graph utilities are missing.' };
-    }
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, reason: 'Planarity utilities are missing.' };
-    }
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb || !emb.ok) {
       return { ok: false, reason: 'Graph is not planar' };
@@ -367,16 +361,12 @@
     if (!edgePairs || edgePairs.length === 0) {
       return { ok: false, reason: 'No edges' };
     }
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, reason: 'Planarity utilities are missing.' };
-    }
-
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb || !emb.ok) {
       return { ok: false, reason: 'Graph is not planar' };
     }
 
-    var adjacency = global.GraphUtils.buildAdjacency(nodeIds, edgePairs);
+    var adjacency = global.GraphUtils.buildAdjacencyArrays(nodeIds, edgePairs);
     var i;
 
     var outerSet = new Set((emb.outerFace || []).map(String));
@@ -471,37 +461,8 @@
 
   function hasCrossingsFromPositions(posById, edgePairs) {
     var EPS = 1e-9;
-
-    function orient(a, b, c) {
-      return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-    }
-
-    function onSegment(a, b, c) {
-      return (
-        Math.min(a.x, b.x) - EPS <= c.x && c.x <= Math.max(a.x, b.x) + EPS &&
-        Math.min(a.y, b.y) - EPS <= c.y && c.y <= Math.max(a.y, b.y) + EPS
-      );
-    }
-
-    function pointsEqual(a, b) {
-      return Math.abs(a.x - b.x) <= EPS && Math.abs(a.y - b.y) <= EPS;
-    }
-
-    function properIntersect(a, b, c, d) {
-      var o1 = orient(a, b, c);
-      var o2 = orient(a, b, d);
-      var o3 = orient(c, d, a);
-      var o4 = orient(c, d, b);
-
-      if (((o1 > EPS && o2 < -EPS) || (o1 < -EPS && o2 > EPS)) &&
-          ((o3 > EPS && o4 < -EPS) || (o3 < -EPS && o4 > EPS))) {
-        return true;
-      }
-
-      if (Math.abs(o1) <= EPS && onSegment(a, b, c) && !pointsEqual(c, a) && !pointsEqual(c, b)) return true;
-      if (Math.abs(o2) <= EPS && onSegment(a, b, d) && !pointsEqual(d, a) && !pointsEqual(d, b)) return true;
-      if (Math.abs(o3) <= EPS && onSegment(c, d, a) && !pointsEqual(a, c) && !pointsEqual(a, d)) return true;
-      if (Math.abs(o4) <= EPS && onSegment(c, d, b) && !pointsEqual(b, c) && !pointsEqual(b, d)) return true;
+    var graphUtils = global.GraphUtils;
+    if (!graphUtils || typeof graphUtils.segmentsIntersectOrTouch !== 'function') {
       return false;
     }
 
@@ -526,7 +487,7 @@
           continue;
         }
 
-        if (properIntersect(p1, q1, p2, q2)) {
+        if (graphUtils.segmentsIntersectOrTouch(p1, q1, p2, q2, EPS)) {
           return true;
         }
       }
@@ -542,7 +503,7 @@
         return false;
       }
     }
-    var adjacency = global.GraphUtils.buildAdjacency(nodeIds, edgePairs);
+    var adjacency = global.GraphUtils.buildAdjacencyArrays(nodeIds, edgePairs);
 
     var color = {};
     for (i = 0; i < nodeIds.length; i += 1) {

@@ -3,7 +3,7 @@
 
   var PlaygroundUtils = global.PlaygroundUtils;
   var GraphUtils = global.GraphUtils;
-  var buildAdjacency = GraphUtils.buildAdjacency;
+  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var edgeKey = GraphUtils.edgeKey;
   var normalizeNodeIds = GraphUtils.normalizeNodeIds;
   var normalizeEdgePairs = GraphUtils.normalizeEdgePairs;
@@ -100,7 +100,7 @@
     var ids = normalizeNodeIds(nodeIds);
     var pairs = normalizeEdgePairs(edgePairs);
     var face = normalizeOuterFace(outerFace);
-    var adjacency = opts.adjacency || buildAdjacency(ids, pairs);
+    var adjacency = opts.adjacency || buildAdjacencyArrays(ids, pairs);
     var weights = opts.weights || buildUniformWeights(pairs, 1);
     var rowWeights = opts.rowWeights || null;
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000;
@@ -187,13 +187,6 @@
       };
     }
 
-    if (!PlaygroundUtils || typeof PlaygroundUtils.prepareTriangulatedLayoutData !== 'function') {
-      return {
-        ok: false,
-        message: 'Shared planar prep is missing. Check script load order'
-      };
-    }
-
     var prepared = PlaygroundUtils.prepareTriangulatedLayoutData({
       nodeIds: ids,
       edgePairs: pairs
@@ -203,7 +196,7 @@
       baseEmbedding: opts.embedding || null,
       outerFace: Array.isArray(opts.outerFace) ? normalizeOuterFace(opts.outerFace) : null,
       augmentationOptions: opts.augmentationOptions || null,
-      initPositions: function (solveNodeIds, solveEdgePairs, outerFace, localCy, context) {
+      initPositions: function (solveNodeIds, solveEdgePairs, outerFace, context) {
         var embedding = context && context.augmented ? context.augmented.embedding : null;
         if (!embedding || !embedding.ok) {
           return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
@@ -272,7 +265,7 @@
     }
 
     if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, result.pos, 24);
+      PlaygroundUtils.applyAndFit(cy, result.pos);
     } else {
       var nodes = cy.nodes().toArray();
       for (var i = 0; i < nodes.length; i += 1) {

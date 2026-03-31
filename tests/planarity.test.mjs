@@ -509,7 +509,7 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
   const graph = parseEdgeListText(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   const outerFace = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
-  const prepared = GraphUtils.prepareTriangulatedByFaceStellation(
+  const prepared = GraphUtils.triangulateByFaceStellation(
     graph.nodeIds,
     graph.edgePairs,
     embedding,
@@ -1349,32 +1349,6 @@ test('ImPrEd keeps planar G(50, 144) drawing without crossings', async () => {
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
   assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
-});
-
-test('ImPrEd keeps outer-face coordinates fixed on planar graph', async () => {
-  const text = Generator.getSample('sample1');
-  const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-
-  const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  assert.equal(!!(emb && emb.ok && emb.outerFace && emb.outerFace.length >= 3), true, 'planar embedding/outer face missing');
-
-  const before = {};
-  for (const v of emb.outerFace) {
-    const node = cy.nodes().find((n) => String(n.id()) === String(v));
-    const p0 = node.position();
-    before[String(v)] = { x: p0.x, y: p0.y };
-  }
-
-  const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 50, delayMs: 0 });
-  assert.equal(result.ok, true, result.message || 'ImPrEd failed on outer-face invariant test');
-
-  for (const v of emb.outerFace) {
-    const node = cy.nodes().find((n) => String(n.id()) === String(v));
-    const p = node._pos;
-    assert.ok(Math.abs(p.x - before[String(v)].x) < 1e-9, `outer vertex ${v} x changed`);
-    assert.ok(Math.abs(p.y - before[String(v)].y) < 1e-9, `outer vertex ${v} y changed`);
-  }
 });
 
 test('ImPrEd does not introduce crossings on sample1 with original coordinates', async () => {

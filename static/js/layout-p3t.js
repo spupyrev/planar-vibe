@@ -1,6 +1,7 @@
 (function (global) {
   'use strict';
 
+  var PlanarityTest = global.PlanarVibePlanarityTest;
   var PlaygroundUtils = global.PlaygroundUtils;
 
   function cliqueKey(a, b, c, indexById) {
@@ -11,19 +12,10 @@
     return arr[0] + '|' + arr[1] + '|' + arr[2];
   }
 
-  function applyP3TLayout(cy) {
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.analyzePlanar3Tree) {
-      return {
-        ok: false,
-        message: 'Planarity utilities are missing'
-      };
-    }
-
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var nodeIds = graph.nodeIds.slice();
-    var edgePairs = graph.edgePairs.slice();
-
-    var info = global.PlanarVibePlanarityTest.analyzePlanar3Tree(nodeIds, edgePairs);
+  function computeP3TPositions(nodeIds, edgePairs) {
+    var ids = (nodeIds || []).map(String);
+    var pairs = (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; });
+    var info = PlanarityTest.analyzePlanar3Tree(ids, pairs);
     if (!info.ok) {
       return {
         ok: false,
@@ -59,8 +51,8 @@
     }
 
     var coord = {};
-    for (i = 0; i < nodeIds.length; i += 1) {
-      coord[nodeIds[i]] = { x: 0, y: 0 };
+    for (i = 0; i < ids.length; i += 1) {
+      coord[ids[i]] = { x: 0, y: 0 };
     }
 
     var R = 1000;
@@ -103,25 +95,32 @@
 
     processClique(outer[0], outer[1], outer[2]);
 
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, coord, 24);
-    } else {
-      cy.nodes().forEach(function (node) {
-        var id = String(node.id());
-        if (coord[id]) {
-          node.position(coord[id]);
-        }
-      });
-      cy.fit(undefined, 24);
-    }
-
     return {
       ok: true,
-      message: 'Applied P3T equal-face-area layout (' + nodeIds.length + ' vertices)'
+      nodeIds: ids,
+      edgePairs: pairs,
+      outerFace: outer.slice(),
+      embedding: emb,
+      pos: coord
+    };
+  }
+
+  function applyP3TLayout(cy) {
+    var graph = PlaygroundUtils.graphFromCy(cy);
+    var result = computeP3TPositions(graph.nodeIds, graph.edgePairs);
+    if (!result || !result.ok) {
+      return result || { ok: false, message: 'P3T failed' };
+    }
+
+    PlaygroundUtils.applyAndFit(cy, result.pos);
+    return {
+      ok: true,
+      message: 'Applied P3T equal-face-area layout (' + result.nodeIds.length + ' vertices)'
     };
   }
 
   global.PlanarVibeP3T = {
+    computeP3TPositions: computeP3TPositions,
     applyP3TLayout: applyP3TLayout
   };
 })(window);

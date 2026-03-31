@@ -1847,6 +1847,9 @@
           missingMessage: 'ImPrEd layout module is missing',
           module: global.PlanarVibeImPrEd,
           methodName: 'applyImPrEdLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer']);
+          },
           buildMethodOptions: function () {
             var lastStatsIter = 0;
             return {
@@ -1884,7 +1887,12 @@
           disabledMessage: 'Tutte layout requires a planar graph',
           missingMessage: 'Tutte layout module is missing',
           module: global.PlanarVibeTutte,
-          methodName: 'applyTutteLayout'
+          methodName: 'applyTutteLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareTriangulatedLayoutData']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'embeddingHasFace', 'analyzeInternallyThreeConnected', 'normalizeNodeIds', 'normalizeEdgePairs', 'normalizeOuterFace', 'edgeKey']) ||
+              missingPlanarityUtilities();
+          }
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -1894,19 +1902,21 @@
       }
 
       if (layoutName === 'air') {
-        normalizeLayoutScale();
         runSpecialLayout({
           layoutName: 'air',
           disabledMessage: 'Air layout requires a planar graph',
           missingMessage: 'Air layout module is missing',
           module: global.PlanarVibeAir,
           methodName: 'applyAirLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
+          },
           buildMethodOptions: function () {
             return {
               incremental: true,
               interactive: true,
               delayMs: 0,
-              renderEvery: 4,
+              renderEvery: 1,
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -1944,13 +1954,15 @@
       }
 
       if (layoutName === 'ppag') {
-        normalizeLayoutScale();
         runSpecialLayout({
           layoutName: 'ppag',
           disabledMessage: 'PPAG layout requires a planar graph',
           missingMessage: 'PPAG layout module is missing',
           module: global.PlanarVibePPAG,
           methodName: 'applyPPAGLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
+          },
           buildMethodOptions: function () {
             return {
               incremental: true,
@@ -1991,13 +2003,16 @@
       }
 
       if (layoutName === 'facebalancer') {
-        normalizeLayoutScale();
         runSpecialLayout({
           layoutName: 'facebalancer',
           disabledMessage: 'FaceBalancer layout requires a planar graph',
           missingMessage: 'FaceBalancer layout module is missing',
           module: global.PlanarVibeFaceBalancer,
           methodName: 'applyFaceBalancerLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']) ||
+              missingTutteUtilities(['defaultOuterPlacementOptions']);
+          },
           buildMethodOptions: function () {
             return {
               incremental: true,
@@ -2038,7 +2053,13 @@
           disabledMessage: 'CEG23-bfs layout requires a planar graph',
           missingMessage: 'CEG23-bfs layout module is missing',
           module: global.PlanarVibeCEG23Bfs,
-          methodName: 'applyCEG23BfsLayout'
+          methodName: 'applyCEG23BfsLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'edgeKey']) ||
+              missingPlanarityUtilities() ||
+              missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
+          }
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2053,7 +2074,13 @@
           disabledMessage: 'CEG23-xy layout requires a planar graph',
           missingMessage: 'CEG23-xy layout module is missing',
           module: global.PlanarVibeCEG23Xy,
-          methodName: 'applyCEG23XyLayout'
+          methodName: 'applyCEG23XyLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'edgeKey']) ||
+              missingPlanarityUtilities() ||
+              missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
+          }
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2068,7 +2095,11 @@
           disabledMessage: 'P3T layout requires a planar 3-tree',
           missingMessage: 'P3T layout module is missing',
           module: global.PlanarVibeP3T,
-          methodName: 'applyP3TLayout'
+          methodName: 'applyP3TLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit']) ||
+              missingPlanar3TreeUtilities();
+          }
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2083,7 +2114,12 @@
           disabledMessage: 'FPP layout requires a planar graph',
           missingMessage: 'FPP layout module is missing',
           module: global.PlanarVibeFPP,
-          methodName: 'applyFPPLayout'
+          methodName: 'applyFPPLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit']) ||
+              missingGraphUtilities(['buildAdjacencySets', 'chooseOuterFaceFromEmbedding', 'isTriangulatedEmbedding', 'triangulateByFaceStellation']) ||
+              missingPlanarityUtilities();
+          }
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2098,7 +2134,11 @@
           disabledMessage: 'Schnyder layout requires a planar graph',
           missingMessage: 'Schnyder layout module is missing',
           module: global.PlanarVibeSchnyder,
-          methodName: 'applySchnyderLayout'
+          methodName: 'applySchnyderLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'copyPositions', 'triangulateByFaceStellation']);
+          }
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2108,19 +2148,24 @@
       }
 
       if (layoutName === 'reweighttutte') {
-        normalizeLayoutScale();
         runSpecialLayout({
           layoutName: 'reweighttutte',
           disabledMessage: 'ReweightTutte layout requires a planar graph',
           missingMessage: 'ReweightTutte layout module is missing',
           module: global.PlanarVibeReweightTutte,
           methodName: 'applyReweightTutteLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData', 'createAugmentationDebugState']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'collectMovableVertices', 'computeDrawingDiameter', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'findOuterFaceIndex', 'polygonAreaAbs']) ||
+              missingTutteUtilities(['placeOuterFaceVertices', 'defaultOuterPlacementOptions']);
+          },
           buildMethodOptions: function () {
             return {
               incremental: true,
               interactive: true,
-              renderEvery: 1,
-              yieldEvery: 1,
+              delayMs: 0,
+              renderEvery: 2,
+              yieldEvery: 5,
               onIteration: function (progress) {
                 if (!progress) {
                   return;
@@ -2151,19 +2196,23 @@
       }
 
       if (layoutName === 'fd-uniform') {
-        normalizeLayoutScale();
         runSpecialLayout({
           layoutName: 'fd-uniform',
           disabledMessage: 'FD-uniform layout requires a planar graph',
           missingMessage: 'FD-uniform layout module is missing',
           module: global.PlanarVibeFDUniform,
           methodName: 'applyFDUniformLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData', 'createAugmentationDebugState']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'computeDrawingDiameter', 'copyPositions', 'segmentsIntersectOrTouch', 'computePositionMoveStats', 'createMovementConvergenceTracker']);
+          },
           buildMethodOptions: function () {
             return {
               incremental: true,
               interactive: true,
               delayMs: 0,
-              renderEvery: 4,
+              renderEvery: 2,
+              yieldEvery: 5,
               useSeedOuter: true,
               onIteration: function (progress) {
                 if (!progress || progress.iter % 10 !== 0) {
@@ -2209,6 +2258,38 @@
       layout.run();
     }
 
+    function firstMissingFunction(moduleLike, methodNames, message) {
+      if (!moduleLike) {
+        return message;
+      }
+      for (var i = 0; i < methodNames.length; i += 1) {
+        if (typeof moduleLike[methodNames[i]] !== 'function') {
+          return message;
+        }
+      }
+      return null;
+    }
+
+    function missingPlanarityUtilities() {
+      return firstMissingFunction(global.PlanarVibePlanarityTest, ['computePlanarEmbedding'], 'Planarity utilities are missing');
+    }
+
+    function missingPlanar3TreeUtilities() {
+      return firstMissingFunction(global.PlanarVibePlanarityTest, ['analyzePlanar3Tree'], 'Planarity utilities are missing');
+    }
+
+    function missingGraphUtilities(methodNames) {
+      return firstMissingFunction(global.GraphUtils, methodNames, 'Planar graph utilities are missing');
+    }
+
+    function missingPlaygroundUtilities(methodNames) {
+      return firstMissingFunction(global.PlaygroundUtils, methodNames, 'Shared layout utilities are missing');
+    }
+
+    function missingTutteUtilities(methodNames) {
+      return firstMissingFunction(global.PlanarVibeTutteAlgorithm, methodNames, 'Tutte algorithm is missing');
+    }
+
     function runSpecialLayout(config, onDone) {
       var name = config.layoutName;
       var shouldDisableOthers = !!config.disableOtherButtonsWhileRunning;
@@ -2221,6 +2302,14 @@
         setStatus(config.missingMessage, true);
         if (typeof onDone === 'function') onDone();
         return;
+      }
+      if (typeof config.checkDependencies === 'function') {
+        var dependencyMessage = config.checkDependencies();
+        if (dependencyMessage) {
+          setStatus(dependencyMessage, true);
+          if (typeof onDone === 'function') onDone();
+          return;
+        }
       }
       if (shouldDisableOthers) {
         enterLayoutBusy(name);

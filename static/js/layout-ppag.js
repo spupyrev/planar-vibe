@@ -1,12 +1,16 @@
 (function (global) {
   'use strict';
 
-  var PPAG_REV = 'ppag-20260323';
+  var GraphUtils = global.GraphUtils;
+  var Metrics = global.PlanarVibeMetrics;
   var PlaygroundUtils = global.PlaygroundUtils;
-  var orientFaceCCW = global.GraphUtils.orientFaceCCW;
-  var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
-  var polygonArea2 = global.GraphUtils.polygonArea2;
-  var triangleArea2 = global.GraphUtils.triangleArea2;
+  var computePositionMoveStats = GraphUtils.computePositionMoveStats;
+  var copyPositions = GraphUtils.copyPositions;
+  var findOuterFaceIndex = GraphUtils.findOuterFaceIndex;
+  var orientFaceCCW = GraphUtils.orientFaceCCW;
+  var outerFaceDiameter = GraphUtils.outerFaceDiameter;
+  var polygonArea2 = GraphUtils.polygonArea2;
+  var triangleArea2 = GraphUtils.triangleArea2;
   var PPAG_INTERNAL = {
     tolGrad: 1e-8,
     acceptanceTol: 1e-12
@@ -20,7 +24,7 @@
       incidentTrianglesByVertex[String(augmentedEmbedding.idByIndex[i])] = [];
     }
 
-    var outerIndex = global.GraphUtils.findOuterFaceIndex(augmentedEmbedding.faces || [], outerFace);
+    var outerIndex = findOuterFaceIndex(augmentedEmbedding.faces || [], outerFace);
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
       if (!face || face.length < 3) {
@@ -220,9 +224,9 @@
   }
 
   function originalDrawingHasCrossings(posById, edgePairs) {
-    return !!(global.PlanarVibeMetrics &&
-      typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
-      global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs));
+    return !!(Metrics &&
+      typeof Metrics.hasCrossingsFromPositions === 'function' &&
+      Metrics.hasCrossingsFromPositions(posById, edgePairs));
   }
 
   function normalizePPAGOptions(options) {
@@ -244,7 +248,7 @@
     };
   }
 
-  function preparePPAGState(graph, options, cy) {
+  function preparePPAGState(graph, options) {
     var opts = normalizePPAGOptions(options);
     var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
       failureLabel: 'PPAG layout',
@@ -254,7 +258,7 @@
         tolerance: 1e-7,
         useSeedOuter: false
       }
-    }, cy);
+    });
     if (!context || !context.ok) {
       return context || { ok: false, message: 'PPAG setup failed' };
     }
@@ -323,7 +327,7 @@
 
     var iter;
     for (iter = 1; iter <= opts.maxIters && status === 'max_iters'; iter += 1) {
-      var prevSweepPos = global.GraphUtils.copyPositions(posById);
+      var prevSweepPos = copyPositions(posById);
       var acceptedCount = 0;
       var acceptedStepSum = 0;
       var lineSearchSteps = 0;
@@ -369,9 +373,7 @@
         }
       }
 
-      lastMoveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
-        ? global.GraphUtils.computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: 0 })
-        : { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
+      lastMoveStats = computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: 0 });
       lastMoveStats.acceptedCount = acceptedCount;
 
       if (opts.onSweep) {
@@ -412,7 +414,7 @@
     return {
       ok: !hasCrossings,
       status: status,
-      positions: posById,
+      pos: posById,
       stats: state,
       moveStats: lastMoveStats,
       iters: Math.min(opts.maxIters, Math.max(0, iter - (status === 'max_iters' ? 1 : 0))),
@@ -427,7 +429,7 @@
     var prepared = preparePPAGState({
       nodeIds: (nodeIds || []).map(String),
       edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    }, opts, opts.cy || null);
+    }, opts);
     if (!prepared || !prepared.ok) {
       return prepared || { ok: false, message: 'PPAG setup failed' };
     }
@@ -436,7 +438,7 @@
       return {
         ok: true,
         status: 'realized',
-        positions: prepared.posById,
+        pos: prepared.posById,
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
@@ -462,37 +464,24 @@
       return {
         ok: false,
         status: result.status,
-        message: 'PPAG [' + PPAG_REV + '] produced a non-plane drawing'
+        message: 'PPAG produced a non-plane drawing'
       };
     }
 
-    var faceScore = global.PlanarVibeMetrics && global.PlanarVibeMetrics.computeUniformFaceAreaScore
-      ? global.PlanarVibeMetrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById)
+    var faceScore = Metrics && Metrics.computeUniformFaceAreaScore
+      ? Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById)
       : null;
     var lastStats = result.stats || {};
-    var message = 'Applied PPAG [' + PPAG_REV + '] (' + prepared.ppagData.triangles.length + ' bounded triangles';
-    if (prepared.augmented.dummyCount > 0) {
-      message += ', +' + prepared.augmented.dummyCount + ' dummy';
-    }
-    message += ', status ' + result.status;
-    if (Number.isFinite(lastStats.maxRelError)) {
-      message += ', max rel err ' + lastStats.maxRelError.toFixed(3);
-    }
-    if (faceScore && faceScore.ok && Number.isFinite(faceScore.quality)) {
-      message += ', face score ' + faceScore.quality.toFixed(3);
-    }
-    message += ')';
 
     return {
       ok: true,
       status: result.status,
-      positions: prepared.posById,
+      pos: prepared.posById,
       graph: prepared.graph,
       outerFace: prepared.outerFace,
       augmented: prepared.augmented,
       ppagData: prepared.ppagData,
       iters: result.iters,
-      message: message,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
       boundedFaceCount: prepared.ppagData.triangles.length,
@@ -501,62 +490,49 @@
   }
 
   async function applyPPAGLayout(cy, options) {
-    var runtime = PlaygroundUtils;
-    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
-      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
-    }
-
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var renderer = runtime.createIncrementalRenderer({
-      cy: cy,
-      nodeIds: graph.nodeIds,
-      getPositions: function () { return currentPositions; },
-      interactive: options && options.interactive !== false,
-      delayMs: Number.isFinite(options && options.delayMs) ? Math.max(0, options.delayMs) : 0,
-      renderEvery: Number.isFinite(options && options.renderEvery) ? Math.max(1, Math.floor(options.renderEvery)) : 4,
-      yieldEvery: Number.isFinite(options && options.yieldEvery) ? Math.max(1, Math.floor(options.yieldEvery)) : 5,
-      fitPadding: 24
-    });
-    var currentPositions = {};
-    await renderer.begin();
-
-    var result = await computePPAGPositions(graph.nodeIds, graph.edgePairs, Object.assign({}, options || {}, {
-      cy: cy,
-      onSweep: async function (progress) {
-        currentPositions = progress.positions || currentPositions;
-        if (options && typeof options.onIteration === 'function') {
-          options.onIteration(progress);
+    return PlaygroundUtils.runIncrementalLayout(cy, options, {
+      compute: computePPAGPositions,
+      patchComputeOptions: function (ctx) {
+        return { onSweep: ctx.onProgress };
+      },
+      getPositions: function (result) {
+        return result.pos;
+      },
+      buildResult: function (ctx) {
+        var result = ctx.result;
+        var message = 'Applied PPAG (' + result.boundedFaceCount + ' bounded triangles';
+        if (result.dummyCount > 0) {
+          message += ', +' + result.dummyCount + ' dummy';
         }
-        await renderer.onProgress(progress, { forceYield: !!((options && options.onIteration) || (options && options.delayMs > 0)) });
-      }
-    }));
-
-    renderer.finish();
-
-    if (!result || !result.ok) {
-      return result || { ok: false, message: 'PPAG failed' };
-    }
-
-    runtime.applyPositionsToCy(cy, result.positions);
-    cy.fit(undefined, 24);
-    return {
-      ok: true,
-      status: result.status,
-      iters: result.iters,
-      message: result.message,
-      faceAreaScore: result.faceAreaScore,
-      maxRelError: result.maxRelError,
-      boundedFaceCount: result.boundedFaceCount,
-      dummyCount: result.dummyCount,
-      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-        ? PlaygroundUtils.createAugmentationDebugState(
-          result.graph,
-          result.outerFace,
-          result.augmented,
-          result.positions
-        )
-        : null
-    };
+        message += ', status ' + result.status;
+        if (Number.isFinite(result.maxRelError)) {
+          message += ', max rel err ' + result.maxRelError.toFixed(3);
+        }
+        if (Number.isFinite(result.faceAreaScore)) {
+          message += ', face score ' + result.faceAreaScore.toFixed(3);
+        }
+        message += ')';
+        return {
+          ok: true,
+          status: result.status,
+          iters: result.iters,
+          message: message,
+          faceAreaScore: result.faceAreaScore,
+          maxRelError: result.maxRelError,
+          boundedFaceCount: result.boundedFaceCount,
+          dummyCount: result.dummyCount,
+          debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+            ? PlaygroundUtils.createAugmentationDebugState(
+              result.graph,
+              result.outerFace,
+              result.augmented,
+              result.pos
+            )
+            : null
+        };
+      },
+      failureMessage: 'PPAG failed'
+    });
   }
 
   global.PlanarVibePPAG = {

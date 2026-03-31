@@ -3,10 +3,10 @@
 
   var PlaygroundUtils = global.PlaygroundUtils;
   var GraphUtils = global.GraphUtils;
-  var Tutte = global.PlanarVibeTutteAlgorithm || {};
-  var PlanarityTest = global.PlanarVibePlanarityTest || {};
+  var Tutte = global.PlanarVibeTutteAlgorithm;
+  var PlanarityTest = global.PlanarVibePlanarityTest;
   var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
-  var buildAdjacency = GraphUtils.buildAdjacency;
+  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var edgeKey = GraphUtils.edgeKey;
   var chooseOuterFaceFromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding;
   var computePlanarEmbedding = PlanarityTest.computePlanarEmbedding;
@@ -157,7 +157,7 @@
       return { ok: false, message: 'CEG23-bfs requires at least 3 vertices' };
     }
 
-    var adjacency = buildAdjacency(ids, pairs);
+    var adjacency = buildAdjacencyArrays(ids, pairs);
     var emb = computePlanarEmbedding(ids, pairs);
     if (!emb || !emb.ok) {
       return { ok: false, message: 'CEG23-bfs requires a planar graph' };
@@ -216,7 +216,7 @@
       return { ok: false, message: 'CEG23-xy requires at least 3 vertices' };
     }
 
-    var adjacency = buildAdjacency(ids, pairs);
+    var adjacency = buildAdjacencyArrays(ids, pairs);
     var emb = computePlanarEmbedding(ids, pairs);
     if (!emb || !emb.ok) {
       return { ok: false, message: 'CEG23-xy requires a planar graph' };
@@ -291,27 +291,13 @@
   }
 
   function applyCEG23BfsLayout(cy, options) {
-    if (!PlaygroundUtils || typeof PlaygroundUtils.graphFromCy !== 'function' || typeof PlaygroundUtils.currentPositionsFromCy !== 'function') {
-      return { ok: false, message: 'Shared planar utilities are missing. Check script load order' };
-    }
-    if (typeof buildAdjacency !== 'function' || typeof edgeKey !== 'function' || typeof chooseOuterFaceFromEmbedding !== 'function' || typeof alignOuterFaceEdgeHorizontally !== 'function') {
-      return { ok: false, message: 'GraphUtils is missing. Check script load order' };
-    }
-    if (typeof computePlanarEmbedding !== 'function') {
-      return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
-    }
-    if (!Tutte || typeof Tutte.computeBarycentricPositions !== 'function' || typeof Tutte.buildUniformWeights !== 'function' || typeof Tutte.defaultOuterPlacementOptions !== 'function') {
-      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
-    }
     var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeCEG23BfsPositions(graph.nodeIds, graph.edgePairs, Object.assign({}, options || {}, {
-      seedPos: PlaygroundUtils.currentPositionsFromCy(cy)
-    }));
+    var result = computeCEG23BfsPositions(graph.nodeIds, graph.edgePairs, options || {});
     if (!result || !result.ok) {
       return result || { ok: false, message: 'CEG23-bfs failed' };
     }
     if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, result.pos, 24);
+      PlaygroundUtils.applyAndFit(cy, result.pos);
     } else {
       var nodes = cy.nodes().toArray();
       for (var i = 0; i < nodes.length; i += 1) {
@@ -329,27 +315,13 @@
   }
 
   function applyCEG23XyLayout(cy, options) {
-    if (!PlaygroundUtils || typeof PlaygroundUtils.graphFromCy !== 'function' || typeof PlaygroundUtils.currentPositionsFromCy !== 'function') {
-      return { ok: false, message: 'Shared planar utilities are missing. Check script load order' };
-    }
-    if (typeof buildAdjacency !== 'function' || typeof edgeKey !== 'function' || typeof chooseOuterFaceFromEmbedding !== 'function' || typeof alignOuterFaceEdgeHorizontally !== 'function') {
-      return { ok: false, message: 'GraphUtils is missing. Check script load order' };
-    }
-    if (typeof computePlanarEmbedding !== 'function') {
-      return { ok: false, message: 'Planarity utilities are missing. Check script load order' };
-    }
-    if (!Tutte || typeof Tutte.computeBarycentricPositions !== 'function' || typeof Tutte.buildUniformWeights !== 'function' || typeof Tutte.defaultOuterPlacementOptions !== 'function') {
-      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
-    }
     var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeCEG23XyPositions(graph.nodeIds, graph.edgePairs, Object.assign({}, options || {}, {
-      seedPos: PlaygroundUtils.currentPositionsFromCy(cy)
-    }));
+    var result = computeCEG23XyPositions(graph.nodeIds, graph.edgePairs, options || {});
     if (!result || !result.ok) {
       return result || { ok: false, message: 'CEG23-xy failed' };
     }
     if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, result.pos, 24);
+      PlaygroundUtils.applyAndFit(cy, result.pos);
     } else {
       var nodes = cy.nodes().toArray();
       for (var i = 0; i < nodes.length; i += 1) {

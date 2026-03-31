@@ -3,7 +3,7 @@
 
   var PlaygroundUtils = global.PlaygroundUtils;
   var faceKey = global.GraphUtils.faceKey;
-  var buildAdjacency = global.GraphUtils.buildAdjacency;
+  var buildAdjacencyArrays = global.GraphUtils.buildAdjacencyArrays;
   var polygonArea2 = global.GraphUtils.polygonArea2;
   var orientFaceCCW = global.GraphUtils.orientFaceCCW;
   var vecAddScaled = global.GraphUtils.vecAddScaled;
@@ -12,76 +12,74 @@
   var vecScale = global.GraphUtils.vecScale;
   var vecSub = global.GraphUtils.vecSub;
 
-  function buildInitialPositions(nodeIds, edgePairs, outerFace, cy) {
-    function solveExactWeightedBarycentricLayout(input) {
-      var ids = (input && input.nodeIds) ? input.nodeIds.map(String) : [];
-      var adjacency = (input && input.adjacency) ? input.adjacency : {};
-      var face = (input && input.outerFace) ? input.outerFace.map(String) : [];
-      var initOptions = input && input.initOptions ? input.initOptions : {};
-      var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(ids, face, initOptions);
-      var outerSet = new Set(face);
-      var interiorIds = [];
-      var interiorIndexById = {};
-      var i;
-      var j;
+  function solveExactWeightedBarycentricLayout(input) {
+    var ids = (input && input.nodeIds) ? input.nodeIds.map(String) : [];
+    var adjacency = (input && input.adjacency) ? input.adjacency : {};
+    var face = (input && input.outerFace) ? input.outerFace.map(String) : [];
+    var initOptions = input && input.initOptions ? input.initOptions : {};
+    var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(ids, face, initOptions);
+    var outerSet = new Set(face);
+    var interiorIds = [];
+    var interiorIndexById = {};
+    var i;
+    var j;
 
-      for (i = 0; i < ids.length; i += 1) {
-        var id = String(ids[i]);
-        if (!outerSet.has(id)) {
-          interiorIndexById[id] = interiorIds.length;
-          interiorIds.push(id);
-        }
+    for (i = 0; i < ids.length; i += 1) {
+      var id = String(ids[i]);
+      if (!outerSet.has(id)) {
+        interiorIndexById[id] = interiorIds.length;
+        interiorIds.push(id);
       }
-      if (interiorIds.length === 0) {
-        return { ok: true, pos: pos, iters: 0 };
-      }
-
-      var L = new Array(interiorIds.length);
-      var bx = createZeroVector(interiorIds.length);
-      var by = createZeroVector(interiorIds.length);
-      for (i = 0; i < interiorIds.length; i += 1) {
-        L[i] = createZeroVector(interiorIds.length);
-        L[i][i] = 1;
-        var neighbors = adjacency[interiorIds[i]] || [];
-        if (neighbors.length === 0) {
-          continue;
-        }
-        var weight = 1 / neighbors.length;
-        for (j = 0; j < neighbors.length; j += 1) {
-          var neighborId = String(neighbors[j]);
-          var interiorIdx = interiorIndexById[neighborId];
-          if (interiorIdx === undefined) {
-            bx[i] += weight * pos[neighborId].x;
-            by[i] += weight * pos[neighborId].y;
-          } else {
-            L[i][interiorIdx] -= weight;
-          }
-        }
-      }
-
-      var factor = luFactorize(L);
-      if (!factor) {
-        return { ok: false, message: 'Exact barycentric solve failed' };
-      }
-      var solved = solveLUWithTwoRhs(factor, bx, by);
-      if (!solved) {
-        return { ok: false, message: 'Exact barycentric solve failed' };
-      }
-      for (i = 0; i < interiorIds.length; i += 1) {
-        pos[interiorIds[i]] = { x: solved.x1[i], y: solved.x2[i] };
-      }
-      return { ok: true, pos: pos, iters: 1 };
+    }
+    if (interiorIds.length === 0) {
+      return { ok: true, pos: pos, iters: 0 };
     }
 
-    var adjacency = buildAdjacency(nodeIds, edgePairs);
-    var seedPos = PlaygroundUtils.currentPositionsFromCy(cy);
+    var L = new Array(interiorIds.length);
+    var bx = createZeroVector(interiorIds.length);
+    var by = createZeroVector(interiorIds.length);
+    for (i = 0; i < interiorIds.length; i += 1) {
+      L[i] = createZeroVector(interiorIds.length);
+      L[i][i] = 1;
+      var neighbors = adjacency[interiorIds[i]] || [];
+      if (neighbors.length === 0) {
+        continue;
+      }
+      var weight = 1 / neighbors.length;
+      for (j = 0; j < neighbors.length; j += 1) {
+        var neighborId = String(neighbors[j]);
+        var interiorIdx = interiorIndexById[neighborId];
+        if (interiorIdx === undefined) {
+          bx[i] += weight * pos[neighborId].x;
+          by[i] += weight * pos[neighborId].y;
+        } else {
+          L[i][interiorIdx] -= weight;
+        }
+      }
+    }
+
+    var factor = luFactorize(L);
+    if (!factor) {
+      return { ok: false, message: 'Exact barycentric solve failed' };
+    }
+    var solved = solveLUWithTwoRhs(factor, bx, by);
+    if (!solved) {
+      return { ok: false, message: 'Exact barycentric solve failed' };
+    }
+    for (i = 0; i < interiorIds.length; i += 1) {
+      pos[interiorIds[i]] = { x: solved.x1[i], y: solved.x2[i] };
+    }
+    return { ok: true, pos: pos, iters: 1 };
+  }
+
+  function buildInitialPositions(nodeIds, edgePairs, outerFace) {
+    var adjacency = buildAdjacencyArrays(nodeIds, edgePairs);
     return solveExactWeightedBarycentricLayout({
       nodeIds: nodeIds,
       adjacency: adjacency,
       outerFace: outerFace,
       initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
-        useSeedOuter: false,
-        seedPos: seedPos
+        useSeedOuter: false
       })
     });
   }
@@ -232,7 +230,11 @@
     return { x1: x1, x2: x2 };
   }
 
-  function buildFaceBalancerData(augmentedNodeIds, augmentedEdgePairs, augmentedEmbedding, outerFace, initPos, areaTol, faceBarrierWeight, edgeBarrierWeight, edgeUniformWeight, minFaceArea, minEdgeLength2) {
+  function buildFaceBalancerData(input) {
+    var augmentedEdgePairs = input.augmentedEdgePairs;
+    var augmentedEmbedding = input.augmentedEmbedding;
+    var outerFace = input.outerFace;
+    var initPos = input.initPos;
     var augIds = augmentedEmbedding.idByIndex.map(String);
     var augIndexById = {};
     var i;
@@ -355,16 +357,16 @@
       boundedFaces: boundedFaces,
       boundedFaceKeys: boundedFaceKeys,
       edges: edges,
-      areaTol: Number.isFinite(areaTol) ? Math.max(0, areaTol) : 0,
-      faceBarrierWeight: Number.isFinite(faceBarrierWeight) ? Math.max(0, faceBarrierWeight) : 0,
-      edgeBarrierWeight: Number.isFinite(edgeBarrierWeight) ? Math.max(0, edgeBarrierWeight) : 0,
-      edgeUniformWeight: Number.isFinite(edgeUniformWeight) ? Math.max(0, edgeUniformWeight) : 0,
+      areaTol: Number.isFinite(input.areaTol) ? Math.max(0, input.areaTol) : 0,
+      faceBarrierWeight: Number.isFinite(input.faceBarrierWeight) ? Math.max(0, input.faceBarrierWeight) : 0,
+      edgeBarrierWeight: Number.isFinite(input.edgeBarrierWeight) ? Math.max(0, input.edgeBarrierWeight) : 0,
+      edgeUniformWeight: Number.isFinite(input.edgeUniformWeight) ? Math.max(0, input.edgeUniformWeight) : 0,
       edgeBarrierScale2: edgeScaleCount > 0 ? (edgeScaleSum / edgeScaleCount) : 1,
       initialMinEdgeLength2: Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0,
       initialAvgFaceArea: initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1,
       initialMinFaceArea: Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0,
-      minFaceArea: Number.isFinite(minFaceArea) ? Math.max(0, minFaceArea) : 0,
-      minEdgeLength2: Number.isFinite(minEdgeLength2) ? Math.max(0, minEdgeLength2) : 0
+      minFaceArea: Number.isFinite(input.minFaceArea) ? Math.max(0, input.minFaceArea) : 0,
+      minEdgeLength2: Number.isFinite(input.minEdgeLength2) ? Math.max(0, input.minEdgeLength2) : 0
     };
   }
 
@@ -790,7 +792,7 @@
     return vecScale(r, -1);
   }
 
-  async function optimizeTheta(q0, data, opts) {
+  async function runFaceBalancerOptimization(q0, data, opts) {
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 80;
     var gradTol = Number.isFinite(opts.gradTol) ? Math.max(0, opts.gradTol) : 1e-5;
     var stepTol = Number.isFinite(opts.stepTol) ? Math.max(0, opts.stepTol) : 1e-10;
@@ -903,28 +905,21 @@
     };
   }
 
-  async function applyFaceBalancerLayout(cy, options) {
-    var runtime = PlaygroundUtils;
-    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
-      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
-    }
-
+  async function computeFaceBalancerPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var interactive = opts.interactive !== false;
-    var delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0;
-    var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 2;
-    var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5;
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 80;
 
-    if (!global.PlanarVibeTutteAlgorithm ||
-        !global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions) {
-      return { ok: false, message: 'Tutte algorithm is missing. Check script load order' };
-    }
+    var graph = {
+      nodeIds: (nodeIds || []).map(String),
+      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
+    };
 
-    var context = PlaygroundUtils.prepareTriangulatedLayoutContext(cy, {
+    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
       failureLabel: 'FaceBalancer layout',
       minNodeCount: 3,
-      initPositions: buildInitialPositions
+      initPositions: function (solveNodeIds, solveEdgePairs, outerFace) {
+        return buildInitialPositions(solveNodeIds, solveEdgePairs, outerFace);
+      }
     });
     if (!context || !context.ok) {
       return context || { ok: false, message: 'FaceBalancer setup failed' };
@@ -937,19 +932,18 @@
     var areaTol = Number.isFinite(opts.areaTol) && opts.areaTol >= 0
       ? opts.areaTol
       : 1e-15;
-    var data = buildFaceBalancerData(
-      augmented.nodeIds,
-      augmented.edgePairs,
-      augmented.embedding,
-      outerFace,
-      initPos,
-      areaTol,
-      Number.isFinite(opts.faceBarrierWeight) ? Math.max(0, opts.faceBarrierWeight) : 0.2,
-      Number.isFinite(opts.edgeBarrierWeight) ? Math.max(0, opts.edgeBarrierWeight) : 0.05,
-      Number.isFinite(opts.edgeUniformWeight) ? Math.max(0, opts.edgeUniformWeight) : 0.02,
-      Number.isFinite(opts.minFaceArea) && opts.minFaceArea >= 0 ? opts.minFaceArea : 0,
-      Number.isFinite(opts.minEdgeLength2) && opts.minEdgeLength2 >= 0 ? opts.minEdgeLength2 : 0
-    );
+    var data = buildFaceBalancerData({
+      augmentedEdgePairs: augmented.edgePairs,
+      augmentedEmbedding: augmented.embedding,
+      outerFace: outerFace,
+      initPos: initPos,
+      areaTol: areaTol,
+      faceBarrierWeight: Number.isFinite(opts.faceBarrierWeight) ? Math.max(0, opts.faceBarrierWeight) : 0.2,
+      edgeBarrierWeight: Number.isFinite(opts.edgeBarrierWeight) ? Math.max(0, opts.edgeBarrierWeight) : 0.05,
+      edgeUniformWeight: Number.isFinite(opts.edgeUniformWeight) ? Math.max(0, opts.edgeUniformWeight) : 0.02,
+      minFaceArea: Number.isFinite(opts.minFaceArea) && opts.minFaceArea >= 0 ? opts.minFaceArea : 0,
+      minEdgeLength2: Number.isFinite(opts.minEdgeLength2) && opts.minEdgeLength2 >= 0 ? opts.minEdgeLength2 : 0
+    });
     if (!data.ok) {
       return { ok: false, message: data.reason || 'FaceBalancer setup failed' };
     }
@@ -963,52 +957,35 @@
       data.minEdgeLength2 = 0;
     }
     if (data.boundedFaceKeys.length === 0) {
-      runtime.applyPositionsToCy(cy, initPos);
-      cy.fit(undefined, 24);
       return {
         ok: true,
-        message: 'Applied FaceBalancer (no bounded faces to balance)',
-        debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-          ? PlaygroundUtils.createAugmentationDebugState(
-            g,
-            outerFace,
-            augmented,
-            initPos
-          )
-          : null
+        nodeIds: g.nodeIds,
+        edgePairs: g.edgePairs,
+        outerFace: outerFace,
+        graph: g,
+        augmented: augmented,
+        pos: initPos,
+        stopReason: 'no-bounded-faces',
+        iters: 0,
+        objective: 0,
+        faceAreaScore: null,
+        boundedFaceCount: 0
       };
     }
 
     var q0 = createZeroVector(data.qSize);
-    var movementScale = (global.GraphUtils && typeof global.GraphUtils.computeDrawingDiameter === 'function')
-      ? global.GraphUtils.computeDrawingDiameter(augmented.nodeIds, initPos)
-      : 1;
-    var movementTracker = (global.GraphUtils && typeof global.GraphUtils.createMovementConvergenceTracker === 'function')
-      ? global.GraphUtils.createMovementConvergenceTracker({
-        minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop)
-          ? Math.max(1, Math.floor(opts.minItersBeforeStop))
-          : Math.max(20, Math.min(maxIters, 40)),
-        stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 8,
-        maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-6 * movementScale,
-        avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-7 * movementScale
-      })
-      : null;
+    var movementScale = global.GraphUtils.computeDrawingDiameter(augmented.nodeIds, initPos);
+    var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
+      minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop)
+        ? Math.max(1, Math.floor(opts.minItersBeforeStop))
+        : Math.max(20, Math.min(maxIters, 40)),
+      stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 8,
+      maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-6 * movementScale,
+      avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-7 * movementScale
+    });
 
     var iterationCount = 0;
-    var livePositions = initPos;
-    var renderer = runtime.createIncrementalRenderer({
-      cy: cy,
-      nodeIds: g.nodeIds,
-      getPositions: function () { return livePositions; },
-      interactive: interactive,
-      delayMs: delayMs,
-      renderEvery: renderEvery,
-      yieldEvery: yieldEvery,
-      fitPadding: 24
-    });
-    await renderer.begin();
-
-    var result = await optimizeTheta(q0, data, {
+    var result = await runFaceBalancerOptimization(q0, data, {
       maxIters: maxIters,
       gradTol: Number.isFinite(opts.gradTol) ? Math.max(0, opts.gradTol) : 1e-5,
       stepTol: Number.isFinite(opts.stepTol) ? Math.max(0, opts.stepTol) : 1e-6,
@@ -1016,17 +993,12 @@
       movementTracker: movementTracker,
       onIteration: async function (progress) {
         iterationCount = progress.iter;
-        livePositions = progress.positions || livePositions;
         if (typeof opts.onIteration === 'function') opts.onIteration(progress);
-        await renderer.onProgress(progress, { forceYield: !!(opts.onIteration || delayMs > 0) });
       }
     });
     if (!result.ok) {
       return { ok: false, message: result.reason || 'FaceBalancer optimization failed' };
     }
-
-    livePositions = result.pos;
-    renderer.finish();
     var hasCrossings = global.PlanarVibeMetrics && typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function'
       ? global.PlanarVibeMetrics.hasCrossingsFromPositions(result.pos, g.edgePairs)
       : false;
@@ -1042,22 +1014,61 @@
       : null;
     return {
       ok: true,
+      nodeIds: g.nodeIds,
+      edgePairs: g.edgePairs,
+      outerFace: outerFace,
+      graph: g,
+      augmented: augmented,
+      pos: result.pos,
       stopReason: result.stopReason,
+      iters: iterationCount,
+      objective: result.E,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
-      message: 'Applied FaceBalancer (' + data.boundedFaceKeys.length + ' bounded faces, +' + augmented.dummyCount + ' dummy, ' +
-        iterationCount + ' iters, ' + result.stopReason + ', obj ' + result.E.toFixed(3) + ')',
-      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-        ? PlaygroundUtils.createAugmentationDebugState(
-          g,
-          outerFace,
-          augmented,
-          result.pos
-        )
-        : null
+      boundedFaceCount: data.boundedFaceKeys.length
     };
   }
 
+  async function applyFaceBalancerLayout(cy, options) {
+    var opts = options || {};
+    var iterationCount = 0;
+    return PlaygroundUtils.runIncrementalLayout(cy, opts, {
+      compute: computeFaceBalancerPositions,
+      patchComputeOptions: function (ctx) {
+        return {
+          onIteration: async function (progress) {
+            iterationCount = progress.iter;
+            await ctx.onProgress(progress);
+          }
+        };
+      },
+      getPositions: function (result) {
+        return result.pos;
+      },
+      buildResult: function (ctx) {
+        var result = ctx.result;
+        var message = result.boundedFaceCount === 0
+          ? 'Applied FaceBalancer (no bounded faces to balance)'
+          : 'Applied FaceBalancer (' + result.boundedFaceCount + ' bounded faces, +' + result.augmented.dummyCount + ' dummy, ' +
+            iterationCount + ' iters, ' + result.stopReason + ', obj ' + result.objective.toFixed(3) + ')';
+        return {
+          ok: true,
+          stopReason: result.stopReason,
+          faceAreaScore: result.faceAreaScore,
+          message: message,
+          debugState: PlaygroundUtils.createAugmentationDebugState(
+            result.graph,
+            result.outerFace,
+            result.augmented,
+            result.pos
+          )
+        };
+      },
+      failureMessage: 'FaceBalancer failed'
+    });
+  }
+
   global.PlanarVibeFaceBalancer = {
+    computeFaceBalancerPositions: computeFaceBalancerPositions,
     applyFaceBalancerLayout: applyFaceBalancerLayout
   };
 })(window);

@@ -320,7 +320,7 @@
     };
   }
 
-  function prepareAirState(graph, options, cy) {
+  function prepareAirState(graph, options) {
     var opts = normalizeAirOptions(options);
     var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
       failureLabel: 'Air layout',
@@ -331,7 +331,7 @@
         tolerance: 1e-7,
         useSeedOuter: false
       }
-    }, cy);
+    });
     if (!context || !context.ok) {
       return context || { ok: false, message: 'Air setup failed' };
     }
@@ -424,7 +424,7 @@
       return {
         ok: !originalDrawingHasCrossings(posById, g.edgePairs),
         status: 'realized',
-        positions: posById,
+        pos: posById,
         stats: lastStats,
         moveStats: lastMoveStats,
         boundedFaceCount: airData.originalFaceKeys.length,
@@ -520,7 +520,7 @@
       lastStats.plateauWindowImprovementAbs = plateauWindowImprovementAbs;
       lastStats.plateauWindowImprovementRel = plateauWindowImprovementRel;
       if (opts.onIteration) {
-        opts.onIteration({
+        await opts.onIteration({
           iter: sweep,
           maxIters: opts.maxSweeps,
           maxRelError: maxRelErr,
@@ -539,19 +539,6 @@
           plateauWindow: opts.plateauWindow,
           plateauWindowImprovementAbs: plateauWindowImprovementAbs,
           plateauWindowImprovementRel: plateauWindowImprovementRel,
-          boundedFaceCount: lastStats.boundedFaceCount
-        });
-      }
-      if (typeof opts.onSweepComplete === 'function') {
-        await opts.onSweepComplete({
-          iter: sweep,
-          maxIters: opts.maxSweeps,
-          status: status,
-          positions: posById,
-          stats: lastStats,
-          moveStats: lastMoveStats,
-          acceptedCount: acceptedCount,
-          plateauSweepCount: plateauSweeps,
           boundedFaceCount: lastStats.boundedFaceCount
         });
       }
@@ -602,7 +589,7 @@
     return {
       ok: !originalDrawingHasCrossings(posById, g.edgePairs),
       status: status,
-      positions: posById,
+      pos: posById,
       stats: lastStats,
       moveStats: lastMoveStats,
       boundedFaceCount: airData.originalFaceKeys.length,
@@ -616,7 +603,7 @@
     var prepared = prepareAirState({
       nodeIds: (nodeIds || []).map(String),
       edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    }, opts, opts.cy || null);
+    }, opts);
     if (!prepared || !prepared.ok) {
       return prepared || { ok: false, message: 'Air failed' };
     }
@@ -625,7 +612,7 @@
       return {
         ok: true,
         status: 'realized',
-        positions: prepared.posById,
+        pos: prepared.posById,
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
@@ -674,7 +661,7 @@
     return {
       ok: true,
       status: status,
-      positions: prepared.posById,
+      pos: prepared.posById,
       graph: prepared.graph,
       outerFace: prepared.outerFace,
       augmented: prepared.augmented,
@@ -689,58 +676,37 @@
   }
 
   async function applyAirLayout(cy, options) {
-    var runtime = PlaygroundUtils;
-    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
-      return { ok: false, message: 'Layout runtime is missing. Check script load order' };
-    }
-
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var currentPositions = {};
-    var renderer = runtime.createIncrementalRenderer({
-      cy: cy,
-      nodeIds: graph.nodeIds,
-      getPositions: function () { return currentPositions; },
-      interactive: options && options.interactive !== false,
-      delayMs: Number.isFinite(options && options.delayMs) ? Math.max(0, options.delayMs) : 0,
-      renderEvery: Number.isFinite(options && options.renderEvery) ? Math.max(1, Math.floor(options.renderEvery)) : 4,
-      yieldEvery: Number.isFinite(options && options.yieldEvery) ? Math.max(1, Math.floor(options.yieldEvery)) : 5,
-      fitPadding: 24
+    return PlaygroundUtils.runIncrementalLayout(cy, options, {
+      compute: computeAirPositions,
+      patchComputeOptions: function (ctx) {
+        return { onIteration: ctx.onProgress };
+      },
+      getPositions: function (result) {
+        return result.pos;
+      },
+      buildResult: function (ctx) {
+        var result = ctx.result;
+        return {
+          ok: true,
+          status: result.status,
+          message: result.message,
+          faceAreaScore: result.faceAreaScore,
+          maxRelError: result.maxRelError,
+          boundedFaceCount: result.boundedFaceCount,
+          dummyCount: result.dummyCount,
+          iters: result.iters,
+          debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+            ? PlaygroundUtils.createAugmentationDebugState(
+              result.graph,
+              result.outerFace,
+              result.augmented,
+              result.pos
+            )
+            : null
+        };
+      },
+      failureMessage: 'Air failed'
     });
-    await renderer.begin();
-
-    var result = await computeAirPositions(graph.nodeIds, graph.edgePairs, Object.assign({}, options || {}, {
-      cy: cy,
-      onSweepComplete: async function (event) {
-        currentPositions = event.positions || currentPositions;
-        await renderer.onProgress(event, { forceYield: !!((options && options.onIteration) || (options && options.delayMs > 0)) });
-      }
-    }));
-
-    renderer.finish();
-    if (!result || !result.ok) {
-      return result || { ok: false, message: 'Air failed' };
-    }
-
-    runtime.applyPositionsToCy(cy, result.positions);
-    cy.fit(undefined, 24);
-    return {
-      ok: true,
-      status: result.status,
-      message: result.message,
-      faceAreaScore: result.faceAreaScore,
-      maxRelError: result.maxRelError,
-      boundedFaceCount: result.boundedFaceCount,
-      dummyCount: result.dummyCount,
-      iters: result.iters,
-      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-        ? PlaygroundUtils.createAugmentationDebugState(
-          result.graph,
-          result.outerFace,
-          result.augmented,
-          result.positions
-        )
-        : null
-    };
   }
 
   global.PlanarVibeAir = {

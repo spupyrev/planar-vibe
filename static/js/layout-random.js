@@ -41,23 +41,9 @@
   }
 
   function applyRandomLayout(cy) {
-    var nodeIds = [];
-    cy.nodes().forEach(function (node) {
-      nodeIds.push(String(node.id()));
-    });
-    var result = computeRandomPositions(nodeIds, cy.width(), cy.height());
-    var posById = result.pos;
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, posById, 20);
-    } else {
-      cy.nodes().forEach(function (node) {
-        var id = String(node.id());
-        if (posById[id]) {
-          node.position(posById[id]);
-        }
-      });
-      cy.fit(undefined, 20);
-    }
+    var graph = PlaygroundUtils.graphFromCy(cy);
+    var result = computeRandomPositions(graph.nodeIds, cy.width(), cy.height());
+    PlaygroundUtils.applyAndFit(cy, result.pos, 20);
     return { ok: true, message: 'Applied random coordinates' };
   }
 

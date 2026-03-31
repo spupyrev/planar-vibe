@@ -1,89 +1,12 @@
 (function (global) {
   'use strict';
 
+  var GraphUtils = global.GraphUtils;
   var PlaygroundUtils = global.PlaygroundUtils;
-  var collectGraphFromCy = PlaygroundUtils.graphFromCy;
-
-  var edgeKey = global.GraphUtils.edgeKey;
-
-  function buildAdjacency(nodeIds, edgePairs) {
-    var base = global.GraphUtils.buildAdjacency(nodeIds, edgePairs);
-    var adj = {};
-    var ids = Object.keys(base);
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      var seen = new Set();
-      var out = [];
-      var neighbors = base[id] || [];
-      for (var j = 0; j < neighbors.length; j += 1) {
-        var v = String(neighbors[j]);
-        if (v === id || seen.has(v)) continue;
-        seen.add(v);
-        out.push(v);
-      }
-      adj[id] = out;
-    }
-    return adj;
-  }
-
-  function uniqueEdgePairs(edgePairs) {
-    var out = [];
-    var seen = new Set();
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (u === v) {
-        continue;
-      }
-      var k = edgeKey(u, v);
-      if (seen.has(k)) {
-        continue;
-      }
-      seen.add(k);
-      out.push([u, v]);
-    }
-    return out;
-  }
-
-  function prepareTriangulatedByFaceStellation(nodeIds, edgePairs) {
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, reason: 'Planarity utilities are missing' };
-    }
-    if (!global.GraphUtils || !global.GraphUtils.prepareFullyTriangulatedByFaceStellation) {
-      return { ok: false, reason: 'Planar graph utilities are missing' };
-    }
-
-    var nodes = nodeIds.map(String);
-    var edges = uniqueEdgePairs(edgePairs);
-    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
-    if (!emb || !emb.ok) {
-      return { ok: false, reason: 'Graph is not planar' };
-    }
-    var outerFace = global.GraphUtils.chooseOuterFaceFromEmbedding(emb);
-    if (!outerFace || outerFace.length < 3) {
-      return { ok: false, reason: 'Could not determine outer face' };
-    }
-    if (global.GraphUtils.isTriangulatedEmbedding && global.GraphUtils.isTriangulatedEmbedding(emb)) {
-      emb.outerFace = outerFace.slice();
-      return {
-        ok: true,
-        nodeIds: nodes,
-        edgePairs: edges,
-        embedding: emb
-      };
-    }
-
-    var prepared = global.GraphUtils.prepareFullyTriangulatedByFaceStellation(nodes, edges, emb, outerFace);
-    if (!prepared || !prepared.ok) {
-      return { ok: false, reason: (prepared && prepared.reason) || 'Augmentation failed' };
-    }
-    return {
-      ok: true,
-      nodeIds: prepared.nodeIds.map(String),
-      edgePairs: prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
-      embedding: prepared.embedding
-    };
-  }
+  var applyAndFit = PlaygroundUtils.applyAndFit;
+  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
+  var copyPositions = GraphUtils.copyPositions;
+  var graphFromCy = PlaygroundUtils.graphFromCy;
 
   function buildRotationById(embedding) {
     var byId = {};
@@ -110,7 +33,6 @@
     return (idx - 1 + arr.length) % arr.length;
   }
 
-  // Port of OGDF SchnyderLayout::contract (simplified to id-based structures).
   function contract(nodeIds, adjacency, a, b, c) {
     var N = 0;
     for (var i = 0; i < nodeIds.length; i += 1) {
@@ -192,7 +114,6 @@
     a[src].push(dst);
   }
 
-  // Port of OGDF SchnyderLayout::realizer.
   function realizer(nodeIds, L, a, b, c, rotationById, adjacency) {
     var ord = {};
     var i = 0;
@@ -361,26 +282,6 @@
     return { x: x, y: y };
   }
 
-  function applyCoordinates(cy, coords, nodeIds) {
-    var screenPos = buildScreenPositions(coords, nodeIds);
-    if (!screenPos) {
-      return false;
-    }
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, screenPos, 24);
-    } else {
-      cy.nodes().forEach(function (node) {
-        var id = String(node.id());
-        if (!screenPos[id]) {
-          return;
-        }
-        node.position(screenPos[id]);
-      });
-      cy.fit(undefined, 24);
-    }
-    return true;
-  }
-
   function buildScreenPositions(coords, nodeIds) {
     var minX = Infinity;
     var minY = Infinity;
@@ -413,21 +314,6 @@
       };
     }
     return out;
-  }
-
-  function applyScreenPositions(cy, posById) {
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, posById, 24);
-    } else {
-      cy.nodes().forEach(function (node) {
-        var id = String(node.id());
-        if (!posById[id]) {
-          return;
-        }
-        node.position({ x: posById[id].x, y: posById[id].y });
-      });
-      cy.fit(undefined, 24);
-    }
   }
 
   function hasOverlappingVertices(posById) {
@@ -470,17 +356,6 @@
     return overlaps;
   }
 
-  function clonePositions(posById) {
-    var out = {};
-    var ids = Object.keys(posById || {});
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      var p = posById[id];
-      out[id] = { x: p.x, y: p.y };
-    }
-    return out;
-  }
-
   function groupOverlaps(posById) {
     var buckets = {};
     var ids = Object.keys(posById || {});
@@ -514,9 +389,9 @@
 
   function resolveOverlapsWithoutCrossings(posById, edgePairs) {
     if (!hasOverlappingVertices(posById)) {
-      return clonePositions(posById);
+      return copyPositions(posById);
     }
-    var pos = clonePositions(posById);
+    var pos = copyPositions(posById);
     var overlapGroups = groupOverlaps(pos);
     var ring = [];
     var DIRS = 24;
@@ -534,7 +409,7 @@
       for (var r = 0; r < radii.length && !placedGroup; r += 1) {
         var radius = radii[r];
         for (var phase = 0; phase < ring.length && !placedGroup; phase += 1) {
-          var trial = clonePositions(pos);
+          var trial = copyPositions(pos);
           for (var i = 0; i < group.length; i += 1) {
             var id = group[i];
             var idx = (phase + Math.floor((i * ring.length) / group.length)) % ring.length;
@@ -587,43 +462,37 @@
     return out;
   }
 
-  function applySchnyderLayout(cy) {
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return { ok: false, message: 'Planarity utilities are missing' };
-    }
-    if (!global.GraphUtils || !global.GraphUtils.prepareTriangulatedByFaceStellation) {
-      return { ok: false, message: 'Planar graph utilities are missing' };
-    }
-    var g = collectGraphFromCy(cy);
+  function computeSchnyderPositions(nodeIds, edgePairs) {
+    var g = {
+      nodeIds: (nodeIds || []).map(String),
+      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
+    };
     if (g.nodeIds.length < 3) {
+      var smallPos = {};
       if (g.nodeIds.length === 2) {
-        var twoPos = {};
-        twoPos[g.nodeIds[0]] = { x: 20, y: 20 };
-        twoPos[g.nodeIds[1]] = { x: 50, y: 20 };
-        if (typeof PlaygroundUtils.applyAndFit === 'function') {
-          PlaygroundUtils.applyAndFit(cy, twoPos, 24);
-        } else {
-          var map = {};
-          cy.nodes().forEach(function (n) { map[String(n.id())] = n; });
-          if (map[g.nodeIds[0]]) map[g.nodeIds[0]].position(twoPos[g.nodeIds[0]]);
-          if (map[g.nodeIds[1]]) map[g.nodeIds[1]].position(twoPos[g.nodeIds[1]]);
-          cy.fit(undefined, 24);
-        }
+        smallPos[g.nodeIds[0]] = { x: 20, y: 20 };
+        smallPos[g.nodeIds[1]] = { x: 50, y: 20 };
+      } else if (g.nodeIds.length === 1) {
+        smallPos[g.nodeIds[0]] = { x: 20, y: 20 };
       }
-      return { ok: true, message: 'Applied Schnyder layout (' + String(g.nodeIds.length) + ' vertices)' };
+      return {
+        ok: true,
+        nodeIds: g.nodeIds,
+        edgePairs: g.edgePairs,
+        pos: smallPos
+      };
     }
 
-    var triangulated = prepareTriangulatedByFaceStellation(g.nodeIds, g.edgePairs);
+    var triangulated = GraphUtils.triangulateByFaceStellation(g.nodeIds, g.edgePairs, null, null, {
+      triangulateOuterFace: true
+    });
     if (!triangulated.ok) {
       return { ok: false, message: triangulated.reason || 'Schnyder triangulation failed' };
     }
 
-    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(triangulated.nodeIds, triangulated.edgePairs);
-    if (!emb || !emb.ok) {
-      return { ok: false, message: 'Graph is not planar' };
-    }
+    var emb = triangulated.embedding;
     var rotationById = buildRotationById(emb);
-    var adjacency = buildAdjacency(triangulated.nodeIds, triangulated.edgePairs);
+    var adjacency = buildAdjacencyArrays(triangulated.nodeIds, triangulated.edgePairs);
     var bestPos = null;
     var bestOverlapCount = Infinity;
     var candidates = candidateOuterTriples(emb, rotationById);
@@ -672,15 +541,30 @@
     if (!bestPos) {
       return { ok: false, message: 'Schnyder failed to find crossing-free embedding' };
     }
-    applyScreenPositions(cy, bestPos);
 
     return {
       ok: true,
-      message: 'Applied Schnyder layout (' + String(g.nodeIds.length) + ' vertices)'
+      nodeIds: g.nodeIds,
+      edgePairs: g.edgePairs,
+      pos: bestPos
+    };
+  }
+
+  function applySchnyderLayout(cy) {
+    var graph = graphFromCy(cy);
+    var result = computeSchnyderPositions(graph.nodeIds, graph.edgePairs);
+    if (!result || !result.ok) {
+      return result || { ok: false, message: 'Schnyder failed' };
+    }
+    applyAndFit(cy, result.pos);
+    return {
+      ok: true,
+      message: 'Applied Schnyder layout (' + String(graph.nodeIds.length) + ' vertices)'
     };
   }
 
   global.PlanarVibeSchnyder = {
+    computeSchnyderPositions: computeSchnyderPositions,
     applySchnyderLayout: applySchnyderLayout
   };
 })(window);

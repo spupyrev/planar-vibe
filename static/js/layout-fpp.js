@@ -1,33 +1,20 @@
 (function (global) {
   'use strict';
 
+  var GraphUtils = global.GraphUtils;
+  var PlanarityTest = global.PlanarVibePlanarityTest;
   var PlaygroundUtils = global.PlaygroundUtils;
-  var collectGraphFromCy = PlaygroundUtils.graphFromCy;
+  var buildAdjacencySets = GraphUtils.buildAdjacencySets;
 
   function prepareTriangulatedEmbedding(nodeIds, edgePairs) {
-    if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-      return {
-        ok: false,
-        reason: 'Planarity utilities are missing'
-      };
-    }
-    if (!global.GraphUtils ||
-        !global.GraphUtils.isTriangulatedEmbedding ||
-        !global.GraphUtils.prepareFullyTriangulatedByFaceStellation) {
-      return {
-        ok: false,
-        reason: 'Planar graph utilities are missing'
-      };
-    }
-
-    var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
+    var embedding = PlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!embedding.ok) {
       return {
         ok: false,
         reason: 'Graph is not planar'
       };
     }
-    var outerFace = global.GraphUtils.chooseOuterFaceFromEmbedding(embedding);
+    var outerFace = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
     if (!outerFace || outerFace.length < 3) {
       return {
         ok: false,
@@ -40,8 +27,10 @@
       edgePairs: edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
       dummyCount: 0
     };
-    if (!global.GraphUtils.isTriangulatedEmbedding(embedding)) {
-      var prepared = global.GraphUtils.prepareFullyTriangulatedByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding, outerFace);
+    if (!GraphUtils.isTriangulatedEmbedding(embedding)) {
+      var prepared = GraphUtils.triangulateByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding, outerFace, {
+        triangulateOuterFace: true
+      });
       if (!prepared || !prepared.ok) {
         return {
           ok: false,
@@ -101,23 +90,7 @@
       rotationById[embedding.idByIndex[r]] = embedding.rotation[r] ? embedding.rotation[r].slice() : [];
     }
 
-    var adjacency = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adjacency[nodeIds[i]] = new Set();
-    }
-    for (i = 0; i < prepared.augmentedEdgePairs.length; i += 1) {
-      var e = prepared.augmentedEdgePairs[i];
-      var a = String(e[0]);
-      var b = String(e[1]);
-      if (!adjacency[a]) {
-        adjacency[a] = new Set();
-      }
-      if (!adjacency[b]) {
-        adjacency[b] = new Set();
-      }
-      adjacency[a].add(b);
-      adjacency[b].add(a);
-    }
+    var adjacency = buildAdjacencySets(nodeIds, prepared.augmentedEdgePairs);
 
     function rotationPathInclusive(v, start, end) {
       var nbrs = rotationById[v] || [];
@@ -359,7 +332,7 @@
     }
 
     var v3 = null;
-    for (i = 0; i < base.length; i += 1) {
+    for (var i = 0; i < base.length; i += 1) {
       if (base[i] !== v1 && base[i] !== v2) {
         v3 = base[i];
         break;
@@ -457,7 +430,7 @@
     return null;
   }
 
-  function applyFPPPlacement(cy, canonical) {
+  function computeFPPPositionsFromCanonical(canonical) {
     var order = canonical.order;
     if (!order || order.length < 3) {
       return {
@@ -590,27 +563,18 @@
         y: (maxY - coords[pid].y) * SCALE + 20
       };
     }
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, screenPos, 24);
-    } else {
-      cy.nodes().forEach(function (node) {
-        var id = String(node.id());
-        if (screenPos[id]) {
-          node.position(screenPos[id]);
-        }
-      });
-      cy.fit(undefined, 24);
-    }
-
     return {
       ok: true,
-      message: 'Applied FPP layout (' + order.length + ' vertices)'
+      order: order.slice(),
+      outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
+      pos: screenPos
     };
   }
 
-  function applyFPPLayout(cy) {
-    var graph = collectGraphFromCy(cy);
-    var prepared = prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+  function computeFPPPositions(nodeIds, edgePairs) {
+    var ids = (nodeIds || []).map(String);
+    var pairs = (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; });
+    var prepared = prepareTriangulatedEmbedding(ids, pairs);
     if (!prepared.ok) {
       return {
         ok: false,
@@ -626,17 +590,44 @@
       };
     }
 
-    var result = applyFPPPlacement(cy, canonical);
-    if (result.ok && prepared.augmentedDummyCount > 0) {
-      result.message += ' after augmentation (+' + prepared.augmentedDummyCount + ' dummy)';
+    var result = computeFPPPositionsFromCanonical(canonical);
+    if (!result || !result.ok) {
+      return result || { ok: false, message: 'FPP placement failed' };
     }
-    return result;
+    return {
+      ok: true,
+      nodeIds: ids,
+      edgePairs: pairs,
+      augmentedDummyCount: prepared.augmentedDummyCount || 0,
+      prepared: prepared,
+      canonical: canonical,
+      pos: result.pos
+    };
+  }
+
+  function applyFPPLayout(cy) {
+    var graph = PlaygroundUtils.graphFromCy(cy);
+    var result = computeFPPPositions(graph.nodeIds, graph.edgePairs);
+    if (!result || !result.ok) {
+      return result || { ok: false, message: 'FPP failed' };
+    }
+
+    PlaygroundUtils.applyAndFit(cy, result.pos);
+    var message = 'Applied FPP layout (' + result.nodeIds.length + ' vertices)';
+    if (result.augmentedDummyCount > 0) {
+      message += ' after augmentation (+' + result.augmentedDummyCount + ' dummy)';
+    }
+    return {
+      ok: true,
+      message: message
+    };
   }
 
   global.PlanarVibeFPP = {
-    augmentPlanarByFaceStellation: global.GraphUtils ? global.GraphUtils.augmentByFaceStellation : null,
+    augmentPlanarByFaceStellation: GraphUtils.augmentByFaceStellation,
     prepareTriangulatedEmbedding: prepareTriangulatedEmbedding,
     computeCanonicalOrdering: computeCanonicalOrdering,
+    computeFPPPositions: computeFPPPositions,
     applyFPPLayout: applyFPPLayout
   };
 })(window);

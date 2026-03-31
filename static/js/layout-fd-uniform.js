@@ -1,38 +1,15 @@
 (function (global) {
   'use strict';
 
+  var Metrics = global.PlanarVibeMetrics;
   var PlaygroundUtils = global.PlaygroundUtils;
-  var buildAdjacency = global.GraphUtils.buildAdjacency;
-  var triangleArea2 = global.GraphUtils.triangleArea2;
-
-  function pointEquals(a, b, eps) {
-    return Math.abs(a.x - b.x) <= eps && Math.abs(a.y - b.y) <= eps;
-  }
-
-  function onSegment(a, b, p, eps) {
-    return (
-      Math.min(a.x, b.x) - eps <= p.x && p.x <= Math.max(a.x, b.x) + eps &&
-      Math.min(a.y, b.y) - eps <= p.y && p.y <= Math.max(a.y, b.y) + eps
-    );
-  }
-
-  function segmentsIntersectProper(a, b, c, d, eps) {
-    var o1 = triangleArea2(a, b, c);
-    var o2 = triangleArea2(a, b, d);
-    var o3 = triangleArea2(c, d, a);
-    var o4 = triangleArea2(c, d, b);
-
-    if (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
-        ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps))) {
-      return true;
-    }
-
-    if (Math.abs(o1) <= eps && onSegment(a, b, c, eps) && !pointEquals(c, a, eps) && !pointEquals(c, b, eps)) return true;
-    if (Math.abs(o2) <= eps && onSegment(a, b, d, eps) && !pointEquals(d, a, eps) && !pointEquals(d, b, eps)) return true;
-    if (Math.abs(o3) <= eps && onSegment(c, d, a, eps) && !pointEquals(a, c, eps) && !pointEquals(a, d, eps)) return true;
-    if (Math.abs(o4) <= eps && onSegment(c, d, b, eps) && !pointEquals(b, c, eps) && !pointEquals(b, d, eps)) return true;
-    return false;
-  }
+  var buildAdjacencyArrays = global.GraphUtils.buildAdjacencyArrays;
+  var collectMovableVertices = global.GraphUtils.collectMovableVertices;
+  var computeDrawingDiameter = global.GraphUtils.computeDrawingDiameter;
+  var computePositionMoveStats = global.GraphUtils.computePositionMoveStats;
+  var copyPositions = global.GraphUtils.copyPositions;
+  var createMovementConvergenceTracker = global.GraphUtils.createMovementConvergenceTracker;
+  var segmentsIntersectOrTouch = global.GraphUtils.segmentsIntersectOrTouch;
 
   function wouldIntroduceCrossing(vertexId, newPos, positions, edgePairs, incidentEdges, eps) {
     var v = String(vertexId);
@@ -63,7 +40,7 @@
         if (!p2 || !q2) {
           continue;
         }
-        if (segmentsIntersectProper(p1, q1, p2, q2, eps)) {
+        if (segmentsIntersectOrTouch(p1, q1, p2, q2, eps)) {
           return true;
         }
       }
@@ -81,40 +58,6 @@
       return arr[mid];
     }
     return 0.5 * (arr[mid - 1] + arr[mid]);
-  }
-
-  function computeDrawingDiameter(nodeIds, pos) {
-    var minX = Infinity;
-    var minY = Infinity;
-    var maxX = -Infinity;
-    var maxY = -Infinity;
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var p = pos[String(nodeIds[i])];
-      if (!p) {
-        continue;
-      }
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-      return 1;
-    }
-    var dx = maxX - minX;
-    var dy = maxY - minY;
-    var d = Math.sqrt(dx * dx + dy * dy);
-    return d > 1e-9 ? d : 1;
-  }
-
-  function copyPositions(pos) {
-    var out = {};
-    var keys = Object.keys(pos);
-    for (var i = 0; i < keys.length; i += 1) {
-      var k = keys[i];
-      out[k] = { x: pos[k].x, y: pos[k].y };
-    }
-    return out;
   }
 
   function computeNearestNeighborData(nodeIds, pos, kNearest) {
@@ -178,26 +121,177 @@
   }
 
   function evaluateSpacingQuality(nodeIds, edgePairs, pos) {
-    if (!global.PlanarVibeMetrics || typeof global.PlanarVibeMetrics.computeSpacingUniformityScore !== 'function') {
+    if (!Metrics || typeof Metrics.computeSpacingUniformityScore !== 'function') {
       return null;
     }
-    if (global.PlanarVibeMetrics.hasCrossingsFromPositions &&
-        global.PlanarVibeMetrics.hasCrossingsFromPositions(pos, edgePairs)) {
+    if (Metrics.hasCrossingsFromPositions &&
+        Metrics.hasCrossingsFromPositions(pos, edgePairs)) {
       return null;
     }
-    var score = global.PlanarVibeMetrics.computeSpacingUniformityScore(nodeIds, pos);
+    var score = Metrics.computeSpacingUniformityScore(nodeIds, pos);
     if (!score || !score.ok || !Number.isFinite(score.score)) {
       return null;
     }
     return score.score;
   }
 
-  function applyFDUniformLayout(cy, options) {
-    var runtime = PlaygroundUtils;
-    if (!runtime || typeof runtime.applyPositionsToCy !== 'function' || typeof runtime.createIncrementalRenderer !== 'function') {
-      return { ok: false, message: 'Layout runtime is missing' };
+  function runFDUniformIteration(state, iter) {
+    state.performedIters = iter;
+    var accepted = 0;
+    var rejected = 0;
+    var uniformityBoost = 1 + 2.0 * (iter / Math.max(1, state.maxIters));
+    var nnData = computeNearestNeighborData(state.nodeIds, state.pos, state.kNearest);
+    var nnById = nnData.nnById;
+    var meanNnDist = nnData.meanDist;
+    var knearestById = nnData.knearestById;
+    var meanKDist = nnData.meanKDist;
+    var scaleLen = Math.max(state.targetLength, 1e-6);
+
+    for (var m = 0; m < state.movable.length; m += 1) {
+      var vId = state.movable[m];
+      var pv0 = state.pos[vId];
+      if (!pv0) continue;
+
+      var fx = 0;
+      var fy = 0;
+
+      var ngh = state.adjOrig[vId] || [];
+      for (var ni = 0; ni < ngh.length; ni += 1) {
+        var uId = String(ngh[ni]);
+        var pu0 = state.pos[uId];
+        if (!pu0) continue;
+        var rdx = pv0.x - pu0.x;
+        var rdy = pv0.y - pu0.y;
+        var rlen = Math.sqrt(rdx * rdx + rdy * rdy);
+        if (rlen < 1e-12) continue;
+        var coeffS = 2 * (rlen - state.targetLength) / (rlen + state.repEps);
+        fx += -state.beta * (coeffS * rdx);
+        fy += -state.beta * (coeffS * rdy);
+      }
+
+      for (var j = 0; j < state.nodeIds.length; j += 1) {
+        var oId = String(state.nodeIds[j]);
+        if (oId === vId) continue;
+        var po = state.pos[oId];
+        if (!po) continue;
+        var dx = pv0.x - po.x;
+        var dy = pv0.y - po.y;
+        var dxn = dx / scaleLen;
+        var dyn = dy / scaleLen;
+        var d2 = dxn * dxn + dyn * dyn;
+        if (d2 < 1e-18) continue;
+        var denom = Math.pow(d2 + state.repEps, (state.repPower / 2) + 1);
+        var coeffR = state.repPower / denom;
+        fx += state.alpha * coeffR * dxn;
+        fy += state.alpha * coeffR * dyn;
+      }
+
+      if (state.eta > 0 && meanNnDist > 1e-9 && nnById[vId]) {
+        var nn = nnById[vId];
+        var pn = state.pos[nn.id];
+        if (pn && nn.dist > 1e-12) {
+          var vx = pv0.x - pn.x;
+          var vy = pv0.y - pn.y;
+          var inv = 1 / nn.dist;
+          var ux = vx * inv;
+          var uy = vy * inv;
+          var delta = meanNnDist - nn.dist;
+          var deltaCap = 0.8 * meanNnDist;
+          if (delta > deltaCap) delta = deltaCap;
+          if (delta < -deltaCap) delta = -deltaCap;
+          fx += (state.eta * uniformityBoost) * delta * ux;
+          fy += (state.eta * uniformityBoost) * delta * uy;
+        }
+      }
+
+      if (state.zeta > 0 && meanKDist > 1e-9 && knearestById[vId] && knearestById[vId].length > 0) {
+        var knn = knearestById[vId];
+        for (var ki = 0; ki < knn.length; ki += 1) {
+          var kn = knn[ki];
+          var pk = state.pos[kn.id];
+          if (!pk || !(kn.dist > 1e-12)) {
+            continue;
+          }
+          var kvx = pv0.x - pk.x;
+          var kvy = pv0.y - pk.y;
+          var kinv = 1 / kn.dist;
+          var kux = kvx * kinv;
+          var kuy = kvy * kinv;
+          var kdelta = meanKDist - kn.dist;
+          var kcap = 0.7 * meanKDist;
+          if (kdelta > kcap) kdelta = kcap;
+          if (kdelta < -kcap) kdelta = -kcap;
+          fx += (state.zeta * uniformityBoost) * kdelta * kux;
+          fy += (state.zeta * uniformityBoost) * kdelta * kuy;
+        }
+      }
+
+      if (state.collisionBoost > 0 && meanNnDist > 1e-9 && knearestById[vId]) {
+        var threshold = 0.75 * meanNnDist;
+        var knn2 = knearestById[vId];
+        for (var kb = 0; kb < knn2.length; kb += 1) {
+          var nbr = knn2[kb];
+          if (!(nbr.dist > 1e-12) || nbr.dist >= threshold) {
+            continue;
+          }
+          var pnb = state.pos[nbr.id];
+          if (!pnb) continue;
+          var bdx = pv0.x - pnb.x;
+          var bdy = pv0.y - pnb.y;
+          var binv = 1 / nbr.dist;
+          var bux = bdx * binv;
+          var buy = bdy * binv;
+          var strength = (state.collisionBoost * uniformityBoost) * ((threshold - nbr.dist) / Math.max(threshold, 1e-9));
+          fx += strength * bux;
+          fy += strength * buy;
+        }
+      }
+
+      var fNorm = Math.sqrt(fx * fx + fy * fy);
+      if (fNorm > state.maxForce) {
+        var s = state.maxForce / fNorm;
+        fx *= s;
+        fy *= s;
+      }
+
+      var candidate = {
+        x: pv0.x + state.h * fx,
+        y: pv0.y + state.h * fy
+      };
+
+      if (wouldIntroduceCrossing(vId, candidate, state.pos, state.edgePairs, state.incidentEdges, state.EPS)) {
+        rejected += 1;
+        continue;
+      }
+
+      state.pos[vId] = candidate;
+      accepted += 1;
     }
 
+    state.acceptedTotal += accepted;
+    state.rejectedTotal += rejected;
+    return { accepted: accepted, rejected: rejected };
+  }
+
+  function buildFDUniformResult(state, context) {
+    var finalPos = state.bestPos || state.pos;
+    return {
+      ok: true,
+      nodeIds: state.nodeIds,
+      edgePairs: state.edgePairs,
+      outerFace: state.outerFace,
+      graph: state.graph,
+      augmented: context.augmented,
+      pos: finalPos,
+      stopReason: state.stopReason,
+      iters: state.performedIters,
+      accepted: state.acceptedTotal,
+      rejected: state.rejectedTotal,
+      spacingScore: Number.isFinite(state.bestScore) ? state.bestScore : null
+    };
+  }
+
+  function computeFDUniformPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
     var EPS = Number.isFinite(opts.epsilon) ? Math.max(1e-12, opts.epsilon) : 1e-9;
     var repEps = Number.isFinite(opts.repulsionEps) ? Math.max(1e-12, opts.repulsionEps) : 1e-6;
@@ -215,23 +309,23 @@
     var zeta = Number.isFinite(opts.zeta) ? Math.max(0, opts.zeta) : 3.2;
     var collisionBoost = Number.isFinite(opts.collisionBoost) ? Math.max(0, opts.collisionBoost) : 6.0;
     var kNearest = Number.isFinite(opts.kNearest) ? Math.max(1, Math.floor(opts.kNearest)) : 4;
-    var interactive = !!opts.interactive;
     var evalEvery = Number.isFinite(opts.evalEvery) ? Math.max(1, Math.floor(opts.evalEvery)) : 10;
-    var delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, Math.floor(opts.delayMs)) : 0;
-    var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 5;
     var onIteration = typeof opts.onIteration === 'function' ? opts.onIteration : null;
 
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var nodeIds = graph.nodeIds.slice();
-    if (nodeIds.length < 3) {
+    var graph = {
+      nodeIds: (nodeIds || []).map(String),
+      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
+    };
+    var ids = graph.nodeIds.slice();
+    if (ids.length < 3) {
       return { ok: false, message: 'FD-uniform requires at least 3 vertices' };
     }
-    var edgePairs = graph.edgePairs.slice();
-    if (edgePairs.length < 3) {
+    var pairs = graph.edgePairs.slice();
+    if (pairs.length < 3) {
       return { ok: false, message: 'FD-uniform requires at least 3 edges' };
     }
 
-    var context = PlaygroundUtils.prepareTriangulatedLayoutContext(cy, {
+    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
       failureLabel: 'FD-uniform',
       minNodeCount: 3,
       seedOptions: {
@@ -239,35 +333,33 @@
         tolerance: Number.isFinite(opts.initTolerance) ? Math.max(1e-10, opts.initTolerance) : 1e-7,
         useSeedOuter: false
       }
-    });
+    }, null);
     if (!context || !context.ok) {
       return context || { ok: false, message: 'FD-uniform setup failed' };
     }
 
     var outerFace = context.outerFace;
-    var augmentedNodeIds = context.augmented.nodeIds.slice();
-    var augmentedEdgePairs = context.augmented.edgePairs.slice();
     var pos = context.posById;
-    var adjOrig = buildAdjacency(nodeIds, edgePairs);
-    var movable = global.GraphUtils.collectMovableVertices(nodeIds, outerFace);
+    var adjOrig = buildAdjacencyArrays(ids, pairs);
+    var movable = collectMovableVertices(ids, outerFace);
 
     var i;
 
     var incidentEdges = {};
-    for (i = 0; i < nodeIds.length; i += 1) {
-      incidentEdges[String(nodeIds[i])] = [];
+    for (i = 0; i < ids.length; i += 1) {
+      incidentEdges[String(ids[i])] = [];
     }
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
+    for (i = 0; i < pairs.length; i += 1) {
+      var u = String(pairs[i][0]);
+      var v = String(pairs[i][1]);
       incidentEdges[u].push([u, v]);
       incidentEdges[v].push([u, v]);
     }
 
     var lengths = [];
-    for (i = 0; i < edgePairs.length; i += 1) {
-      u = String(edgePairs[i][0]);
-      v = String(edgePairs[i][1]);
+    for (i = 0; i < pairs.length; i += 1) {
+      u = String(pairs[i][0]);
+      v = String(pairs[i][1]);
       var pu = pos[u];
       var pv = pos[v];
       if (!pu || !pv) continue;
@@ -277,307 +369,200 @@
       if (len0 > 1e-9) lengths.push(len0);
     }
     var targetLength = median(lengths);
-    var diameter = computeDrawingDiameter(nodeIds, pos);
+    var diameter = computeDrawingDiameter(ids, pos);
     var h = Number.isFinite(opts.initialStep) ? Math.max(1e-8, opts.initialStep) : 0.02 * diameter;
     var hMin = Number.isFinite(opts.minStep) ? Math.max(1e-10, opts.minStep) : 1e-5 * diameter;
-    var movementTracker = (global.GraphUtils && typeof global.GraphUtils.createMovementConvergenceTracker === 'function')
-      ? global.GraphUtils.createMovementConvergenceTracker({
-        minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 30,
-        stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 8,
-        maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-4 * diameter,
-        avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-5 * diameter
-      })
-      : null;
-
-    var acceptedTotal = 0;
-    var rejectedTotal = 0;
-    var performedIters = 0;
-    var bestScore = -Infinity;
-    var bestPos = null;
-    var stopReason = 'max-iters';
-    var livePositions = pos;
-    var renderer = runtime.createIncrementalRenderer({
-      cy: cy,
-      nodeIds: nodeIds,
-      getPositions: function () { return livePositions; },
-      interactive: interactive,
-      delayMs: delayMs,
-      renderEvery: renderEvery,
-      yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
-      fitPadding: 24
+    var movementTracker = createMovementConvergenceTracker({
+      minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 30,
+      stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 8,
+      maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-4 * diameter,
+      avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-5 * diameter
     });
 
-    function runIteration(iter) {
-      performedIters = iter;
-      var accepted = 0;
-      var rejected = 0;
-      var uniformityBoost = 1 + 2.0 * (iter / Math.max(1, maxIters));
-      var nnData = computeNearestNeighborData(nodeIds, pos, kNearest);
-      var nnById = nnData.nnById;
-      var meanNnDist = nnData.meanDist;
-      var knearestById = nnData.knearestById;
-      var meanKDist = nnData.meanKDist;
-      var scaleLen = Math.max(targetLength, 1e-6);
+    var state = {
+      EPS: EPS,
+      repEps: repEps,
+      repPower: repPower,
+      maxIters: maxIters,
+      beta: beta,
+      alpha: alpha0,
+      alphaGrowEvery: alphaGrowEvery,
+      alphaGrowFactor: alphaGrowFactor,
+      alphaCap: alphaCap,
+      gamma: gamma,
+      maxForce: maxForce,
+      eta: eta,
+      zeta: zeta,
+      collisionBoost: collisionBoost,
+      kNearest: kNearest,
+      graph: graph,
+      nodeIds: ids,
+      edgePairs: pairs,
+      outerFace: outerFace,
+      pos: pos,
+      adjOrig: adjOrig,
+      movable: movable,
+      incidentEdges: incidentEdges,
+      targetLength: targetLength,
+      h: h,
+      hMin: hMin,
+      acceptedTotal: 0,
+      rejectedTotal: 0,
+      performedIters: 0,
+      bestScore: -Infinity,
+      bestPos: null,
+      stopReason: 'max-iters'
+    };
 
-      for (var m = 0; m < movable.length; m += 1) {
-        var vId = movable[m];
-        var pv0 = pos[vId];
-        if (!pv0) continue;
-
-        var fx = 0;
-        var fy = 0;
-
-        var ngh = adjOrig[vId] || [];
-        for (var ni = 0; ni < ngh.length; ni += 1) {
-          var uId = String(ngh[ni]);
-          var pu0 = pos[uId];
-          if (!pu0) continue;
-          var rdx = pv0.x - pu0.x;
-          var rdy = pv0.y - pu0.y;
-          var rlen = Math.sqrt(rdx * rdx + rdy * rdy);
-          if (rlen < 1e-12) continue;
-          var coeffS = 2 * (rlen - targetLength) / (rlen + repEps);
-          fx += -beta * (coeffS * rdx);
-          fy += -beta * (coeffS * rdy);
-        }
-
-        for (var j = 0; j < nodeIds.length; j += 1) {
-          var oId = String(nodeIds[j]);
-          if (oId === vId) continue;
-          var po = pos[oId];
-          if (!po) continue;
-          var dx = pv0.x - po.x;
-          var dy = pv0.y - po.y;
-          // Scale-normalized repulsion to avoid vanishing forces on large coordinate ranges.
-          var dxn = dx / scaleLen;
-          var dyn = dy / scaleLen;
-          var d2 = dxn * dxn + dyn * dyn;
-          if (d2 < 1e-18) continue;
-          var denom = Math.pow(d2 + repEps, (repPower / 2) + 1);
-          var coeffR = repPower / denom;
-          fx += alpha * coeffR * dxn;
-          fy += alpha * coeffR * dyn;
-        }
-
-        // Optional nearest-neighbor regularization: push very close pairs apart, very far pairs together.
-        if (eta > 0 && meanNnDist > 1e-9 && nnById[vId]) {
-          var nn = nnById[vId];
-          var pn = pos[nn.id];
-          if (pn && nn.dist > 1e-12) {
-            var vx = pv0.x - pn.x;
-            var vy = pv0.y - pn.y;
-            var inv = 1 / nn.dist;
-            var ux = vx * inv;
-            var uy = vy * inv;
-            var delta = meanNnDist - nn.dist;
-            // Clamp NN correction to avoid instability on outliers.
-            var deltaCap = 0.8 * meanNnDist;
-            if (delta > deltaCap) delta = deltaCap;
-            if (delta < -deltaCap) delta = -deltaCap;
-            fx += (eta * uniformityBoost) * delta * ux;
-            fy += (eta * uniformityBoost) * delta * uy;
-          }
-        }
-
-        // Stronger local equalization on k-nearest neighbors.
-        if (zeta > 0 && meanKDist > 1e-9 && knearestById[vId] && knearestById[vId].length > 0) {
-          var knn = knearestById[vId];
-          for (var ki = 0; ki < knn.length; ki += 1) {
-            var kn = knn[ki];
-            var pk = pos[kn.id];
-            if (!pk || !(kn.dist > 1e-12)) {
-              continue;
-            }
-            var kvx = pv0.x - pk.x;
-            var kvy = pv0.y - pk.y;
-            var kinv = 1 / kn.dist;
-            var kux = kvx * kinv;
-            var kuy = kvy * kinv;
-            var kdelta = meanKDist - kn.dist;
-            var kcap = 0.7 * meanKDist;
-            if (kdelta > kcap) kdelta = kcap;
-            if (kdelta < -kcap) kdelta = -kcap;
-            fx += (zeta * uniformityBoost) * kdelta * kux;
-            fy += (zeta * uniformityBoost) * kdelta * kuy;
-          }
-        }
-
-        // Short-range barrier to avoid very close pairs (clusters).
-        if (collisionBoost > 0 && meanNnDist > 1e-9 && knearestById[vId]) {
-          var threshold = 0.75 * meanNnDist;
-          var knn2 = knearestById[vId];
-          for (var kb = 0; kb < knn2.length; kb += 1) {
-            var nbr = knn2[kb];
-            if (!(nbr.dist > 1e-12) || nbr.dist >= threshold) {
-              continue;
-            }
-            var pnb = pos[nbr.id];
-            if (!pnb) continue;
-            var bdx = pv0.x - pnb.x;
-            var bdy = pv0.y - pnb.y;
-            var binv = 1 / nbr.dist;
-            var bux = bdx * binv;
-            var buy = bdy * binv;
-            var strength = (collisionBoost * uniformityBoost) * ((threshold - nbr.dist) / Math.max(threshold, 1e-9));
-            fx += strength * bux;
-            fy += strength * buy;
-          }
-        }
-
-        var fNorm = Math.sqrt(fx * fx + fy * fy);
-        if (fNorm > maxForce) {
-          var s = maxForce / fNorm;
-          fx *= s;
-          fy *= s;
-        }
-
-        var candidate = {
-          x: pv0.x + h * fx,
-          y: pv0.y + h * fy
-        };
-
-        if (wouldIntroduceCrossing(vId, candidate, pos, edgePairs, incidentEdges, EPS)) {
-          rejected += 1;
-          continue;
-        }
-
-        pos[vId] = candidate;
-        accepted += 1;
-      }
-
-      acceptedTotal += accepted;
-      rejectedTotal += rejected;
-
-      if (onIteration) {
-        onIteration({
-          iter: iter,
-          maxIters: maxIters,
-          step: h,
-          alpha: alpha,
-          accepted: accepted,
-          rejected: rejected,
-          positions: pos,
-          spacingScore: Number.isFinite(bestScore) ? bestScore : null
-        });
-      }
-
-      return { accepted: accepted, rejected: rejected };
-    }
-
-    function finalizeResult() {
-      var finalPos = bestPos || pos;
-      livePositions = finalPos;
-      renderer.finish();
-      return {
-        ok: true,
-        stopReason: stopReason,
-        message: 'Applied FD-uniform (' + performedIters + ' iters, accepted ' + acceptedTotal + ', rejected ' + rejectedTotal + ', ' + stopReason + ')',
-        debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-          ? PlaygroundUtils.createAugmentationDebugState(
-            graph,
-            outerFace,
-            context.augmented,
-            finalPos
-          )
-          : null
-      };
-    }
-
-    if (!interactive) {
+    if (!onIteration) {
       for (var iter = 1; iter <= maxIters; iter += 1) {
-        var prevPos = copyPositions(pos);
-        var step = runIteration(iter);
-        var accepted = step.accepted;
-        var rejected = step.rejected;
-        acceptedTotal += accepted;
-        rejectedTotal += rejected;
-        var moveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
-          ? global.GraphUtils.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
-          : { maxMove: 0, avgMove: 0 };
-        var movementStatus = movementTracker ? movementTracker.update({
-          maxMove: moveStats.maxMove,
-          avgMove: moveStats.avgMove
-        }, iter) : { stableIterations: 0, stableIterLimit: 0, converged: false };
-
-        if (movable.length > 0 && rejected > movable.length * 0.5) {
-          h *= gamma;
-          if (h < hMin) {
-            stopReason = 'step-too-small';
-            break;
-          }
-        }
-        if (movementStatus.converged) {
-          stopReason = movementStatus.reason || 'movement-converged';
+        if (state.h < state.hMin) {
+          state.stopReason = 'step-too-small';
           break;
         }
+        var prevPos = copyPositions(state.pos);
+        var step = runFDUniformIteration(state, iter);
+        var accepted = step.accepted;
+        var rejected = step.rejected;
+        var moveStats = computePositionMoveStats(movable, prevPos, state.pos, { moveTol: 1e-9 });
+        var movementStatus = movementTracker.update({
+          maxMove: moveStats.maxMove,
+          avgMove: moveStats.avgMove
+        }, iter);
 
-        if (iter % alphaGrowEvery === 0 && alpha < alphaCap) {
-          alpha = Math.min(alphaCap, alpha * alphaGrowFactor);
+        if (movable.length > 0 && rejected > movable.length * 0.5) {
+          state.h *= gamma;
+        }
+        if (movementStatus.converged) {
+          state.stopReason = movementStatus.reason || 'movement-converged';
+          break;
+        }
+        if (iter % alphaGrowEvery === 0 && state.alpha < alphaCap) {
+          state.alpha = Math.min(alphaCap, state.alpha * alphaGrowFactor);
         }
 
         if (iter % evalEvery === 0 || iter === 1 || iter === maxIters) {
-          var q = evaluateSpacingQuality(nodeIds, edgePairs, pos);
-          if (Number.isFinite(q) && q > bestScore) {
-            bestScore = q;
-            bestPos = copyPositions(pos);
+          var q = evaluateSpacingQuality(ids, pairs, state.pos);
+          if (Number.isFinite(q) && q > state.bestScore) {
+            state.bestScore = q;
+            state.bestPos = copyPositions(state.pos);
           }
         }
       }
-      return finalizeResult();
+      return buildFDUniformResult(state, context);
     }
 
     return (async function () {
-      await renderer.begin();
-
       for (var iter = 1; iter <= maxIters; iter += 1) {
-        if (h < hMin) {
-          stopReason = 'step-too-small';
+        if (state.h < state.hMin) {
+          state.stopReason = 'step-too-small';
           break;
         }
-        var prevPos = copyPositions(pos);
-        var step = runIteration(iter);
+        var prevPos = copyPositions(state.pos);
+        var step = runFDUniformIteration(state, iter);
         var accepted = step.accepted;
         var rejected = step.rejected;
-        acceptedTotal += accepted;
-        rejectedTotal += rejected;
-        var moveStats = (global.GraphUtils && typeof global.GraphUtils.computePositionMoveStats === 'function')
-          ? global.GraphUtils.computePositionMoveStats(movable, prevPos, pos, { moveTol: 1e-9 })
-          : { maxMove: 0, avgMove: 0 };
-        var movementStatus = movementTracker ? movementTracker.update({
+        var moveStats = computePositionMoveStats(movable, prevPos, state.pos, { moveTol: 1e-9 });
+        var movementStatus = movementTracker.update({
           maxMove: moveStats.maxMove,
           avgMove: moveStats.avgMove
-        }, iter) : { stableIterations: 0, stableIterLimit: 0, converged: false };
+        }, iter);
 
         if (movable.length > 0 && rejected > movable.length * 0.5) {
-          h *= gamma;
+          state.h *= gamma;
         }
         if (movementStatus.converged) {
-          stopReason = movementStatus.reason || 'movement-converged';
+          state.stopReason = movementStatus.reason || 'movement-converged';
           break;
         }
-        if (iter % alphaGrowEvery === 0 && alpha < alphaCap) {
-          alpha = Math.min(alphaCap, alpha * alphaGrowFactor);
+        if (iter % alphaGrowEvery === 0 && state.alpha < alphaCap) {
+          state.alpha = Math.min(alphaCap, state.alpha * alphaGrowFactor);
         }
 
-        if (iter % renderEvery === 0 || iter === 1 || iter === maxIters) {
-          livePositions = pos;
-          var q = evaluateSpacingQuality(nodeIds, edgePairs, pos);
-          if (Number.isFinite(q) && q > bestScore) {
-            bestScore = q;
-            bestPos = copyPositions(pos);
+        if (iter % evalEvery === 0 || iter === 1 || iter === maxIters) {
+          var q = evaluateSpacingQuality(ids, pairs, state.pos);
+          if (Number.isFinite(q) && q > state.bestScore) {
+            state.bestScore = q;
+            state.bestPos = copyPositions(state.pos);
           }
-          await renderer.onProgress({ iter: iter, maxIters: maxIters }, { forceYield: true });
         }
+
+        await onIteration({
+          iter: iter,
+          maxIters: maxIters,
+          step: state.h,
+          alpha: state.alpha,
+          accepted: accepted,
+          rejected: rejected,
+          positions: state.pos,
+          spacingScore: Number.isFinite(state.bestScore) ? state.bestScore : null
+        });
       }
-      return finalizeResult();
+      return buildFDUniformResult(state, context);
+    })();
+  }
+
+  function applyFDUniformLayout(cy, options) {
+    var opts = options || {};
+    var interactive = !!opts.interactive;
+    var delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, Math.floor(opts.delayMs)) : 0;
+    var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 5;
+    var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5;
+    var graph = PlaygroundUtils.graphFromCy(cy);
+    if (!interactive) {
+      var syncResult = computeFDUniformPositions(graph.nodeIds, graph.edgePairs, opts);
+      if (!syncResult || !syncResult.ok) {
+        return syncResult || { ok: false, message: 'FD-uniform failed' };
+      }
+      PlaygroundUtils.applyAndFit(cy, syncResult.pos);
+      return {
+        ok: true,
+        stopReason: syncResult.stopReason,
+        message: 'Applied FD-uniform (' + syncResult.iters + ' iters, accepted ' + syncResult.accepted + ', rejected ' + syncResult.rejected + ', ' + syncResult.stopReason + ')',
+        debugState: PlaygroundUtils.createAugmentationDebugState(
+          syncResult.graph,
+          syncResult.outerFace,
+          syncResult.augmented,
+          syncResult.pos
+        )
+      };
+    }
+
+    return (async function () {
+      return PlaygroundUtils.runIncrementalLayout(cy, Object.assign({}, opts, {
+        interactive: interactive,
+        delayMs: delayMs,
+        renderEvery: renderEvery,
+        yieldEvery: yieldEvery
+      }), {
+        compute: computeFDUniformPositions,
+        patchComputeOptions: function (ctx) {
+          return { onIteration: ctx.onProgress };
+        },
+        getPositions: function (result) {
+          return result.pos;
+        },
+        buildResult: function (ctx) {
+          var result = ctx.result;
+          return {
+            ok: true,
+            stopReason: result.stopReason,
+            message: 'Applied FD-uniform (' + result.iters + ' iters, accepted ' + result.accepted + ', rejected ' + result.rejected + ', ' + result.stopReason + ')',
+            debugState: PlaygroundUtils.createAugmentationDebugState(
+              result.graph,
+              result.outerFace,
+              result.augmented,
+              result.pos
+            )
+          };
+        },
+        failureMessage: 'FD-uniform failed'
+      });
     })();
   }
 
   global.PlanarVibeFDUniform = {
-    applyFDUniformLayout: applyFDUniformLayout,
-    _internal: {
-      wouldIntroduceCrossing: wouldIntroduceCrossing,
-      segmentsIntersectProper: segmentsIntersectProper
-    }
+    computeFDUniformPositions: computeFDUniformPositions,
+    applyFDUniformLayout: applyFDUniformLayout
   };
 })(window);
