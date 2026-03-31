@@ -504,9 +504,9 @@
       },
       buildResult: function (ctx) {
         var result = ctx.result;
-        var message = 'Applied PPAG (' + result.boundedFaceCount + ' bounded triangles';
+        var message = 'Applied PPAG (' + result.boundedFaceCount + ' bounded faces';
         if (result.dummyCount > 0) {
-          message += ', +' + result.dummyCount + ' dummy';
+          message += ', +' + result.dummyCount + ' dummy vertices';
         }
         message += ', status ' + result.status;
         if (Number.isFinite(result.maxRelError)) {

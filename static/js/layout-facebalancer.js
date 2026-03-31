@@ -1048,7 +1048,8 @@
         var result = ctx.result;
         var message = result.boundedFaceCount === 0
           ? 'Applied FaceBalancer (no bounded faces to balance)'
-          : 'Applied FaceBalancer (' + result.boundedFaceCount + ' bounded faces, +' + result.augmented.dummyCount + ' dummy, ' +
+          : 'Applied FaceBalancer (' + result.boundedFaceCount + ' bounded faces' +
+            (result.augmented.dummyCount > 0 ? ', +' + result.augmented.dummyCount + ' dummy vertices' : '') + ', ' +
             iterationCount + ' iters, ' + result.stopReason + ', obj ' + result.objective.toFixed(3) + ')';
         return {
           ok: true,

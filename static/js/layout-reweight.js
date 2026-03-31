@@ -523,7 +523,9 @@
         return {
           ok: true,
           stopReason: result.stopReason,
-          message: 'Applied ReweightTutte (' + result.outerFace.length + '-vertex outer face, +' + result.augmented.dummyCount + ' dummy, ' + result.iters + ' iters, ' + result.outerSteps + ' steps, ' + result.stopReason + ')',
+          message: 'Applied ReweightTutte (' + result.outerFace.length + '-vertex outer face' +
+            (result.augmented.dummyCount > 0 ? ', +' + result.augmented.dummyCount + ' dummy vertices' : '') +
+            ', ' + result.iters + ' iters, ' + result.outerSteps + ' steps, ' + result.stopReason + ')',
           faceAreaScore: result.faceAreaScore,
           faceAreaMinRatio: result.faceAreaMinRatio,
           faceAreaMaxRatio: result.faceAreaMaxRatio,

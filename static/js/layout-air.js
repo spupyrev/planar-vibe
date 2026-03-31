@@ -607,9 +607,9 @@
       faceScore = global.PlanarVibeMetrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
     }
 
-    var message = 'Applied Air (' + prepared.airData.triangles.length + ' bounded triangles';
+    var message = 'Applied Air (' + prepared.airData.triangles.length + ' bounded faces';
     if (prepared.augmented.dummyCount > 0) {
-      message += ', +' + prepared.augmented.dummyCount + ' dummy';
+      message += ', +' + prepared.augmented.dummyCount + ' dummy vertices';
     }
     message += ', status ' + status;
     if (lastStats && Number.isFinite(lastStats.maxRelError)) {

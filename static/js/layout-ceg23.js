@@ -4,12 +4,21 @@
   var PlaygroundUtils = global.PlaygroundUtils;
   var GraphUtils = global.GraphUtils;
   var Tutte = global.PlanarVibeTutteAlgorithm;
-  var PlanarityTest = global.PlanarVibePlanarityTest;
   var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var edgeKey = GraphUtils.edgeKey;
-  var chooseOuterFaceFromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding;
-  var computePlanarEmbedding = PlanarityTest.computePlanarEmbedding;
+  var prepareTriangulatedLayoutData = PlaygroundUtils.prepareTriangulatedLayoutData;
+
+  function extractOriginalPositions(posById, nodeIds) {
+    var out = {};
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      if (posById[id]) {
+        out[id] = { x: posById[id].x, y: posById[id].y };
+      }
+    }
+    return out;
+  }
 
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
     var depth = {};
@@ -148,24 +157,101 @@
     return out;
   }
 
-  function computeCEG23BfsPositions(nodeIds, edgePairs, options) {
-    var opts = options || {};
-
+  function prepareCEG23State(nodeIds, edgePairs, failureLabel) {
     var ids = (nodeIds || []).map(String);
     var pairs = (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; });
     if (ids.length < 3) {
-      return { ok: false, message: 'CEG23-bfs requires at least 3 vertices' };
+      return {
+        ok: false,
+        message: failureLabel + ' requires at least 3 vertices'
+      };
     }
 
-    var adjacency = buildAdjacencyArrays(ids, pairs);
-    var emb = computePlanarEmbedding(ids, pairs);
-    if (!emb || !emb.ok) {
-      return { ok: false, message: 'CEG23-bfs requires a planar graph' };
+    var prepared = prepareTriangulatedLayoutData({
+      nodeIds: ids,
+      edgePairs: pairs
+    }, {
+      failureLabel: failureLabel,
+      minNodeCount: 3
+    });
+    if (!prepared || !prepared.ok) {
+      return prepared || { ok: false, message: failureLabel + ' requires a planar graph' };
     }
 
-    var outerFace = chooseOuterFaceFromEmbedding(emb);
-    if (!outerFace || outerFace.length < 3) {
-      return { ok: false, message: 'Could not determine outer face' };
+    var augmented = prepared.augmented;
+    return {
+      ok: true,
+      failureLabel: failureLabel,
+      ids: ids,
+      pairs: pairs,
+      prepared: prepared,
+      augmented: augmented,
+      outerFace: prepared.outerFace,
+      augmentedIds: augmented.nodeIds,
+      augmentedPairs: augmented.edgePairs,
+      adjacency: buildAdjacencyArrays(augmented.nodeIds, augmented.edgePairs)
+    };
+  }
+
+  function solveAugmentedWeightedLayout(state, weights, maxIters, seedPos) {
+    return Tutte.computeBarycentricPositions(
+      state.augmentedIds,
+      state.augmentedPairs,
+      state.outerFace,
+      {
+        adjacency: state.adjacency,
+        weights: weights,
+        maxIters: maxIters,
+        tolerance: 1e-8,
+        initOptions: Tutte.defaultOuterPlacementOptions({
+          useSeedOuter: false,
+          seedPos: seedPos || null
+        })
+      }
+    );
+  }
+
+  function projectCEG23Positions(state, posById, failureLabel) {
+    var projected = extractOriginalPositions(posById, state.ids);
+    if (global.PlanarVibeMetrics &&
+        typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
+        global.PlanarVibeMetrics.hasCrossingsFromPositions(projected, state.pairs)) {
+      return {
+        ok: false,
+        message: failureLabel + ' produced a non-plane drawing'
+      };
+    }
+    return {
+      ok: true,
+      projected: projected
+    };
+  }
+
+  function buildCEG23SuccessResult(state, posById, iters, message) {
+    var projectedResult = projectCEG23Positions(state, posById, state.failureLabel);
+    if (!projectedResult.ok) {
+      return projectedResult;
+    }
+
+    return {
+      ok: true,
+      nodeIds: state.ids,
+      edgePairs: state.pairs,
+      outerFace: state.outerFace,
+      graph: state.prepared.graph,
+      augmented: state.augmented,
+      pos: projectedResult.projected,
+      posById: posById,
+      iters: iters,
+      message: message
+    };
+  }
+
+  function computeCEG23BfsPositions(nodeIds, edgePairs, options) {
+    var opts = options || {};
+    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-bfs');
+    if (!state || !state.ok) {
+      return state;
     }
 
     var A = Number.isFinite(opts.a) && opts.a > 0 ? opts.a : 1.0;
@@ -174,57 +260,29 @@
     var DEPTH_SOURCE = String(opts.depthSource || 'outer-multi');
     var EDGE_DEPTH_MODE = String(opts.edgeDepthMode || 'min');
 
-    var depthById = bfsDepthFromOuter(ids, adjacency, outerFace, DEPTH_SOURCE);
-    var weights = buildDepthWeights(pairs, depthById, A, R, EDGE_DEPTH_MODE);
-    var out = Tutte.computeBarycentricPositions(
-      ids,
-      pairs,
-      outerFace,
-      {
-        adjacency: adjacency,
-        weights: weights,
-        maxIters: MAX_ITERS,
-        tolerance: 1e-8,
-        initOptions: Tutte.defaultOuterPlacementOptions({
-          useSeedOuter: false,
-          seedPos: opts.seedPos || null
-        })
-      }
-    );
+    var depthById = bfsDepthFromOuter(state.augmentedIds, state.adjacency, state.outerFace, DEPTH_SOURCE);
+    var weights = buildDepthWeights(state.augmentedPairs, depthById, A, R, EDGE_DEPTH_MODE);
+    var out = solveAugmentedWeightedLayout(state, weights, MAX_ITERS, opts.seedPos || null);
     if (!out.ok) {
       return { ok: false, message: out.message || 'CEG23-bfs solver failed' };
     }
-    out.pos = alignOuterFaceEdgeHorizontally(out.pos, outerFace);
+    out.pos = alignOuterFaceEdgeHorizontally(out.pos, state.outerFace);
 
-    return {
-      ok: true,
-      nodeIds: ids,
-      edgePairs: pairs,
-      outerFace: outerFace,
-      pos: out.pos,
-      iters: out.iters,
-      message: 'Applied CEG23-bfs (' + outerFace.length + '-vertex outer face, depth=' + DEPTH_SOURCE + ', edgeDepth=' + EDGE_DEPTH_MODE + ', r=' + R + ', ' + out.iters + ' iters)'
-    };
+    return buildCEG23SuccessResult(
+      state,
+      out.pos,
+      out.iters,
+      'Applied CEG23-bfs (' + state.outerFace.length + '-vertex outer face, depth=' + DEPTH_SOURCE + ', edgeDepth=' + EDGE_DEPTH_MODE + ', r=' + R +
+      (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
+      ', ' + out.iters + ' iters)'
+    );
   }
 
   function computeCEG23XyPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-
-    var ids = (nodeIds || []).map(String);
-    var pairs = (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; });
-    if (ids.length < 3) {
-      return { ok: false, message: 'CEG23-xy requires at least 3 vertices' };
-    }
-
-    var adjacency = buildAdjacencyArrays(ids, pairs);
-    var emb = computePlanarEmbedding(ids, pairs);
-    if (!emb || !emb.ok) {
-      return { ok: false, message: 'CEG23-xy requires a planar graph' };
-    }
-
-    var outerFace = chooseOuterFaceFromEmbedding(emb);
-    if (!outerFace || outerFace.length < 3) {
-      return { ok: false, message: 'Could not determine outer face' };
+    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-xy');
+    if (!state || !state.ok) {
+      return state;
     }
 
     var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 2500;
@@ -232,110 +290,53 @@
     var beta = Number.isFinite(opts.beta) ? opts.beta : 1.0;
     var lambdaX = Number.isFinite(opts.lambdaX) ? opts.lambdaX : 0.5;
 
-    var seed = opts.seedPos || null;
-    var uniformWeights = Tutte.buildUniformWeights(pairs, 1);
-    var base = Tutte.computeBarycentricPositions(
-      ids,
-      pairs,
-      outerFace,
-      {
-        adjacency: adjacency,
-        weights: uniformWeights,
-        maxIters: maxIters,
-        tolerance: 1e-8,
-        initOptions: Tutte.defaultOuterPlacementOptions({
-          useSeedOuter: false,
-          seedPos: seed
-        })
-      }
-    );
+    var uniformWeights = Tutte.buildUniformWeights(state.augmentedPairs, 1);
+    var base = solveAugmentedWeightedLayout(state, uniformWeights, maxIters, opts.seedPos || null);
     if (!base.ok) {
       return { ok: false, message: base.message || 'CEG23-xy baseline solve failed' };
     }
-    base.pos = alignOuterFaceEdgeHorizontally(base.pos, outerFace);
+    base.pos = alignOuterFaceEdgeHorizontally(base.pos, state.outerFace);
 
-    var xRank = rankByAxis(ids, base.pos, 'x');
-    var yRank = rankByAxis(ids, base.pos, 'y');
-    var wx = buildSpreadWeights(pairs, xRank, alpha, beta);
-    var wy = buildSpreadWeights(pairs, yRank, alpha, beta);
-    var wxy = combineWeights(pairs, wx, wy, lambdaX);
-    var xySolve = Tutte.computeBarycentricPositions(
-      ids,
-      pairs,
-      outerFace,
-      {
-        adjacency: adjacency,
-        weights: wxy,
-        maxIters: maxIters,
-        tolerance: 1e-8,
-        initOptions: Tutte.defaultOuterPlacementOptions({
-          useSeedOuter: false,
-          seedPos: base.pos
-        })
-      }
-    );
+    var xRank = rankByAxis(state.augmentedIds, base.pos, 'x');
+    var yRank = rankByAxis(state.augmentedIds, base.pos, 'y');
+    var wx = buildSpreadWeights(state.augmentedPairs, xRank, alpha, beta);
+    var wy = buildSpreadWeights(state.augmentedPairs, yRank, alpha, beta);
+    var wxy = combineWeights(state.augmentedPairs, wx, wy, lambdaX);
+    var xySolve = solveAugmentedWeightedLayout(state, wxy, maxIters, base.pos);
     if (!xySolve.ok) {
       return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };
     }
-    xySolve.pos = alignOuterFaceEdgeHorizontally(xySolve.pos, outerFace);
+    xySolve.pos = alignOuterFaceEdgeHorizontally(xySolve.pos, state.outerFace);
 
+    return buildCEG23SuccessResult(
+      state,
+      xySolve.pos,
+      base.iters + xySolve.iters,
+      'Applied CEG23-xy (' + state.outerFace.length + '-vertex outer face, alpha=' + alpha + ', beta=' + beta + ', lambdaX=' + Math.max(0, Math.min(1, lambdaX)) +
+      (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
+      ', ' + (base.iters + xySolve.iters) + ' total iters)'
+    );
+  }
+
+  function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
+    var graph = PlaygroundUtils.graphFromCy(cy);
+    var result = computeLayout(graph.nodeIds, graph.edgePairs, options || {});
+    if (!result || !result.ok) {
+      return result || { ok: false, message: failureMessage };
+    }
+    PlaygroundUtils.applyAndFit(cy, result.pos);
     return {
       ok: true,
-      nodeIds: ids,
-      edgePairs: pairs,
-      outerFace: outerFace,
-      pos: xySolve.pos,
-      iters: base.iters + xySolve.iters,
-      message: 'Applied CEG23-xy (' + outerFace.length + '-vertex outer face, alpha=' + alpha + ', beta=' + beta + ', lambdaX=' + Math.max(0, Math.min(1, lambdaX)) + ', ' + (base.iters + xySolve.iters) + ' total iters)'
+      message: result.message
     };
   }
 
   function applyCEG23BfsLayout(cy, options) {
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeCEG23BfsPositions(graph.nodeIds, graph.edgePairs, options || {});
-    if (!result || !result.ok) {
-      return result || { ok: false, message: 'CEG23-bfs failed' };
-    }
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, result.pos);
-    } else {
-      var nodes = cy.nodes().toArray();
-      for (var i = 0; i < nodes.length; i += 1) {
-        var id = String(nodes[i].id());
-        if (result.pos[id]) {
-          nodes[i].position(result.pos[id]);
-        }
-      }
-      cy.fit(undefined, 24);
-    }
-    return {
-      ok: true,
-      message: result.message
-    };
+    return applyCEG23Layout(cy, options, computeCEG23BfsPositions, 'CEG23-bfs failed');
   }
 
   function applyCEG23XyLayout(cy, options) {
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeCEG23XyPositions(graph.nodeIds, graph.edgePairs, options || {});
-    if (!result || !result.ok) {
-      return result || { ok: false, message: 'CEG23-xy failed' };
-    }
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, result.pos);
-    } else {
-      var nodes = cy.nodes().toArray();
-      for (var i = 0; i < nodes.length; i += 1) {
-        var id = String(nodes[i].id());
-        if (result.pos[id]) {
-          nodes[i].position(result.pos[id]);
-        }
-      }
-      cy.fit(undefined, 24);
-    }
-    return {
-      ok: true,
-      message: result.message
-    };
+    return applyCEG23Layout(cy, options, computeCEG23XyPositions, 'CEG23-xy failed');
   }
 
   global.PlanarVibeCEG23Bfs = {

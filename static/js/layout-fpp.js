@@ -615,7 +615,7 @@
     PlaygroundUtils.applyAndFit(cy, result.pos);
     var message = 'Applied FPP layout (' + result.nodeIds.length + ' vertices)';
     if (result.augmentedDummyCount > 0) {
-      message += ' after augmentation (+' + result.augmentedDummyCount + ' dummy)';
+      message += ' after augmentation (+' + result.augmentedDummyCount + ' dummy vertices)';
     }
     return {
       ok: true,

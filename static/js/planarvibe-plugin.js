@@ -2033,9 +2033,8 @@
           module: global.PlanarVibeCEG23Bfs,
           methodName: 'applyCEG23BfsLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit']) ||
-              missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'edgeKey']) ||
-              missingPlanarityUtilities() ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareTriangulatedLayoutData']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey']) ||
               missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
           }
         }, function () {
@@ -2054,9 +2053,8 @@
           module: global.PlanarVibeCEG23Xy,
           methodName: 'applyCEG23XyLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit']) ||
-              missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'edgeKey']) ||
-              missingPlanarityUtilities() ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareTriangulatedLayoutData']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey']) ||
               missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
           }
         }, function () {
