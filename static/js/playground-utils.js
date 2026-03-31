@@ -43,6 +43,35 @@
     return out;
   }
 
+  function normalizeLayoutMethodName(layoutName) {
+    var key = String(layoutName || '').toLowerCase();
+    if (key === 'reweight') return 'reweighttutte';
+    if (key === 'fd_uniform') return 'fd-uniform';
+    if (key === 'ceg23_bfs') return 'ceg23-bfs';
+    if (key === 'ceg23_xy') return 'ceg23-xy';
+    return key;
+  }
+
+  function sharedLayoutMethodOptionsByName(layoutName, overrides) {
+    var key = normalizeLayoutMethodName(layoutName);
+    var base = {};
+    if (key === 'air' ||
+        key === 'ppag' ||
+        key === 'facebalancer' ||
+        key === 'reweighttutte' ||
+        key === 'fd-uniform' ||
+        key === 'impred') {
+      base = {
+        incremental: true,
+        interactive: true,
+        delayMs: 0,
+        renderEvery: 2,
+        yieldEvery: 5
+      };
+    }
+    return Object.assign({}, base, overrides || {});
+  }
+
   function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
     var augmented = GraphUtils.triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
     var label = failureLabel || 'layout';
@@ -465,6 +494,7 @@
   global.PlaygroundUtils = {
     graphFromCy: graphFromCy,
     currentPositionsFromCy: currentPositionsFromCy,
+    sharedLayoutMethodOptionsByName: sharedLayoutMethodOptionsByName,
     prepareAugmentedTriangulation: prepareAugmentedTriangulation,
     originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
     createAugmentationDebugState: createAugmentationDebugState,

@@ -157,14 +157,11 @@
     var PREF_INTERACTIVE_KEY = 'planarvibe_interactive_mode';
     var PREF_STATUS_COLLAPSED_KEY = 'planarvibe_status_collapsed';
 
-    function defaultIncrementalLayoutMethodOptions(overrides) {
-      return Object.assign({
-        incremental: true,
-        interactive: true,
-        delayMs: 0,
-        renderEvery: 2,
-        yieldEvery: 5
-      }, overrides || {});
+    function sharedLayoutMethodOptions(layoutName, overrides) {
+      if (global.PlaygroundUtils && typeof global.PlaygroundUtils.sharedLayoutMethodOptionsByName === 'function') {
+        return global.PlaygroundUtils.sharedLayoutMethodOptionsByName(layoutName, overrides);
+      }
+      return Object.assign({}, overrides || {});
     }
 
     function writeCookie(name, value, days) {
@@ -1848,7 +1845,7 @@
           },
           buildMethodOptions: function () {
             var lastStatsIter = 0;
-            return defaultIncrementalLayoutMethodOptions({
+            return sharedLayoutMethodOptions('impred', {
               onIteration: function (progress) {
                 if (!progress) return;
                 var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
@@ -1906,7 +1903,7 @@
             return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
           },
           buildMethodOptions: function () {
-            return defaultIncrementalLayoutMethodOptions({
+            return sharedLayoutMethodOptions('air', {
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -1954,7 +1951,7 @@
             return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
           },
           buildMethodOptions: function () {
-            return defaultIncrementalLayoutMethodOptions({
+            return sharedLayoutMethodOptions('ppag', {
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -2000,7 +1997,7 @@
               missingTutteUtilities(['defaultOuterPlacementOptions']);
           },
           buildMethodOptions: function () {
-            return defaultIncrementalLayoutMethodOptions({
+            return sharedLayoutMethodOptions('facebalancer', {
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -2141,7 +2138,7 @@
               missingTutteUtilities(['placeOuterFaceVertices', 'defaultOuterPlacementOptions']);
           },
           buildMethodOptions: function () {
-            return defaultIncrementalLayoutMethodOptions({
+            return sharedLayoutMethodOptions('reweighttutte', {
               onIteration: function (progress) {
                 if (!progress) {
                   return;
@@ -2183,7 +2180,7 @@
               missingGraphUtilities(['buildAdjacencyArrays', 'computeDrawingDiameter', 'copyPositions', 'segmentsIntersectOrTouch', 'computePositionMoveStats', 'createMovementConvergenceTracker']);
           },
           buildMethodOptions: function () {
-            return defaultIncrementalLayoutMethodOptions({
+            return sharedLayoutMethodOptions('fd-uniform', {
               useSeedOuter: true,
               onIteration: function (progress) {
                 if (!progress || progress.iter % 10 !== 0) {

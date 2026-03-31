@@ -296,7 +296,7 @@
     var EPS = Number.isFinite(opts.epsilon) ? Math.max(1e-12, opts.epsilon) : 1e-9;
     var repEps = Number.isFinite(opts.repulsionEps) ? Math.max(1e-12, opts.repulsionEps) : 1e-6;
     var repPower = Number.isFinite(opts.repulsionPower) ? Math.max(1, opts.repulsionPower) : 2;
-    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 800;
+    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 400;
     var beta = Number.isFinite(opts.beta) ? Math.max(0, opts.beta) : 0.45;
     var alpha0 = Number.isFinite(opts.alpha) ? Math.max(0, opts.alpha) : 1.2;
     var alpha = alpha0;
