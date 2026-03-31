@@ -231,6 +231,11 @@
 
   function normalizePPAGOptions(options) {
     var opts = options || {};
+    var timing = PlaygroundUtils.resolveIncrementalLayoutTimingOptions(opts, {
+      delayMs: 0,
+      renderEvery: 2,
+      yieldEvery: 5
+    });
     return {
       interactive: opts.interactive !== false,
       maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 200,
@@ -240,11 +245,10 @@
       minStepScale: Number.isFinite(opts.minStepScale) && opts.minStepScale > 0 ? opts.minStepScale : Math.pow(2, -20),
       tolAreaPositive: Number.isFinite(opts.tolAreaPositive) ? Math.max(0, opts.tolAreaPositive) : 1e-12,
       tolAreaGlobal: Number.isFinite(opts.tolAreaGlobal) ? Math.max(0, opts.tolAreaGlobal) : 1e-3,
-      delayMs: Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0,
+      delayMs: timing.delayMs,
       onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
-      onSweep: typeof opts.onSweep === 'function' ? opts.onSweep : null,
-      yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
-      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 2
+      yieldEvery: timing.yieldEvery,
+      renderEvery: timing.renderEvery
     };
   }
 
@@ -376,8 +380,8 @@
       lastMoveStats = computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: 0 });
       lastMoveStats.acceptedCount = acceptedCount;
 
-      if (opts.onSweep) {
-        await opts.onSweep({
+      if (opts.onIteration) {
+        await opts.onIteration({
           iter: iter,
           maxIters: opts.maxIters,
           status: status,
@@ -493,7 +497,7 @@
     return PlaygroundUtils.runIncrementalLayout(cy, options, {
       compute: computePPAGPositions,
       patchComputeOptions: function (ctx) {
-        return { onSweep: ctx.onProgress };
+        return { onIteration: ctx.onProgress };
       },
       getPositions: function (result) {
         return result.pos;

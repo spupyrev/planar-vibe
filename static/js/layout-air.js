@@ -289,6 +289,11 @@
 
   function normalizeAirOptions(options) {
     var opts = options || {};
+    var timing = PlaygroundUtils.resolveIncrementalLayoutTimingOptions(opts, {
+      delayMs: 0,
+      renderEvery: 2,
+      yieldEvery: 5
+    });
     return {
       interactive: opts.interactive !== false,
       augmentationOptions: opts && typeof opts.augmentationOptions === 'object' && opts.augmentationOptions
@@ -303,10 +308,10 @@
       tolMove: Number.isFinite(opts.tolMove) ? Math.max(0, opts.tolMove) : 1e-12,
       armijo: Number.isFinite(opts.armijo) ? Math.max(0, opts.armijo) : 1e-4,
       minStep: Number.isFinite(opts.minStep) && opts.minStep > 0 ? opts.minStep : Math.pow(2, -40),
-      delayMs: Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0,
+      delayMs: timing.delayMs,
       onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
-      yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
-      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 2,
+      yieldEvery: timing.yieldEvery,
+      renderEvery: timing.renderEvery,
       moveTolRel: Number.isFinite(opts.moveTolRel) && opts.moveTolRel >= 0 ? opts.moveTolRel : 1e-5,
       moveTolAbs: Number.isFinite(opts.moveTolAbs) && opts.moveTolAbs >= 0 ? opts.moveTolAbs : 1e-12,
       errTolRel: Number.isFinite(opts.errTolRel) && opts.errTolRel >= 0 ? opts.errTolRel : 1e-4,

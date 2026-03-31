@@ -505,9 +505,14 @@
   function applyFDUniformLayout(cy, options) {
     var opts = options || {};
     var interactive = !!opts.interactive;
-    var delayMs = Number.isFinite(opts.delayMs) ? Math.max(0, Math.floor(opts.delayMs)) : 0;
-    var renderEvery = Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 2;
-    var yieldEvery = Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5;
+    var timing = PlaygroundUtils.resolveIncrementalLayoutTimingOptions(opts, {
+      delayMs: 0,
+      renderEvery: 2,
+      yieldEvery: 5
+    });
+    var delayMs = timing.delayMs;
+    var renderEvery = timing.renderEvery;
+    var yieldEvery = timing.yieldEvery;
     var graph = PlaygroundUtils.graphFromCy(cy);
     if (!interactive) {
       var syncResult = computeFDUniformPositions(graph.nodeIds, graph.edgePairs, opts);

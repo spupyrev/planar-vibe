@@ -172,14 +172,64 @@
     });
   }
 
+  function normalizeIncrementalProgress(progress) {
+    var event = progress || {};
+    var normalized = Object.assign({}, event);
+
+    if (!normalized.positions && normalized.pos) {
+      normalized.positions = normalized.pos;
+    }
+    if (!normalized.pos && normalized.positions) {
+      normalized.pos = normalized.positions;
+    }
+    if (!Number.isFinite(normalized.movedVertices) && Number.isFinite(normalized.movedNodes)) {
+      normalized.movedVertices = normalized.movedNodes;
+    }
+    if (!Number.isFinite(normalized.movedNodes) && Number.isFinite(normalized.movedVertices)) {
+      normalized.movedNodes = normalized.movedVertices;
+    }
+    if (!Number.isFinite(normalized.maxActualMove) && Number.isFinite(normalized.maxMove)) {
+      normalized.maxActualMove = normalized.maxMove;
+    }
+    if (!Number.isFinite(normalized.avgActualMove) && Number.isFinite(normalized.avgMove)) {
+      normalized.avgActualMove = normalized.avgMove;
+    }
+    if (!Number.isFinite(normalized.totalActualMove) && Number.isFinite(normalized.totalMove)) {
+      normalized.totalActualMove = normalized.totalMove;
+    }
+
+    return normalized;
+  }
+
+  function resolveIncrementalLayoutTimingOptions(options, defaults) {
+    var opts = options || {};
+    var cfg = defaults || {};
+    return {
+      delayMs: Number.isFinite(opts.delayMs)
+        ? Math.max(0, opts.delayMs)
+        : (Number.isFinite(cfg.delayMs) ? Math.max(0, cfg.delayMs) : 0),
+      renderEvery: Number.isFinite(opts.renderEvery)
+        ? Math.max(1, Math.floor(opts.renderEvery))
+        : (Number.isFinite(cfg.renderEvery) ? Math.max(1, Math.floor(cfg.renderEvery)) : 2),
+      yieldEvery: Number.isFinite(opts.yieldEvery)
+        ? Math.max(1, Math.floor(opts.yieldEvery))
+        : (Number.isFinite(cfg.yieldEvery) ? Math.max(1, Math.floor(cfg.yieldEvery)) : 5)
+    };
+  }
+
   function createIncrementalRenderer(config) {
     var cy = config.cy;
     var nodeIds = Array.isArray(config.nodeIds) ? config.nodeIds.map(String) : [];
     var getPositions = typeof config.getPositions === 'function' ? config.getPositions : function () { return {}; };
     var interactive = config.interactive !== false;
-    var delayMs = Math.max(0, Number(config.delayMs) || 0);
-    var renderEvery = Number.isFinite(config.renderEvery) ? Math.max(1, Math.floor(config.renderEvery)) : 2;
-    var yieldEvery = Number.isFinite(config.yieldEvery) ? Math.max(1, Math.floor(config.yieldEvery)) : 5;
+    var timing = resolveIncrementalLayoutTimingOptions(config, {
+      delayMs: 0,
+      renderEvery: 2,
+      yieldEvery: 5
+    });
+    var delayMs = timing.delayMs;
+    var renderEvery = timing.renderEvery;
+    var yieldEvery = timing.yieldEvery;
     var fitPadding = Number.isFinite(config.fitPadding) ? Math.max(0, config.fitPadding) : 24;
     var didFit = false;
 
@@ -243,15 +293,14 @@
     var graph = graphFromCy(cy);
     var livePositions = {};
     var interactive = opts.interactive !== false;
-    var delayMs = Number.isFinite(opts.delayMs)
-      ? Math.max(0, opts.delayMs)
-      : (Number.isFinite(cfg.delayMsDefault) ? Math.max(0, cfg.delayMsDefault) : 0);
-    var renderEvery = Number.isFinite(opts.renderEvery)
-      ? Math.max(1, Math.floor(opts.renderEvery))
-      : (Number.isFinite(cfg.renderEveryDefault) ? Math.max(1, Math.floor(cfg.renderEveryDefault)) : 2);
-    var yieldEvery = Number.isFinite(opts.yieldEvery)
-      ? Math.max(1, Math.floor(opts.yieldEvery))
-      : (Number.isFinite(cfg.yieldEveryDefault) ? Math.max(1, Math.floor(cfg.yieldEveryDefault)) : 5);
+    var timing = resolveIncrementalLayoutTimingOptions(opts, {
+      delayMs: cfg.delayMsDefault,
+      renderEvery: cfg.renderEveryDefault,
+      yieldEvery: cfg.yieldEveryDefault
+    });
+    var delayMs = timing.delayMs;
+    var renderEvery = timing.renderEvery;
+    var yieldEvery = timing.yieldEvery;
     var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
 
     var renderer = createIncrementalRenderer({
@@ -267,11 +316,12 @@
     await renderer.begin();
 
     async function onProgress(progress) {
-      livePositions = (progress && progress.positions) || livePositions;
+      var event = normalizeIncrementalProgress(progress);
+      livePositions = event.positions || livePositions;
       if (typeof opts.onIteration === 'function') {
-        opts.onIteration(progress);
+        opts.onIteration(event);
       }
-      await renderer.onProgress(progress, { forceYield: !!(opts.onIteration || delayMs > 0) });
+      await renderer.onProgress(event, { forceYield: !!(opts.onIteration || delayMs > 0) });
     }
 
     var computeOptions = Object.assign(
@@ -421,6 +471,8 @@
     applyPositionsToCy: applyPositionsToCy,
     applyAndFit: applyAndFit,
     waitForNextFrame: waitForNextFrame,
+    normalizeIncrementalProgress: normalizeIncrementalProgress,
+    resolveIncrementalLayoutTimingOptions: resolveIncrementalLayoutTimingOptions,
     createIncrementalRenderer: createIncrementalRenderer,
     runIncrementalLayout: runIncrementalLayout,
     prepareTriangulatedLayoutData: prepareTriangulatedLayoutData,
