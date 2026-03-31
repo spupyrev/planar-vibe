@@ -2,6 +2,10 @@
   'use strict';
 
   var PlaygroundUtils = global.PlaygroundUtils;
+  var Metrics = global.PlanarVibeMetrics;
+  var buildLayoutError = global.GraphUtils.buildLayoutError;
+  var buildLayoutResult = global.GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var faceKey = global.GraphUtils.faceKey;
   var polygonArea2 = global.GraphUtils.polygonArea2;
   var pointAdd = global.GraphUtils.pointAdd;
@@ -10,9 +14,16 @@
   var pointRot90 = global.GraphUtils.pointRot90;
   var pointScale = global.GraphUtils.pointScale;
   var pointSub = global.GraphUtils.pointSub;
+  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
+  var resolveFloatOption = global.GraphUtils.resolveFloatOption;
+  var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
+  var resolveIntOption = global.GraphUtils.resolveIntOption;
+  var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
+  var resolvePositiveOption = global.GraphUtils.resolvePositiveOption;
   var orientFaceCCW = global.GraphUtils.orientFaceCCW;
   var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
   var triangleArea2 = global.GraphUtils.triangleArea2;
+  var hasPositionCrossings = global.GraphUtils.hasPositionCrossings;
 
   function buildAirData(augmentedEmbedding, outerFace, posById) {
     var outerKey = faceKey(outerFace);
@@ -28,7 +39,7 @@
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
       if (!face || face.length < 3) {
-        return { ok: false, reason: 'Air requires a valid triangulated augmentation' };
+        return buildLayoutError({ reason: 'Air requires a valid triangulated augmentation' });
       }
 
       var oriented = orientFaceCCW(face, posById);
@@ -36,7 +47,7 @@
         continue;
       }
       if (face.length !== 3) {
-        return { ok: false, reason: 'Air requires all non-outer augmented faces to be triangles' };
+        return buildLayoutError({ reason: 'Air requires all non-outer augmented faces to be triangles' });
       }
 
       var triangleIndex = triangles.length;
@@ -56,30 +67,30 @@
     }
 
     if (triangles.length === 0) {
-      return {
+      return buildLayoutResult({
         ok: true,
         triangles: triangles,
         incident: incident,
         targetTriangleArea: 0
-      };
+      });
     }
 
     var outerArea = Math.abs(polygonArea2(outerFace, posById)) / 2;
     if (!(outerArea > 1e-12)) {
-      return { ok: false, reason: 'Air initialization failed: outer face has zero area' };
+      return buildLayoutError({ reason: 'Air initialization failed: outer face has zero area' });
     }
     var targetTriangleArea = outerArea / triangles.length;
     for (i = 0; i < triangles.length; i += 1) {
       triangles[i].targetArea = targetTriangleArea;
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       outerFace: outerFace.slice().map(String),
       triangles: triangles,
       incident: incident,
       targetTriangleArea: targetTriangleArea
-    };
+    });
   }
 
   function evaluateLocalState(entries, triangles, posById, point, tolAreaPositive) {
@@ -242,12 +253,6 @@
     };
   }
 
-  function originalDrawingHasCrossings(posById, edgePairs) {
-    return !!(global.PlanarVibeMetrics &&
-      typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
-      global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs));
-  }
-
   function normalizeAirOptions(options) {
     var opts = options || {};
     var timing = PlaygroundUtils.resolveIncrementalLayoutTimingOptions(opts, {
@@ -260,46 +265,41 @@
       augmentationOptions: opts && typeof opts.augmentationOptions === 'object' && opts.augmentationOptions
         ? Object.assign({}, opts.augmentationOptions)
         : null,
-      maxSweeps: Number.isFinite(opts.maxSweeps) ? Math.max(1, Math.floor(opts.maxSweeps)) : 200,
-      maxNewtonIter: Number.isFinite(opts.maxNewtonIter) ? Math.max(1, Math.floor(opts.maxNewtonIter)) : 10,
-      tolForceGlobal: Number.isFinite(opts.tolForceGlobal) ? Math.max(0, opts.tolForceGlobal) : 1e-8,
-      tolForceVertex: Number.isFinite(opts.tolForceVertex) ? Math.max(0, opts.tolForceVertex) : 1e-6,
-      tolAreaGlobal: Number.isFinite(opts.tolAreaGlobal) ? Math.max(0, opts.tolAreaGlobal) : 1e-3,
-      tolAreaPositive: Number.isFinite(opts.tolAreaPositive) ? Math.max(0, opts.tolAreaPositive) : 1e-15,
-      tolMove: Number.isFinite(opts.tolMove) ? Math.max(0, opts.tolMove) : 1e-12,
-      armijo: Number.isFinite(opts.armijo) ? Math.max(0, opts.armijo) : 1e-4,
-      minStep: Number.isFinite(opts.minStep) && opts.minStep > 0 ? opts.minStep : Math.pow(2, -40),
+      maxSweeps: resolveIntOption(opts.maxSweeps, 200, 1),
+      maxNewtonIter: resolveIntOption(opts.maxNewtonIter, 10, 1),
+      tolForceGlobal: resolveFloatOption(opts.tolForceGlobal, 1e-8, 0),
+      tolForceVertex: resolveFloatOption(opts.tolForceVertex, 1e-6, 0),
+      tolAreaGlobal: resolveFloatOption(opts.tolAreaGlobal, 1e-3, 0),
+      tolAreaPositive: resolveFloatOption(opts.tolAreaPositive, 1e-15, 0),
+      tolMove: resolveFloatOption(opts.tolMove, 1e-12, 0),
+      armijo: resolveFloatOption(opts.armijo, 1e-4, 0),
+      minStep: resolvePositiveOption(opts.minStep, Math.pow(2, -40)),
       delayMs: timing.delayMs,
-      onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
+      onIteration: resolveFunctionOption(opts.onIteration, null),
       yieldEvery: timing.yieldEvery,
       renderEvery: timing.renderEvery,
-      moveTolRel: Number.isFinite(opts.moveTolRel) && opts.moveTolRel >= 0 ? opts.moveTolRel : 1e-5,
-      moveTolAbs: Number.isFinite(opts.moveTolAbs) && opts.moveTolAbs >= 0 ? opts.moveTolAbs : 1e-12,
-      errTolRel: Number.isFinite(opts.errTolRel) && opts.errTolRel >= 0 ? opts.errTolRel : 1e-4,
-      patience: Number.isFinite(opts.patience) ? Math.max(1, Math.floor(opts.patience)) : 2,
-      deadlockPatience: Number.isFinite(opts.deadlockPatience) ? Math.max(1, Math.floor(opts.deadlockPatience)) : 2,
-      plateauWindow: Number.isFinite(opts.plateauWindow) ? Math.max(2, Math.floor(opts.plateauWindow)) : 12,
-      plateauPatience: Number.isFinite(opts.plateauPatience) ? Math.max(1, Math.floor(opts.plateauPatience)) : 1,
-      plateauErrTolAbs: Number.isFinite(opts.plateauErrTolAbs) && opts.plateauErrTolAbs >= 0 ? opts.plateauErrTolAbs : null,
-      plateauErrTolRel: Number.isFinite(opts.plateauErrTolRel) && opts.plateauErrTolRel >= 0 ? opts.plateauErrTolRel : null,
-      plateauErrGuardFactor: Number.isFinite(opts.plateauErrGuardFactor) && opts.plateauErrGuardFactor > 0 ? opts.plateauErrGuardFactor : 20
+      moveTolRel: resolveNonNegativeOption(opts.moveTolRel, 1e-5),
+      moveTolAbs: resolveNonNegativeOption(opts.moveTolAbs, 1e-12),
+      errTolRel: resolveNonNegativeOption(opts.errTolRel, 1e-4),
+      patience: resolveIntOption(opts.patience, 2, 1),
+      deadlockPatience: resolveIntOption(opts.deadlockPatience, 2, 1),
+      plateauWindow: resolveIntOption(opts.plateauWindow, 12, 2),
+      plateauPatience: resolveIntOption(opts.plateauPatience, 1, 1),
+      plateauErrTolAbs: resolveNonNegativeOption(opts.plateauErrTolAbs, null),
+      plateauErrTolRel: resolveNonNegativeOption(opts.plateauErrTolRel, null),
+      plateauErrGuardFactor: resolvePositiveOption(opts.plateauErrGuardFactor, 20)
     };
   }
 
   function prepareAirState(graph, options) {
     var opts = normalizeAirOptions(options);
-    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
+    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'Air layout',
       minNodeCount: 3,
-      augmentationOptions: opts.augmentationOptions,
-      seedOptions: {
-        maxIters: 1000,
-        tolerance: 1e-7,
-        useSeedOuter: false
-      }
+      augmentationOptions: opts.augmentationOptions
     });
     if (!context || !context.ok) {
-      return context || { ok: false, message: 'Air setup failed' };
+      return buildLayoutError(context || { message: 'Air setup failed' });
     }
 
     var airData = buildAirData(
@@ -308,11 +308,11 @@
       context.posById
     );
     if (!airData.ok) {
-      return { ok: false, message: airData.reason || 'Air setup failed' };
+      return buildLayoutError({ message: airData.reason || 'Air setup failed' });
     }
 
     if (airData.triangles.length === 0) {
-      return {
+      return buildLayoutResult({
         ok: true,
         opts: opts,
         graph: context.graph,
@@ -322,7 +322,7 @@
         posById: context.posById,
         airData: airData,
         movableVertices: []
-      };
+      });
     }
 
     for (var fi = 0; fi < airData.triangles.length; fi += 1) {
@@ -333,7 +333,7 @@
         context.posById[tri.vertices[2]]
       )) / 2;
       if (!(area > opts.tolAreaPositive)) {
-        return { ok: false, message: 'Air initialization failed: degenerate augmented triangle' };
+        return buildLayoutError({ message: 'Air initialization failed: degenerate augmented triangle' });
       }
     }
 
@@ -345,7 +345,7 @@
       }
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       opts: opts,
       graph: context.graph,
@@ -355,7 +355,7 @@
       posById: context.posById,
       airData: airData,
       movableVertices: movableVertices
-    };
+    });
   }
 
   async function runAirIterations(prepared, options) {
@@ -385,14 +385,14 @@
       lastStats.acceptedCount = 0;
       lastStats.sweeps = 0;
       return {
-        ok: !originalDrawingHasCrossings(posById, g.edgePairs),
+        ok: !hasPositionCrossings(posById, g.edgePairs),
         status: 'realized',
         pos: posById,
         stats: lastStats,
         moveStats: lastMoveStats,
         boundedFaceCount: airData.triangles.length,
         dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
-        hasCrossings: originalDrawingHasCrossings(posById, g.edgePairs)
+        hasCrossings: hasPositionCrossings(posById, g.edgePairs)
       };
     }
 
@@ -486,23 +486,26 @@
         await opts.onIteration({
           iter: sweep,
           maxIters: opts.maxSweeps,
-          maxRelError: maxRelErr,
-          maxForce: lastStats.maxForce,
-          balancedCount: lastStats.balancedCount,
+          status: status,
           positions: posById,
           movedVertices: acceptedCount,
           maxMove: lastMoveStats.maxMove,
           avgMove: lastMoveStats.avgMove,
-          stableIterCount: stalledSweeps,
-          stableIterLimit: opts.patience,
-          acceptedCount: acceptedCount,
-          deadSweepCount: deadSweeps,
-          plateauSweepCount: plateauSweeps,
-          plateauPatience: opts.plateauPatience,
-          plateauWindow: opts.plateauWindow,
-          plateauWindowImprovementAbs: plateauWindowImprovementAbs,
-          plateauWindowImprovementRel: plateauWindowImprovementRel,
-          boundedFaceCount: lastStats.boundedFaceCount
+          maxRelError: maxRelErr,
+          debug: {
+            maxForce: lastStats.maxForce,
+            balancedCount: lastStats.balancedCount,
+            stableIterCount: stalledSweeps,
+            stableIterLimit: opts.patience,
+            acceptedCount: acceptedCount,
+            deadSweepCount: deadSweeps,
+            plateauSweepCount: plateauSweeps,
+            plateauPatience: opts.plateauPatience,
+            plateauWindow: opts.plateauWindow,
+            plateauWindowImprovementAbs: plateauWindowImprovementAbs,
+            plateauWindowImprovementRel: plateauWindowImprovementRel,
+            boundedFaceCount: lastStats.boundedFaceCount
+          }
         });
       }
 
@@ -550,29 +553,26 @@
     }
 
     return {
-      ok: !originalDrawingHasCrossings(posById, g.edgePairs),
+      ok: !hasPositionCrossings(posById, g.edgePairs),
       status: status,
       pos: posById,
       stats: lastStats,
       moveStats: lastMoveStats,
       boundedFaceCount: airData.triangles.length,
       dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
-      hasCrossings: originalDrawingHasCrossings(posById, g.edgePairs)
+      hasCrossings: hasPositionCrossings(posById, g.edgePairs)
     };
   }
 
   async function computeAirPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var prepared = prepareAirState({
-      nodeIds: (nodeIds || []).map(String),
-      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    }, opts);
+    var prepared = prepareAirState(normalizeGraphInput(nodeIds, edgePairs), opts);
     if (!prepared || !prepared.ok) {
-      return prepared || { ok: false, message: 'Air failed' };
+      return buildLayoutError(prepared || { message: 'Air failed' });
     }
 
     if (prepared.airData.triangles.length === 0) {
-      return {
+      return buildLayoutResult({
         ok: true,
         status: 'realized',
         pos: prepared.posById,
@@ -584,7 +584,7 @@
         dummyCount: prepared.augmented.dummyCount,
         faceAreaScore: null,
         maxRelError: 0
-      };
+      });
     }
 
     var solveResult = await runAirIterations(prepared, prepared.opts);
@@ -592,35 +592,29 @@
     var lastStats = solveResult.stats;
 
     if (solveResult.hasCrossings) {
-      return {
-        ok: false,
+      return buildLayoutError({
         status: status,
         message: 'Air produced a non-plane drawing',
+        graph: prepared.graph,
+        outerFace: prepared.outerFace,
+        augmented: prepared.augmented,
         maxRelError: lastStats ? lastStats.maxRelError : null,
         boundedFaceCount: prepared.airData.triangles.length,
         dummyCount: prepared.augmented.dummyCount
-      };
+      });
     }
 
-    var faceScore = null;
-    if (global.PlanarVibeMetrics && global.PlanarVibeMetrics.computeUniformFaceAreaScore) {
-      faceScore = global.PlanarVibeMetrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
-    }
+    var faceScore = Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
 
-    var message = 'Applied Air (' + prepared.airData.triangles.length + ' bounded faces';
-    if (prepared.augmented.dummyCount > 0) {
-      message += ', +' + prepared.augmented.dummyCount + ' dummy vertices';
-    }
-    message += ', status ' + status;
-    if (lastStats && Number.isFinite(lastStats.maxRelError)) {
-      message += ', max rel err ' + lastStats.maxRelError.toFixed(3);
-    }
-    if (faceScore && faceScore.ok && Number.isFinite(faceScore.quality)) {
-      message += ', face score ' + faceScore.quality.toFixed(3);
-    }
-    message += ')';
+    var message = buildLayoutStatusMessage('Air', {
+      boundedFaceCount: prepared.airData.triangles.length,
+      dummyCount: prepared.augmented.dummyCount,
+      status: status,
+      maxRelError: lastStats ? lastStats.maxRelError : null,
+      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null
+    });
 
-    return {
+    return buildLayoutResult({
       ok: true,
       status: status,
       pos: prepared.posById,
@@ -634,7 +628,7 @@
       boundedFaceCount: prepared.airData.triangles.length,
       dummyCount: prepared.augmented.dummyCount,
       iters: lastStats && Number.isFinite(lastStats.sweeps) ? lastStats.sweeps : null
-    };
+    });
   }
 
   async function applyAirLayout(cy, options) {

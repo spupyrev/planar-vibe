@@ -4,13 +4,23 @@
   var GraphUtils = global.GraphUtils;
   var Metrics = global.PlanarVibeMetrics;
   var PlaygroundUtils = global.PlaygroundUtils;
+  var buildLayoutError = GraphUtils.buildLayoutError;
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
   var copyPositions = GraphUtils.copyPositions;
   var findOuterFaceIndex = GraphUtils.findOuterFaceIndex;
+  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
+  var resolveFloatOption = GraphUtils.resolveFloatOption;
+  var resolveFunctionOption = GraphUtils.resolveFunctionOption;
+  var resolveIntOption = GraphUtils.resolveIntOption;
+  var resolveOpenIntervalOption = GraphUtils.resolveOpenIntervalOption;
+  var resolvePositiveOption = GraphUtils.resolvePositiveOption;
   var orientFaceCCW = GraphUtils.orientFaceCCW;
   var outerFaceDiameter = GraphUtils.outerFaceDiameter;
   var polygonArea2 = GraphUtils.polygonArea2;
   var triangleArea2 = GraphUtils.triangleArea2;
+  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
   var PPAG_INTERNAL = {
     tolGrad: 1e-8,
     acceptanceTol: 1e-12
@@ -28,14 +38,14 @@
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
       if (!face || face.length < 3) {
-        return { ok: false, reason: 'PPAG requires a valid triangulated augmentation' };
+        return buildLayoutError({ reason: 'PPAG requires a valid triangulated augmentation' });
       }
       if (i === outerIndex) {
         continue;
       }
       var oriented = orientFaceCCW(face, posById);
       if (oriented.length !== 3) {
-        return { ok: false, reason: 'PPAG requires all bounded faces of H to be triangles' };
+        return buildLayoutError({ reason: 'PPAG requires all bounded faces of H to be triangles' });
       }
       var triangleIndex = triangles.length;
       triangles.push({ vertices: oriented });
@@ -52,27 +62,27 @@
     }
 
     if (triangles.length === 0) {
-      return {
+      return buildLayoutResult({
         ok: true,
         outerFace: outerFace.slice().map(String),
         incidentTrianglesByVertex: incidentTrianglesByVertex,
         triangles: triangles,
         targetTriangleArea: 0
-      };
+      });
     }
 
     var outerArea = Math.abs(polygonArea2(outerFace, posById)) / 2;
     if (!(outerArea > 1e-12)) {
-      return { ok: false, reason: 'PPAG initialization failed: outer face has zero area' };
+      return buildLayoutError({ reason: 'PPAG initialization failed: outer face has zero area' });
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       outerFace: outerFace.slice().map(String),
       incidentTrianglesByVertex: incidentTrianglesByVertex,
       triangles: triangles,
       targetTriangleArea: outerArea / triangles.length
-    };
+    });
   }
 
   function addTriangleGradientForSlot(grad, slot, a, b, c, coeff) {
@@ -121,11 +131,11 @@
       var b = posById[tri.vertices[1]];
       var c = posById[tri.vertices[2]];
       if (!a || !b || !c) {
-        return { ok: false, reason: 'missing_triangle_vertex' };
+        return buildLayoutError({ reason: 'missing_triangle_vertex' });
       }
       var area = triangleArea2(a, b, c) / 2;
       if (!(area > tolAreaPositive)) {
-        return { ok: false, reason: 'triangle_nonpositive' };
+        return buildLayoutError({ reason: 'triangle_nonpositive' });
       }
       var rel = area / targetArea - 1;
       residuals[i] = rel;
@@ -135,13 +145,13 @@
         maxRelError = Math.abs(rel);
       }
     }
-    return {
+    return buildLayoutResult({
       ok: true,
       residuals: residuals,
       areas: areas,
       areaEnergy: areaEnergy,
       maxRelError: maxRelError
-    };
+    });
   }
 
   function computePPAGState(ppagData, posById, opts) {
@@ -150,7 +160,7 @@
       return residualState;
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       objective: residualState.areaEnergy,
       areaEnergy: residualState.areaEnergy,
@@ -159,7 +169,7 @@
       rmsRelError: ppagData.triangles.length > 0
         ? Math.sqrt(residualState.areaEnergy / ppagData.triangles.length)
         : 0
-    };
+    });
   }
 
   function computeLocalDelta(vertexId, ppagData, posById, residuals, opts) {
@@ -223,12 +233,6 @@
     return worst;
   }
 
-  function originalDrawingHasCrossings(posById, edgePairs) {
-    return !!(Metrics &&
-      typeof Metrics.hasCrossingsFromPositions === 'function' &&
-      Metrics.hasCrossingsFromPositions(posById, edgePairs));
-  }
-
   function normalizePPAGOptions(options) {
     var opts = options || {};
     var timing = PlaygroundUtils.resolveIncrementalLayoutTimingOptions(opts, {
@@ -238,15 +242,15 @@
     });
     return {
       interactive: opts.interactive !== false,
-      maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 200,
-      maxVertexMoveRel: Number.isFinite(opts.maxVertexMoveRel) && opts.maxVertexMoveRel > 0 ? opts.maxVertexMoveRel : 0.08,
-      localDamping: Number.isFinite(opts.localDamping) && opts.localDamping > 0 ? opts.localDamping : 1e-3,
-      stepShrink: Number.isFinite(opts.stepShrink) && opts.stepShrink > 0 && opts.stepShrink < 1 ? opts.stepShrink : 0.5,
-      minStepScale: Number.isFinite(opts.minStepScale) && opts.minStepScale > 0 ? opts.minStepScale : Math.pow(2, -20),
-      tolAreaPositive: Number.isFinite(opts.tolAreaPositive) ? Math.max(0, opts.tolAreaPositive) : 1e-12,
-      tolAreaGlobal: Number.isFinite(opts.tolAreaGlobal) ? Math.max(0, opts.tolAreaGlobal) : 1e-3,
+      maxIters: resolveIntOption(opts.maxIters, 200, 1),
+      maxVertexMoveRel: resolvePositiveOption(opts.maxVertexMoveRel, 0.08),
+      localDamping: resolvePositiveOption(opts.localDamping, 1e-3),
+      stepShrink: resolveOpenIntervalOption(opts.stepShrink, 0.5, 0, 1),
+      minStepScale: resolvePositiveOption(opts.minStepScale, Math.pow(2, -20)),
+      tolAreaPositive: resolveFloatOption(opts.tolAreaPositive, 1e-12, 0),
+      tolAreaGlobal: resolveFloatOption(opts.tolAreaGlobal, 1e-3, 0),
       delayMs: timing.delayMs,
-      onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
+      onIteration: resolveFunctionOption(opts.onIteration, null),
       yieldEvery: timing.yieldEvery,
       renderEvery: timing.renderEvery
     };
@@ -254,26 +258,21 @@
 
   function preparePPAGState(graph, options) {
     var opts = normalizePPAGOptions(options);
-    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
+    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'PPAG layout',
-      minNodeCount: 3,
-      seedOptions: {
-        maxIters: 1000,
-        tolerance: 1e-7,
-        useSeedOuter: false
-      }
+      minNodeCount: 3
     });
     if (!context || !context.ok) {
-      return context || { ok: false, message: 'PPAG setup failed' };
+      return buildLayoutError(context || { message: 'PPAG setup failed' });
     }
 
     var ppagData = buildPPAGData(context.augmented.embedding, context.outerFace, context.posById);
     if (!ppagData.ok) {
-      return { ok: false, message: ppagData.reason || 'PPAG setup failed' };
+      return buildLayoutError({ message: ppagData.reason || 'PPAG setup failed' });
     }
 
     if (ppagData.triangles.length === 0) {
-      return {
+      return buildLayoutResult({
         ok: true,
         opts: opts,
         graph: context.graph,
@@ -282,18 +281,18 @@
         posById: context.posById,
         ppagData: ppagData,
         movableVertices: []
-      };
+      });
     }
 
     for (var fi = 0; fi < ppagData.triangles.length; fi += 1) {
       var tri = ppagData.triangles[fi];
       var area = triangleArea2(context.posById[tri.vertices[0]], context.posById[tri.vertices[1]], context.posById[tri.vertices[2]]) / 2;
       if (!(area > opts.tolAreaPositive)) {
-        return { ok: false, message: 'PPAG initialization failed: degenerate augmented triangle' };
+        return buildLayoutError({ message: 'PPAG initialization failed: degenerate augmented triangle' });
       }
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       opts: opts,
       graph: context.graph,
@@ -302,7 +301,7 @@
       posById: context.posById,
       ppagData: ppagData,
       movableVertices: context.movableVertices
-    };
+    });
   }
 
   async function runPPAGIterations(prepared, options) {
@@ -318,11 +317,11 @@
     var state = computePPAGState(ppagData, posById, opts);
 
     if (!state.ok) {
-      return {
+      return buildLayoutError({
         ok: false,
         status: 'invalid',
         reason: state.reason || 'PPAG initialization failed'
-      };
+      });
     }
 
     if (state.maxRelError <= opts.tolAreaGlobal) {
@@ -387,16 +386,19 @@
           status: status,
           positions: posById,
           objective: state.objective,
-          areaEnergy: state.areaEnergy,
           maxRelError: state.maxRelError,
-          rmsRelError: state.rmsRelError,
           maxMove: lastMoveStats.maxMove,
           avgMove: lastMoveStats.avgMove,
           movedVertices: lastMoveStats.movedVertices,
-          acceptedCount: acceptedCount,
-          acceptedStep: acceptedCount > 0 ? (acceptedStepSum / acceptedCount) : 0,
-          lineSearchSteps: lineSearchSteps,
-          boundedFaceCount: ppagData.triangles.length
+          debug: {
+            areaEnergy: state.areaEnergy,
+            rmsRelError: state.rmsRelError,
+            acceptedCount: acceptedCount,
+            acceptedStep: acceptedCount > 0 ? (acceptedStepSum / acceptedCount) : 0,
+            lineSearchSteps: lineSearchSteps,
+            boundedFaceCount: ppagData.triangles.length,
+            gradNorm: state.gradNorm
+          }
         });
       }
 
@@ -414,7 +416,7 @@
       status = 'max_iters';
     }
 
-    var hasCrossings = originalDrawingHasCrossings(posById, g.edgePairs);
+    var hasCrossings = hasPositionCrossings(posById, g.edgePairs);
     return {
       ok: !hasCrossings,
       status: status,
@@ -430,16 +432,13 @@
 
   async function computePPAGPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var prepared = preparePPAGState({
-      nodeIds: (nodeIds || []).map(String),
-      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    }, opts);
+    var prepared = preparePPAGState(normalizeGraphInput(nodeIds, edgePairs), opts);
     if (!prepared || !prepared.ok) {
-      return prepared || { ok: false, message: 'PPAG setup failed' };
+      return buildLayoutError(prepared || { message: 'PPAG setup failed' });
     }
 
     if (prepared.ppagData.triangles.length === 0) {
-      return {
+      return buildLayoutResult({
         ok: true,
         status: 'realized',
         pos: prepared.posById,
@@ -452,24 +451,28 @@
         iters: 0,
         maxRelError: 0,
         faceAreaScore: null
-      };
+      });
     }
 
     var result = await runPPAGIterations(prepared, prepared.opts);
 
     if (!result.ok && result.reason) {
-      return {
-        ok: false,
+      return buildLayoutError({
         status: result.status,
+        graph: prepared.graph,
+        outerFace: prepared.outerFace,
+        augmented: prepared.augmented,
         message: result.reason
-      };
+      });
     }
     if (result.hasCrossings) {
-      return {
-        ok: false,
+      return buildLayoutError({
         status: result.status,
+        graph: prepared.graph,
+        outerFace: prepared.outerFace,
+        augmented: prepared.augmented,
         message: 'PPAG produced a non-plane drawing'
-      };
+      });
     }
 
     var faceScore = Metrics && Metrics.computeUniformFaceAreaScore
@@ -477,7 +480,7 @@
       : null;
     var lastStats = result.stats || {};
 
-    return {
+    return buildLayoutResult({
       ok: true,
       status: result.status,
       pos: prepared.posById,
@@ -490,7 +493,7 @@
       maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
       boundedFaceCount: prepared.ppagData.triangles.length,
       dummyCount: prepared.augmented.dummyCount
-    };
+    });
   }
 
   async function applyPPAGLayout(cy, options) {
@@ -504,18 +507,13 @@
       },
       buildResult: function (ctx) {
         var result = ctx.result;
-        var message = 'Applied PPAG (' + result.boundedFaceCount + ' bounded faces';
-        if (result.dummyCount > 0) {
-          message += ', +' + result.dummyCount + ' dummy vertices';
-        }
-        message += ', status ' + result.status;
-        if (Number.isFinite(result.maxRelError)) {
-          message += ', max rel err ' + result.maxRelError.toFixed(3);
-        }
-        if (Number.isFinite(result.faceAreaScore)) {
-          message += ', face score ' + result.faceAreaScore.toFixed(3);
-        }
-        message += ')';
+        var message = buildLayoutStatusMessage('PPAG', {
+          boundedFaceCount: result.boundedFaceCount,
+          dummyCount: result.dummyCount,
+          status: result.status,
+          maxRelError: result.maxRelError,
+          faceAreaScore: result.faceAreaScore
+        });
         return {
           ok: true,
           status: result.status,

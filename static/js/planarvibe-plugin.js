@@ -106,25 +106,24 @@
     };
   }
 
-  function layoutOptionsByName(name, parsedGraph) {
+  global.PlanarVibePlugin = {
+    parseEdgeList: parseEdgeList,
+    layoutOptions: layoutOptions
+  };
+})(window);
+
+(function (global) {
+  'use strict';
+
+  function cyLayoutOptionsByName(name, parsedGraph) {
     if (name === 'circle') {
       return { name: 'circle', fit: true, padding: 24, animate: false };
     }
     if (name === 'grid') {
       return { name: 'grid', fit: true, padding: 24, animate: false };
     }
-    return layoutOptions(parsedGraph);
+    return global.PlanarVibePlugin.layoutOptions(parsedGraph);
   }
-
-  global.PlanarVibePlugin = {
-    parseEdgeList: parseEdgeList,
-    layoutOptions: layoutOptions,
-    layoutOptionsByName: layoutOptionsByName
-  };
-})(window);
-
-(function (global) {
-  'use strict';
 
   function initBrowserApp() {
     if (!global.document || typeof global.cytoscape !== 'function' || typeof global.$ !== 'function') {
@@ -227,20 +226,6 @@
     var layoutBusyState = null;
     var showDebugAugmentation = false;
     var currentDebugState = null;
-
-    function hashStringLocal(value, seed) {
-      var hash = seed >>> 0;
-      var text = String(value);
-      for (var i = 0; i < text.length; i += 1) {
-        hash ^= text.charCodeAt(i);
-        hash = Math.imul(hash, 16777619);
-      }
-      return hash >>> 0;
-    }
-
-    function normalizedHashLocal(value, seed) {
-      return hashStringLocal(value, seed) / 4294967295;
-    }
 
     function computeNodeFontSize(vertexSize) {
       return Math.max(6, Math.round(vertexSize * 0.45));
@@ -468,8 +453,8 @@
         }
         var id = String(el.data.id);
         byId[id] = {
-          x: margin + normalizedHashLocal(id + ':x', 2166136261) * xSpan,
-          y: margin + normalizedHashLocal(id + ':y', 33554467) * ySpan
+          x: margin + global.GraphUtils.normalizedHash(id + ':x', 2166136261) * xSpan,
+          y: margin + global.GraphUtils.normalizedHash(id + ':y', 33554467) * ySpan
         };
       }
       return byId;
@@ -685,6 +670,10 @@
         updateFaceAreaPlot();
         updateEdgeLengthPlot();
       }
+    }
+
+    function progressDebug(progress) {
+      return (progress && progress.debug) ? progress.debug : {};
     }
 
     function escapeXml(value) {
@@ -1111,13 +1100,13 @@
         return;
       }
 
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.hasCrossingsFromPositions) {
+      if (!global.GraphUtils || typeof global.GraphUtils.hasPositionCrossings !== 'function') {
         clearFaceAreaPlot('Metrics unavailable');
         clearAngleResolutionPlot('Metrics unavailable');
         setPlaneStat(null);
         return;
       }
-      var hasCrossings = global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs);
+      var hasCrossings = global.GraphUtils.hasPositionCrossings(posById, edgePairs);
       setPlaneStat(!hasCrossings);
       updateAngleResolutionScore(nodeIds, edgePairs, posById, hasCrossings);
       if (hasCrossings) {
@@ -1848,10 +1837,11 @@
             return sharedLayoutMethodOptions('impred', {
               onIteration: function (progress) {
                 if (!progress) return;
+                var debug = progressDebug(progress);
                 var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
-                  ' | moved ' + progress.movedNodes +
-                  ' | actual move ' + progress.maxActualMove.toFixed(2) +
-                  ' | cap ' + progress.maxMove.toFixed(2);
+                  ' | moved ' + progress.movedVertices +
+                  ' | actual move ' + progress.maxMove.toFixed(2) +
+                  ' | cap ' + debug.moveCap.toFixed(2);
                 setStatus(msg, false);
                 var shouldRefreshStats = (progress.iter % 10 === 0) || (progress.iter === progress.maxIters);
                 if (shouldRefreshStats && progress.iter !== lastStatsIter && cy) {
@@ -1880,7 +1870,7 @@
           module: global.PlanarVibeTutte,
           methodName: 'applyTutteLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareTriangulatedLayoutData']) ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareGraphAndLayoutData']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'embeddingHasFace', 'analyzeInternallyThreeConnected', 'normalizeNodeIds', 'normalizeEdgePairs', 'normalizeOuterFace', 'edgeKey']) ||
               missingPlanarityUtilities();
           }
@@ -1900,32 +1890,33 @@
           module: global.PlanarVibeAir,
           methodName: 'applyAirLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareGraphAndLayoutData']);
           },
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('air', {
               onIteration: function (progress) {
                 if (!progress) return;
+                var debug = progressDebug(progress);
                 var parts = [];
                 parts.push('Air sweep ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.maxRelError)) {
                   parts.push('face err ' + progress.maxRelError.toFixed(3));
                 }
-                if (Number.isFinite(progress.maxForce)) {
-                  parts.push('max force ' + progress.maxForce.toExponential(2));
+                if (Number.isFinite(debug.maxForce)) {
+                  parts.push('max force ' + debug.maxForce.toExponential(2));
                 }
                 if (Number.isFinite(progress.maxMove)) {
                   parts.push('max move ' + progress.maxMove.toExponential(2));
                 }
-                if (Number.isFinite(progress.acceptedCount)) {
-                  parts.push('accepted ' + progress.acceptedCount);
+                if (Number.isFinite(debug.acceptedCount)) {
+                  parts.push('accepted ' + debug.acceptedCount);
                 }
-                if (Number.isFinite(progress.plateauWindowImprovementAbs) &&
-                    Number.isFinite(progress.plateauWindow)) {
-                  parts.push('dErr[' + progress.plateauWindow + '] ' + progress.plateauWindowImprovementAbs.toExponential(2));
+                if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
+                    Number.isFinite(debug.plateauWindow)) {
+                  parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
                 }
-                if (Number.isFinite(progress.boundedFaceCount)) {
-                  parts.push('faces ' + progress.boundedFaceCount);
+                if (Number.isFinite(debug.boundedFaceCount)) {
+                  parts.push('faces ' + debug.boundedFaceCount);
                 }
                 setStatus(parts.join(' | '), false);
               }
@@ -1948,12 +1939,13 @@
           module: global.PlanarVibePPAG,
           methodName: 'applyPPAGLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareGraphAndLayoutData']);
           },
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('ppag', {
               onIteration: function (progress) {
                 if (!progress) return;
+                var debug = progressDebug(progress);
                 var parts = [];
                 parts.push('PPAG step ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.objective)) {
@@ -1962,14 +1954,14 @@
                 if (Number.isFinite(progress.maxRelError)) {
                   parts.push('face err ' + progress.maxRelError.toFixed(3));
                 }
-                if (Number.isFinite(progress.gradNorm)) {
-                  parts.push('grad ' + progress.gradNorm.toExponential(2));
+                if (Number.isFinite(debug.gradNorm)) {
+                  parts.push('grad ' + debug.gradNorm.toExponential(2));
                 }
                 if (Number.isFinite(progress.maxMove)) {
                   parts.push('max move ' + progress.maxMove.toExponential(2));
                 }
-                if (Number.isFinite(progress.lineSearchSteps)) {
-                  parts.push('backtracks ' + progress.lineSearchSteps);
+                if (Number.isFinite(debug.lineSearchSteps)) {
+                  parts.push('backtracks ' + debug.lineSearchSteps);
                 }
                 setStatus(parts.join(' | '), false);
               }
@@ -1993,20 +1985,21 @@
           module: global.PlanarVibeFaceBalancer,
           methodName: 'applyFaceBalancerLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']) ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareGraphAndLayoutData']) ||
               missingTutteUtilities(['defaultOuterPlacementOptions']);
           },
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('facebalancer', {
               onIteration: function (progress) {
                 if (!progress) return;
+                var debug = progressDebug(progress);
                 var parts = [];
                 parts.push('FaceBalancer step ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.objective)) {
                   parts.push('obj ' + progress.objective.toFixed(3));
                 }
-                if (Number.isFinite(progress.gradNorm)) {
-                  parts.push('grad ' + progress.gradNorm.toExponential(2));
+                if (Number.isFinite(debug.gradNorm)) {
+                  parts.push('grad ' + debug.gradNorm.toExponential(2));
                 }
                 if (Number.isFinite(progress.maxRelError)) {
                   parts.push('face err ' + progress.maxRelError.toFixed(3));
@@ -2033,7 +2026,7 @@
           module: global.PlanarVibeCEG23Bfs,
           methodName: 'applyCEG23BfsLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareTriangulatedLayoutData']) ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareGraphAndLayoutData']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey']) ||
               missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
           }
@@ -2053,7 +2046,7 @@
           module: global.PlanarVibeCEG23Xy,
           methodName: 'applyCEG23XyLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareTriangulatedLayoutData']) ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareGraphAndLayoutData']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey']) ||
               missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
           }
@@ -2131,7 +2124,7 @@
           module: global.PlanarVibeReweightTutte,
           methodName: 'applyReweightTutteLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData', 'createAugmentationDebugState']) ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareGraphAndLayoutData', 'createAugmentationDebugState']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'collectMovableVertices', 'computeDrawingDiameter', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'findOuterFaceIndex', 'polygonAreaAbs']) ||
               missingTutteUtilities(['placeOuterFaceVertices', 'defaultOuterPlacementOptions']);
           },
@@ -2141,16 +2134,17 @@
                 if (!progress) {
                   return;
                 }
+                var debug = progressDebug(progress);
                 var parts = [];
                 parts.push('Reweight step ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.faceAreaScore)) {
                   parts.push('face score ' + progress.faceAreaScore.toFixed(3));
                 }
-                if (Number.isFinite(progress.faceAreaMinRatio) && Number.isFinite(progress.faceAreaMaxRatio)) {
-                  parts.push('area ratio min/avg ' + progress.faceAreaMinRatio.toFixed(2) + ', max/avg ' + progress.faceAreaMaxRatio.toFixed(2));
+                if (Number.isFinite(debug.faceAreaMinRatio) && Number.isFinite(debug.faceAreaMaxRatio)) {
+                  parts.push('area ratio min/avg ' + debug.faceAreaMinRatio.toFixed(2) + ', max/avg ' + debug.faceAreaMaxRatio.toFixed(2));
                 }
-                if (Number.isFinite(progress.boundedFaceCount)) {
-                  parts.push('faces ' + progress.boundedFaceCount);
+                if (Number.isFinite(debug.boundedFaceCount)) {
+                  parts.push('faces ' + debug.boundedFaceCount);
                 }
                 setStatus(parts.join(' | '), false);
               }
@@ -2174,20 +2168,21 @@
           module: global.PlanarVibeFDUniform,
           methodName: 'applyFDUniformLayout',
           checkDependencies: function () {
-            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData', 'createAugmentationDebugState']) ||
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareGraphAndLayoutData', 'createAugmentationDebugState']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'computeDrawingDiameter', 'copyPositions', 'segmentsIntersectOrTouch', 'computePositionMoveStats', 'createMovementConvergenceTracker']);
           },
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('fd-uniform', {
               useSeedOuter: true,
               onIteration: function (progress) {
+                var debug = progressDebug(progress);
                 if (!progress || progress.iter % 10 !== 0) {
                   return;
                 }
                 setStatus(
                   'FD-uniform step ' + progress.iter + '/' + progress.maxIters +
-                  ' | accepted ' + progress.accepted +
-                  ' | rejected ' + progress.rejected,
+                  ' | accepted ' + debug.accepted +
+                  ' | rejected ' + debug.rejected,
                   false
                 );
               }
@@ -2203,7 +2198,7 @@
         return;
       }
 
-      var layout = cy.layout(global.PlanarVibePlugin.layoutOptionsByName(layoutName, currentParsed));
+      var layout = cy.layout(cyLayoutOptionsByName(layoutName, currentParsed));
       if (layout && layout.one) {
         layout.one('layoutstop', function () {
           normalizeLayoutScale();

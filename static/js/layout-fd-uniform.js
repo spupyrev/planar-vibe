@@ -3,12 +3,21 @@
 
   var Metrics = global.PlanarVibeMetrics;
   var PlaygroundUtils = global.PlaygroundUtils;
+  var buildLayoutError = global.GraphUtils.buildLayoutError;
+  var buildLayoutResult = global.GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var buildAdjacencyArrays = global.GraphUtils.buildAdjacencyArrays;
   var collectMovableVertices = global.GraphUtils.collectMovableVertices;
   var computeDrawingDiameter = global.GraphUtils.computeDrawingDiameter;
+  var hasPositionCrossings = global.GraphUtils.hasPositionCrossings;
+  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
   var computePositionMoveStats = global.GraphUtils.computePositionMoveStats;
   var copyPositions = global.GraphUtils.copyPositions;
   var createMovementConvergenceTracker = global.GraphUtils.createMovementConvergenceTracker;
+  var resolveFloatOption = global.GraphUtils.resolveFloatOption;
+  var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
+  var resolveIntOption = global.GraphUtils.resolveIntOption;
+  var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
   var segmentsIntersectOrTouch = global.GraphUtils.segmentsIntersectOrTouch;
 
   function wouldIntroduceCrossing(vertexId, newPos, positions, edgePairs, incidentEdges, eps) {
@@ -124,8 +133,7 @@
     if (!Metrics || typeof Metrics.computeSpacingUniformityScore !== 'function') {
       return null;
     }
-    if (Metrics.hasCrossingsFromPositions &&
-        Metrics.hasCrossingsFromPositions(pos, edgePairs)) {
+    if (hasPositionCrossings(pos, edgePairs)) {
       return null;
     }
     var score = Metrics.computeSpacingUniformityScore(nodeIds, pos);
@@ -275,7 +283,7 @@
 
   function buildFDUniformResult(state, context) {
     var finalPos = state.bestPos || state.pos;
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: state.nodeIds,
       edgePairs: state.edgePairs,
@@ -288,54 +296,132 @@
       accepted: state.acceptedTotal,
       rejected: state.rejectedTotal,
       spacingScore: Number.isFinite(state.bestScore) ? state.bestScore : null
-    };
+    });
+  }
+
+  function updateFDUniformBestScore(state, evalEvery) {
+    var iter = state.performedIters;
+    if (!(iter % evalEvery === 0 || iter === 1 || iter === state.maxIters)) {
+      return;
+    }
+    var q = evaluateSpacingQuality(state.nodeIds, state.edgePairs, state.pos);
+    if (Number.isFinite(q) && q > state.bestScore) {
+      state.bestScore = q;
+      state.bestPos = copyPositions(state.pos);
+    }
+  }
+
+  function runFDUniformIterations(state, context, options) {
+    var opts = options || {};
+    var evalEvery = resolveIntOption(opts.evalEvery, 10, 1);
+    var onIteration = resolveFunctionOption(opts.onIteration, null);
+    var movementTracker = opts.movementTracker;
+    var movable = state.movable;
+
+    function runStep(iter) {
+      if (state.h < state.hMin) {
+        state.stopReason = 'step-too-small';
+        return { done: true, progress: null };
+      }
+
+      var prevPos = copyPositions(state.pos);
+      var step = runFDUniformIteration(state, iter);
+      var accepted = step.accepted;
+      var rejected = step.rejected;
+      var moveStats = computePositionMoveStats(movable, prevPos, state.pos, { moveTol: 1e-9 });
+      var movementStatus = movementTracker.update({
+        maxMove: moveStats.maxMove,
+        avgMove: moveStats.avgMove
+      }, iter);
+
+      if (movable.length > 0 && rejected > movable.length * 0.5) {
+        state.h *= state.gamma;
+      }
+      if (movementStatus.converged) {
+        state.stopReason = movementStatus.reason || 'movement-converged';
+        return { done: true, progress: null };
+      }
+      if (iter % state.alphaGrowEvery === 0 && state.alpha < state.alphaCap) {
+        state.alpha = Math.min(state.alphaCap, state.alpha * state.alphaGrowFactor);
+      }
+
+      updateFDUniformBestScore(state, evalEvery);
+
+      return {
+        done: false,
+        progress: onIteration ? {
+          iter: iter,
+          maxIters: state.maxIters,
+          positions: state.pos,
+          debug: {
+            step: state.h,
+            alpha: state.alpha,
+            accepted: accepted,
+            rejected: rejected,
+            spacingScore: Number.isFinite(state.bestScore) ? state.bestScore : null
+          }
+        } : null
+      };
+    }
+
+    if (!onIteration) {
+      for (var iter = 1; iter <= state.maxIters; iter += 1) {
+        if (runStep(iter).done) {
+          break;
+        }
+      }
+      return buildFDUniformResult(state, context);
+    }
+
+    return (async function () {
+      for (var iter = 1; iter <= state.maxIters; iter += 1) {
+        var step = runStep(iter);
+        if (step.done) {
+          break;
+        }
+        await onIteration(step.progress);
+      }
+      return buildFDUniformResult(state, context);
+    })();
   }
 
   function computeFDUniformPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var EPS = Number.isFinite(opts.epsilon) ? Math.max(1e-12, opts.epsilon) : 1e-9;
-    var repEps = Number.isFinite(opts.repulsionEps) ? Math.max(1e-12, opts.repulsionEps) : 1e-6;
-    var repPower = Number.isFinite(opts.repulsionPower) ? Math.max(1, opts.repulsionPower) : 2;
-    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 400;
-    var beta = Number.isFinite(opts.beta) ? Math.max(0, opts.beta) : 0.45;
-    var alpha0 = Number.isFinite(opts.alpha) ? Math.max(0, opts.alpha) : 1.2;
+    var EPS = resolveFloatOption(opts.epsilon, 1e-9, 1e-12);
+    var repEps = resolveFloatOption(opts.repulsionEps, 1e-6, 1e-12);
+    var repPower = resolveFloatOption(opts.repulsionPower, 2, 1);
+    var maxIters = resolveIntOption(opts.maxIters, 400, 1);
+    var beta = resolveFloatOption(opts.beta, 0.45, 0);
+    var alpha0 = resolveFloatOption(opts.alpha, 1.2, 0);
     var alpha = alpha0;
-    var alphaGrowEvery = Number.isFinite(opts.alphaGrowEvery) ? Math.max(1, Math.floor(opts.alphaGrowEvery)) : 120;
-    var alphaGrowFactor = Number.isFinite(opts.alphaGrowFactor) ? Math.max(1, opts.alphaGrowFactor) : 1.15;
-    var alphaCap = Number.isFinite(opts.alphaCap) ? Math.max(alpha0, opts.alphaCap) : 4.0;
-    var gamma = Number.isFinite(opts.stepDecay) ? Math.min(0.95, Math.max(0.1, opts.stepDecay)) : 0.5;
-    var maxForce = Number.isFinite(opts.maxForce) ? Math.max(1e-6, opts.maxForce) : 9.0;
-    var eta = Number.isFinite(opts.eta) ? Math.max(0, opts.eta) : 1.2;
-    var zeta = Number.isFinite(opts.zeta) ? Math.max(0, opts.zeta) : 3.2;
-    var collisionBoost = Number.isFinite(opts.collisionBoost) ? Math.max(0, opts.collisionBoost) : 6.0;
-    var kNearest = Number.isFinite(opts.kNearest) ? Math.max(1, Math.floor(opts.kNearest)) : 4;
-    var evalEvery = Number.isFinite(opts.evalEvery) ? Math.max(1, Math.floor(opts.evalEvery)) : 10;
-    var onIteration = typeof opts.onIteration === 'function' ? opts.onIteration : null;
+    var alphaGrowEvery = resolveIntOption(opts.alphaGrowEvery, 120, 1);
+    var alphaGrowFactor = resolveFloatOption(opts.alphaGrowFactor, 1.15, 1);
+    var alphaCap = resolveFloatOption(opts.alphaCap, 4.0, alpha0);
+    var gamma = resolveFloatOption(opts.stepDecay, 0.5, 0.1, 0.95);
+    var maxForce = resolveFloatOption(opts.maxForce, 9.0, 1e-6);
+    var eta = resolveFloatOption(opts.eta, 1.2, 0);
+    var zeta = resolveFloatOption(opts.zeta, 3.2, 0);
+    var collisionBoost = resolveFloatOption(opts.collisionBoost, 6.0, 0);
+    var kNearest = resolveIntOption(opts.kNearest, 4, 1);
+    var evalEvery = resolveIntOption(opts.evalEvery, 10, 1);
+    var onIteration = resolveFunctionOption(opts.onIteration, null);
 
-    var graph = {
-      nodeIds: (nodeIds || []).map(String),
-      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    };
+    var graph = normalizeGraphInput(nodeIds, edgePairs);
     var ids = graph.nodeIds.slice();
     if (ids.length < 3) {
-      return { ok: false, message: 'FD-uniform requires at least 3 vertices' };
+      return buildLayoutError({ message: 'FD-uniform requires at least 3 vertices', graph: graph });
     }
     var pairs = graph.edgePairs.slice();
     if (pairs.length < 3) {
-      return { ok: false, message: 'FD-uniform requires at least 3 edges' };
+      return buildLayoutError({ message: 'FD-uniform requires at least 3 edges', graph: graph });
     }
 
-    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
+    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FD-uniform',
-      minNodeCount: 3,
-      seedOptions: {
-        maxIters: Number.isFinite(opts.initMaxIters) ? Math.max(10, Math.floor(opts.initMaxIters)) : 1200,
-        tolerance: Number.isFinite(opts.initTolerance) ? Math.max(1e-10, opts.initTolerance) : 1e-7,
-        useSeedOuter: false
-      }
-    }, null);
+      minNodeCount: 3
+    });
     if (!context || !context.ok) {
-      return context || { ok: false, message: 'FD-uniform setup failed' };
+      return buildLayoutError(context || { message: 'FD-uniform setup failed' });
     }
 
     var outerFace = context.outerFace;
@@ -370,13 +456,13 @@
     }
     var targetLength = median(lengths);
     var diameter = computeDrawingDiameter(ids, pos);
-    var h = Number.isFinite(opts.initialStep) ? Math.max(1e-8, opts.initialStep) : 0.02 * diameter;
-    var hMin = Number.isFinite(opts.minStep) ? Math.max(1e-10, opts.minStep) : 1e-5 * diameter;
+    var h = resolveFloatOption(opts.initialStep, 0.02 * diameter, 1e-8);
+    var hMin = resolveFloatOption(opts.minStep, 1e-5 * diameter, 1e-10);
     var movementTracker = createMovementConvergenceTracker({
-      minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 30,
-      stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 8,
-      maxMoveTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 1e-4 * diameter,
-      avgMoveTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 2e-5 * diameter
+      minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, 30, 1),
+      stableIterLimit: resolveIntOption(opts.stableIterLimit, 8, 1),
+      maxMoveTol: resolveNonNegativeOption(opts.movementStopTol, 1e-4 * diameter),
+      avgMoveTol: resolveNonNegativeOption(opts.avgMovementStopTol, 2e-5 * diameter)
     });
 
     var state = {
@@ -414,92 +500,11 @@
       stopReason: 'max-iters'
     };
 
-    if (!onIteration) {
-      for (var iter = 1; iter <= maxIters; iter += 1) {
-        if (state.h < state.hMin) {
-          state.stopReason = 'step-too-small';
-          break;
-        }
-        var prevPos = copyPositions(state.pos);
-        var step = runFDUniformIteration(state, iter);
-        var accepted = step.accepted;
-        var rejected = step.rejected;
-        var moveStats = computePositionMoveStats(movable, prevPos, state.pos, { moveTol: 1e-9 });
-        var movementStatus = movementTracker.update({
-          maxMove: moveStats.maxMove,
-          avgMove: moveStats.avgMove
-        }, iter);
-
-        if (movable.length > 0 && rejected > movable.length * 0.5) {
-          state.h *= gamma;
-        }
-        if (movementStatus.converged) {
-          state.stopReason = movementStatus.reason || 'movement-converged';
-          break;
-        }
-        if (iter % alphaGrowEvery === 0 && state.alpha < alphaCap) {
-          state.alpha = Math.min(alphaCap, state.alpha * alphaGrowFactor);
-        }
-
-        if (iter % evalEvery === 0 || iter === 1 || iter === maxIters) {
-          var q = evaluateSpacingQuality(ids, pairs, state.pos);
-          if (Number.isFinite(q) && q > state.bestScore) {
-            state.bestScore = q;
-            state.bestPos = copyPositions(state.pos);
-          }
-        }
-      }
-      return buildFDUniformResult(state, context);
-    }
-
-    return (async function () {
-      for (var iter = 1; iter <= maxIters; iter += 1) {
-        if (state.h < state.hMin) {
-          state.stopReason = 'step-too-small';
-          break;
-        }
-        var prevPos = copyPositions(state.pos);
-        var step = runFDUniformIteration(state, iter);
-        var accepted = step.accepted;
-        var rejected = step.rejected;
-        var moveStats = computePositionMoveStats(movable, prevPos, state.pos, { moveTol: 1e-9 });
-        var movementStatus = movementTracker.update({
-          maxMove: moveStats.maxMove,
-          avgMove: moveStats.avgMove
-        }, iter);
-
-        if (movable.length > 0 && rejected > movable.length * 0.5) {
-          state.h *= gamma;
-        }
-        if (movementStatus.converged) {
-          state.stopReason = movementStatus.reason || 'movement-converged';
-          break;
-        }
-        if (iter % alphaGrowEvery === 0 && state.alpha < alphaCap) {
-          state.alpha = Math.min(alphaCap, state.alpha * alphaGrowFactor);
-        }
-
-        if (iter % evalEvery === 0 || iter === 1 || iter === maxIters) {
-          var q = evaluateSpacingQuality(ids, pairs, state.pos);
-          if (Number.isFinite(q) && q > state.bestScore) {
-            state.bestScore = q;
-            state.bestPos = copyPositions(state.pos);
-          }
-        }
-
-        await onIteration({
-          iter: iter,
-          maxIters: maxIters,
-          step: state.h,
-          alpha: state.alpha,
-          accepted: accepted,
-          rejected: rejected,
-          positions: state.pos,
-          spacingScore: Number.isFinite(state.bestScore) ? state.bestScore : null
-        });
-      }
-      return buildFDUniformResult(state, context);
-    })();
+    return runFDUniformIterations(state, context, {
+      evalEvery: evalEvery,
+      onIteration: onIteration,
+      movementTracker: movementTracker
+    });
   }
 
   function applyFDUniformLayout(cy, options) {
@@ -517,13 +522,21 @@
     if (!interactive) {
       var syncResult = computeFDUniformPositions(graph.nodeIds, graph.edgePairs, opts);
       if (!syncResult || !syncResult.ok) {
-        return syncResult || { ok: false, message: 'FD-uniform failed' };
+        return buildLayoutError(syncResult || {
+          message: 'FD-uniform failed',
+          graph: graph
+        });
       }
       PlaygroundUtils.applyAndFit(cy, syncResult.pos);
       return {
         ok: true,
         stopReason: syncResult.stopReason,
-        message: 'Applied FD-uniform (' + syncResult.iters + ' iters, accepted ' + syncResult.accepted + ', rejected ' + syncResult.rejected + ', ' + syncResult.stopReason + ')',
+        message: buildLayoutStatusMessage('FD-uniform', {
+          iters: syncResult.iters,
+          accepted: syncResult.accepted,
+          rejected: syncResult.rejected,
+          stopReason: syncResult.stopReason
+        }),
         debugState: PlaygroundUtils.createAugmentationDebugState(
           syncResult.graph,
           syncResult.outerFace,
@@ -552,7 +565,12 @@
           return {
             ok: true,
             stopReason: result.stopReason,
-            message: 'Applied FD-uniform (' + result.iters + ' iters, accepted ' + result.accepted + ', rejected ' + result.rejected + ', ' + result.stopReason + ')',
+            message: buildLayoutStatusMessage('FD-uniform', {
+              iters: result.iters,
+              accepted: result.accepted,
+              rejected: result.rejected,
+              stopReason: result.stopReason
+            }),
             debugState: PlaygroundUtils.createAugmentationDebugState(
               result.graph,
               result.outerFace,

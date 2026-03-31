@@ -4,11 +4,19 @@
   var PlaygroundUtils = global.PlaygroundUtils;
   var GraphUtils = global.GraphUtils;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
+  var buildLayoutError = GraphUtils.buildLayoutError;
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var edgeKey = GraphUtils.edgeKey;
+  var filterPositions = GraphUtils.filterPositions;
+  var resolveFloatOption = GraphUtils.resolveFloatOption;
+  var resolveIntOption = GraphUtils.resolveIntOption;
+  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
   var normalizeNodeIds = GraphUtils.normalizeNodeIds;
   var normalizeEdgePairs = GraphUtils.normalizeEdgePairs;
   var normalizeOuterFace = GraphUtils.normalizeOuterFace;
   var embeddingHasFace = GraphUtils.embeddingHasFace;
+  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
 
   function buildUniformWeights(edgePairs, value) {
     var pairs = normalizeEdgePairs(edgePairs);
@@ -92,26 +100,44 @@
         y: cy + R * Math.sin(gamma * i)
       };
     }
+    if (opts.fixedOuterPos) {
+      for (i = 0; i < face.length; i += 1) {
+        v = face[i];
+        var fp = opts.fixedOuterPos[v];
+        if (fp && Number.isFinite(fp.x) && Number.isFinite(fp.y)) {
+          pos[v] = { x: fp.x, y: fp.y };
+        }
+      }
+    }
     return pos;
   }
 
   function computeBarycentricPositions(nodeIds, edgePairs, outerFace, options) {
     var opts = options || {};
-    var ids = normalizeNodeIds(nodeIds);
-    var pairs = normalizeEdgePairs(edgePairs);
+    var graph = normalizeGraphInput(nodeIds, edgePairs);
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
     var face = normalizeOuterFace(outerFace);
     var adjacency = opts.adjacency || buildAdjacencyArrays(ids, pairs);
     var weights = opts.weights || buildUniformWeights(pairs, 1);
     var rowWeights = opts.rowWeights || null;
-    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000;
-    var tol = Number.isFinite(opts.tolerance) ? Math.max(0, opts.tolerance) : 1e-7;
+    var maxIters = resolveIntOption(opts.maxIters, 1000, 1);
+    var tol = resolveFloatOption(opts.tolerance, 1e-7, 0);
     var initOptions = opts.initOptions || defaultOuterPlacementOptions({ useSeedOuter: false });
 
     if (ids.length < 1) {
-      return { ok: false, message: 'No vertices' };
+      return buildLayoutError({
+        message: 'No vertices',
+        graph: graph,
+        outerFace: face
+      });
     }
     if (face.length < 3) {
-      return { ok: false, message: 'Outer face is invalid' };
+      return buildLayoutError({
+        message: 'Outer face is invalid',
+        graph: graph,
+        outerFace: face
+      });
     }
 
     var pos = placeOuterFaceVertices(ids, face, initOptions);
@@ -160,34 +186,29 @@
       }
     }
 
-    return { ok: true, pos: pos, iters: iters };
-  }
-
-  function extractOriginalPositions(posById, nodeIds) {
-    var ids = normalizeNodeIds(nodeIds);
-    var out = {};
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      if (posById[id]) {
-        out[id] = { x: posById[id].x, y: posById[id].y };
-      }
-    }
-    return out;
+    return buildLayoutResult({
+      ok: true,
+      graph: graph,
+      outerFace: face,
+      pos: pos,
+      iters: iters
+    });
   }
 
   function computeTutteLayout(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var ids = normalizeNodeIds(nodeIds);
-    var pairs = normalizeEdgePairs(edgePairs);
+    var graph = normalizeGraphInput(nodeIds, edgePairs);
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
 
     if (ids.length < 3) {
-      return {
-        ok: false,
-        message: 'Tutte requires at least 3 vertices'
-      };
+      return buildLayoutError({
+        message: 'Tutte requires at least 3 vertices',
+        graph: graph
+      });
     }
 
-    var prepared = PlaygroundUtils.prepareTriangulatedLayoutData({
+    var prepared = PlaygroundUtils.prepareGraphAndLayoutData({
       nodeIds: ids,
       edgePairs: pairs
     }, {
@@ -195,55 +216,24 @@
       minNodeCount: 3,
       baseEmbedding: opts.embedding || null,
       outerFace: Array.isArray(opts.outerFace) ? normalizeOuterFace(opts.outerFace) : null,
-      augmentationOptions: opts.augmentationOptions || null,
-      initPositions: function (solveNodeIds, solveEdgePairs, outerFace, context) {
-        var embedding = context && context.augmented ? context.augmented.embedding : null;
-        if (!embedding || !embedding.ok) {
-          return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
-        }
-        if (!embeddingHasFace(embedding, outerFace)) {
-          return { ok: false, message: 'Provided outer face is not a face of the embedding' };
-        }
-        var connectivity = GraphUtils.analyzeInternallyThreeConnected(solveNodeIds, solveEdgePairs, outerFace);
-        if (!connectivity || !connectivity.ok) {
-          return {
-            ok: false,
-            message: (connectivity && connectivity.reason) || 'Barycentric layout requires an internally 3-connected planar graph'
-          };
-        }
-        return computeBarycentricPositions(
-          solveNodeIds,
-          solveEdgePairs,
-          outerFace,
-          {
-          maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000,
-          tolerance: Number.isFinite(opts.tolerance) ? Math.max(0, opts.tolerance) : 1e-7,
-          initOptions: defaultOuterPlacementOptions({
-            useSeedOuter: false
-          })
-          }
-        );
-      }
+      augmentationOptions: opts.augmentationOptions || null
     });
     if (!prepared || !prepared.ok) {
-      return prepared || { ok: false, message: 'Tutte failed' };
+      return buildLayoutError(prepared || { message: 'Tutte failed' });
     }
 
-    var projected = extractOriginalPositions(prepared.posById, ids);
-    var hasCrossings = !!(global.PlanarVibeMetrics &&
-      typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
-      global.PlanarVibeMetrics.hasCrossingsFromPositions(
-        projected,
-        pairs
-      ));
+    var projected = filterPositions(prepared.posById, ids);
+    var hasCrossings = hasPositionCrossings(projected, pairs);
     if (hasCrossings) {
-      return {
-        ok: false,
-        message: 'Tutte produced a non-plane drawing'
-      };
+      return buildLayoutError({
+        message: 'Tutte produced a non-plane drawing',
+        graph: prepared.graph,
+        outerFace: prepared.outerFace,
+        augmented: prepared.augmented
+      });
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: ids,
       edgePairs: pairs,
@@ -254,14 +244,17 @@
       pos: projected,
       posById: prepared.posById,
       iters: prepared.initResult && Number.isFinite(prepared.initResult.iters) ? prepared.initResult.iters : 0
-    };
+    });
   }
 
   function applyTutteLayout(cy) {
     var graph = PlaygroundUtils.graphFromCy(cy);
     var result = computeTutteLayout(graph.nodeIds, graph.edgePairs);
     if (!result || !result.ok) {
-      return result || { ok: false, message: 'Tutte failed' };
+      return buildLayoutError(result || {
+        message: 'Tutte failed',
+        graph: graph
+      });
     }
 
     if (typeof PlaygroundUtils.applyAndFit === 'function') {
@@ -279,7 +272,10 @@
 
     return {
       ok: true,
-      message: 'Applied Tutte (' + result.outerFace.length + '-vertex outer face, ' + result.iters + ' iters)',
+      message: buildLayoutStatusMessage('Tutte', {
+        outerFaceVertexCount: result.outerFace.length,
+        iters: result.iters
+      }),
       debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
         ? PlaygroundUtils.createAugmentationDebugState(
           result.graph,

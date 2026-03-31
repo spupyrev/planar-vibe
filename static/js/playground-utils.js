@@ -95,6 +95,56 @@
     };
   }
 
+  function prepareGraphData(graph, config) {
+    var cfg = config || {};
+    var label = String(cfg.failureLabel || 'Layout');
+    var minNodeCount = Number.isFinite(cfg.minNodeCount) ? Math.max(1, Math.floor(cfg.minNodeCount)) : 3;
+    var normalizedGraph = {
+      nodeIds: GraphUtils.normalizeNodeIds(graph && graph.nodeIds),
+      edgePairs: GraphUtils.normalizeSimpleEdgePairs(graph && graph.edgePairs)
+    };
+
+    if (normalizedGraph.nodeIds.length < minNodeCount) {
+      return { ok: false, message: label + ' requires at least ' + minNodeCount + ' vertices' };
+    }
+
+    var baseEmbedding = cfg.baseEmbedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(normalizedGraph.nodeIds, normalizedGraph.edgePairs);
+    if (!baseEmbedding || !baseEmbedding.ok) {
+      return { ok: false, message: label + ' requires a planar graph' };
+    }
+
+    var outerFace = Array.isArray(cfg.outerFace) && cfg.outerFace.length >= 3
+      ? cfg.outerFace.slice().map(String)
+      : GraphUtils.chooseOuterFaceFromEmbedding(baseEmbedding);
+    if (!outerFace || outerFace.length < 3) {
+      return { ok: false, message: 'Could not determine outer boundary for ' + label };
+    }
+
+    var augmented = prepareAugmentedTriangulation(
+      normalizedGraph.nodeIds,
+      normalizedGraph.edgePairs,
+      baseEmbedding,
+      outerFace,
+      label,
+      cfg.augmentationOptions || null
+    );
+    if (!augmented.ok) {
+      return { ok: false, message: augmented.reason || (label + ' augmentation failed') };
+    }
+
+    return {
+      ok: true,
+      graph: normalizedGraph,
+      baseEmbedding: baseEmbedding,
+      outerFace: outerFace,
+      augmented: augmented,
+      embedding: augmented.embedding,
+      augmentedNodeIds: augmented.nodeIds,
+      augmentedEdgePairs: augmented.edgePairs,
+      augmentedDummyCount: augmented.dummyCount || 0
+    };
+  }
+
   function originalFaceKeyForAugmentedFace(face, dummyFaceKeyById, dummyFaceVerticesById, seenDummyIds) {
     var seen = seenDummyIds || new Set();
     for (var i = 0; i < face.length; i += 1) {
@@ -204,6 +254,7 @@
   function normalizeIncrementalProgress(progress) {
     var event = progress || {};
     var normalized = Object.assign({}, event);
+    normalized.debug = normalized.debug ? Object.assign({}, normalized.debug) : {};
 
     if (!normalized.positions && normalized.pos) {
       normalized.positions = normalized.pos;
@@ -392,79 +443,113 @@
     return result;
   }
 
-  function prepareTriangulatedLayoutData(graph, config) {
+  function createZeroVectorLocal(n) {
+    var out = new Array(Math.max(0, Math.floor(Number(n) || 0)));
+    for (var i = 0; i < out.length; i += 1) {
+      out[i] = 0;
+    }
+    return out;
+  }
+
+  function validateBarycentricSeedContext(nodeIds, edgePairs, outerFace, context) {
+    var embedding = context && context.augmented ? context.augmented.embedding : null;
+    if (!embedding || !embedding.ok) {
+      return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
+    }
+    if (!GraphUtils.embeddingHasFace(embedding, outerFace)) {
+      return { ok: false, message: 'Provided outer face is not a face of the embedding' };
+    }
+    var connectivity = GraphUtils.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
+    if (!connectivity || !connectivity.ok) {
+      return {
+        ok: false,
+        message: (connectivity && connectivity.reason) || 'Barycentric layout requires an internally 3-connected planar graph'
+      };
+    }
+    return { ok: true };
+  }
+
+  function computeSharedBarycentricSeed(nodeIds, edgePairs, outerFace, context) {
+    var validation = validateBarycentricSeedContext(nodeIds, edgePairs, outerFace, context);
+    if (!validation.ok) {
+      return validation;
+    }
+    var ids = (nodeIds || []).map(String);
+    var adjacency = GraphUtils.buildAdjacencyArrays(ids, edgePairs || []);
+    var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(
+      ids,
+      outerFace,
+      global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
+        useSeedOuter: false
+      })
+    );
+    var outerSet = new Set((outerFace || []).map(String));
+    var interiorIds = [];
+    var interiorIndexById = {};
+    var i;
+    var j;
+
+    for (i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
+      if (!outerSet.has(id)) {
+        interiorIndexById[id] = interiorIds.length;
+        interiorIds.push(id);
+      }
+    }
+    if (interiorIds.length === 0) {
+      return { ok: true, pos: pos, iters: 0 };
+    }
+
+    var L = new Array(interiorIds.length);
+    var bx = createZeroVectorLocal(interiorIds.length);
+    var by = createZeroVectorLocal(interiorIds.length);
+    for (i = 0; i < interiorIds.length; i += 1) {
+      L[i] = createZeroVectorLocal(interiorIds.length);
+      L[i][i] = 1;
+      var neighbors = adjacency[interiorIds[i]] || [];
+      if (neighbors.length === 0) {
+        continue;
+      }
+      var weight = 1 / neighbors.length;
+      for (j = 0; j < neighbors.length; j += 1) {
+        var neighborId = String(neighbors[j]);
+        var interiorIdx = interiorIndexById[neighborId];
+        if (interiorIdx === undefined) {
+          bx[i] += weight * pos[neighborId].x;
+          by[i] += weight * pos[neighborId].y;
+        } else {
+          L[i][interiorIdx] -= weight;
+        }
+      }
+    }
+
+    var factor = GraphUtils.luFactorize(L);
+    if (!factor) {
+      return { ok: false, message: 'Exact barycentric solve failed' };
+    }
+    var solved = GraphUtils.solveLUWithTwoRhs(factor, bx, by);
+    if (!solved) {
+      return { ok: false, message: 'Exact barycentric solve failed' };
+    }
+    for (i = 0; i < interiorIds.length; i += 1) {
+      pos[interiorIds[i]] = { x: solved.x1[i], y: solved.x2[i] };
+    }
+    return { ok: true, pos: pos, iters: 1 };
+  }
+
+  function prepareGraphAndLayoutData(graph, config) {
     var cfg = config || {};
     var label = String(cfg.failureLabel || 'Layout');
-    var minNodeCount = Number.isFinite(cfg.minNodeCount) ? Math.max(1, Math.floor(cfg.minNodeCount)) : 3;
-    var normalizedGraph = {
-      nodeIds: GraphUtils.normalizeNodeIds(graph && graph.nodeIds),
-      edgePairs: GraphUtils.normalizeSimpleEdgePairs(graph && graph.edgePairs)
-    };
-    var usesDefaultSeed = typeof cfg.initPositions !== 'function';
-    var initPositions = usesDefaultSeed
-      ? function (nodeIds, edgePairs, outerFace, context) {
-        var opts = cfg.seedOptions || {
-          maxIters: 1000,
-          tolerance: 1e-7
-        };
-        var embedding = context && context.augmented ? context.augmented.embedding : null;
-        if (!embedding || !embedding.ok) {
-          return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
-        }
-        if (!GraphUtils.embeddingHasFace(embedding, outerFace)) {
-          return { ok: false, message: 'Provided outer face is not a face of the embedding' };
-        }
-        var connectivity = GraphUtils.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
-        if (!connectivity || !connectivity.ok) {
-          return {
-            ok: false,
-            message: (connectivity && connectivity.reason) || 'Barycentric layout requires an internally 3-connected planar graph'
-          };
-        }
-        return global.PlanarVibeTutteAlgorithm.computeBarycentricPositions(
-          nodeIds,
-          edgePairs,
-          outerFace,
-          {
-          maxIters: opts.maxIters,
-          tolerance: opts.tolerance,
-          initOptions: global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
-            useSeedOuter: false
-          })
-          }
-        );
-      }
-      : cfg.initPositions;
-
-    if (normalizedGraph.nodeIds.length < minNodeCount) {
-      return { ok: false, message: label + ' requires at least ' + minNodeCount + ' vertices' };
+    var prepared = prepareGraphData(graph, cfg);
+    if (!prepared || !prepared.ok) {
+      return prepared;
     }
+    var normalizedGraph = prepared.graph;
+    var baseEmbedding = prepared.baseEmbedding;
+    var outerFace = prepared.outerFace;
+    var augmented = prepared.augmented;
 
-    var baseEmbedding = cfg.baseEmbedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(normalizedGraph.nodeIds, normalizedGraph.edgePairs);
-    if (!baseEmbedding || !baseEmbedding.ok) {
-      return { ok: false, message: label + ' requires a planar graph' };
-    }
-
-    var outerFace = Array.isArray(cfg.outerFace) && cfg.outerFace.length >= 3
-      ? cfg.outerFace.slice().map(String)
-      : GraphUtils.chooseOuterFaceFromEmbedding(baseEmbedding);
-    if (!outerFace || outerFace.length < 3) {
-      return { ok: false, message: 'Could not determine outer boundary for ' + label };
-    }
-
-    var augmented = prepareAugmentedTriangulation(
-      normalizedGraph.nodeIds,
-      normalizedGraph.edgePairs,
-      baseEmbedding,
-      outerFace,
-      label,
-      cfg.augmentationOptions || null
-    );
-    if (!augmented.ok) {
-      return { ok: false, message: augmented.reason || (label + ' augmentation failed') };
-    }
-
-    var init = initPositions(augmented.nodeIds, augmented.edgePairs, outerFace, {
+    var init = computeSharedBarycentricSeed(augmented.nodeIds, augmented.edgePairs, outerFace, {
       graph: normalizedGraph,
       baseEmbedding: baseEmbedding,
       augmented: augmented,
@@ -487,8 +572,8 @@
     };
   }
 
-  function prepareTriangulatedLayoutContext(cy, config) {
-    return prepareTriangulatedLayoutData(graphFromCy(cy), config);
+  function prepareGraphAndLayoutContext(cy, config) {
+    return prepareGraphAndLayoutData(graphFromCy(cy), config);
   }
 
   global.PlaygroundUtils = {
@@ -496,6 +581,7 @@
     currentPositionsFromCy: currentPositionsFromCy,
     sharedLayoutMethodOptionsByName: sharedLayoutMethodOptionsByName,
     prepareAugmentedTriangulation: prepareAugmentedTriangulation,
+    prepareGraphData: prepareGraphData,
     originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
     createAugmentationDebugState: createAugmentationDebugState,
     applyPositionsToCy: applyPositionsToCy,
@@ -505,7 +591,7 @@
     resolveIncrementalLayoutTimingOptions: resolveIncrementalLayoutTimingOptions,
     createIncrementalRenderer: createIncrementalRenderer,
     runIncrementalLayout: runIncrementalLayout,
-    prepareTriangulatedLayoutData: prepareTriangulatedLayoutData,
-    prepareTriangulatedLayoutContext: prepareTriangulatedLayoutContext
+    prepareGraphAndLayoutData: prepareGraphAndLayoutData,
+    prepareGraphAndLayoutContext: prepareGraphAndLayoutContext
   };
 })(window);

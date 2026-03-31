@@ -11,6 +11,13 @@
     });
   }
 
+  function normalizeGraphInput(nodeIds, edgePairs) {
+    return {
+      nodeIds: normalizeNodeIds(nodeIds),
+      edgePairs: normalizeEdgePairs(edgePairs)
+    };
+  }
+
   function normalizeSimpleEdgePairs(edgePairs) {
     var pairs = normalizeEdgePairs(edgePairs);
     var out = [];
@@ -37,6 +44,214 @@
 
   function edgeKey(u, v) {
     return u < v ? u + '::' + v : v + '::' + u;
+  }
+
+  function hashString(value, seed) {
+    var hash = seed >>> 0;
+    var text = String(value);
+    for (var i = 0; i < text.length; i += 1) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function normalizedHash(value, seed) {
+    return hashString(value, seed) / 4294967295;
+  }
+
+  function resolveFiniteOption(value, fallback) {
+    return Number.isFinite(value) ? value : fallback;
+  }
+
+  function resolveFloatOption(value, fallback, min, max) {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    var out = value;
+    if (Number.isFinite(min)) {
+      out = Math.max(min, out);
+    }
+    if (Number.isFinite(max)) {
+      out = Math.min(max, out);
+    }
+    return out;
+  }
+
+  function resolveIntOption(value, fallback, min, max) {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    var out = Math.floor(value);
+    if (Number.isFinite(min)) {
+      out = Math.max(min, out);
+    }
+    if (Number.isFinite(max)) {
+      out = Math.min(max, out);
+    }
+    return out;
+  }
+
+  function resolvePositiveOption(value, fallback) {
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
+  function resolveNonNegativeOption(value, fallback) {
+    return Number.isFinite(value) && value >= 0 ? value : fallback;
+  }
+
+  function resolveGreaterThanOption(value, fallback, threshold) {
+    return Number.isFinite(value) && value > threshold ? value : fallback;
+  }
+
+  function resolveOpenIntervalOption(value, fallback, minExclusive, maxExclusive) {
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+    if (Number.isFinite(minExclusive) && !(value > minExclusive)) {
+      return fallback;
+    }
+    if (Number.isFinite(maxExclusive) && !(value < maxExclusive)) {
+      return fallback;
+    }
+    return value;
+  }
+
+  function resolveFunctionOption(value, fallback) {
+    return typeof value === 'function' ? value : fallback;
+  }
+
+  function cloneMatrix(A) {
+    var out = new Array(A.length);
+    for (var i = 0; i < A.length; i += 1) {
+      out[i] = A[i].slice();
+    }
+    return out;
+  }
+
+  function luFactorize(A) {
+    var n = A.length;
+    var LU = cloneMatrix(A);
+    var piv = new Array(n);
+    var i;
+    var j;
+
+    for (i = 0; i < n; i += 1) {
+      piv[i] = i;
+    }
+    for (var k = 0; k < n; k += 1) {
+      var pivotRow = k;
+      var pivotValue = Math.abs(LU[k][k]);
+      for (i = k + 1; i < n; i += 1) {
+        var cand = Math.abs(LU[i][k]);
+        if (cand > pivotValue) {
+          pivotValue = cand;
+          pivotRow = i;
+        }
+      }
+      if (!(pivotValue > 1e-12)) {
+        return null;
+      }
+      if (pivotRow !== k) {
+        var tmpRow = LU[k];
+        LU[k] = LU[pivotRow];
+        LU[pivotRow] = tmpRow;
+        var tmpPivot = piv[k];
+        piv[k] = piv[pivotRow];
+        piv[pivotRow] = tmpPivot;
+      }
+      for (i = k + 1; i < n; i += 1) {
+        LU[i][k] /= LU[k][k];
+        var factor = LU[i][k];
+        for (j = k + 1; j < n; j += 1) {
+          LU[i][j] -= factor * LU[k][j];
+        }
+      }
+    }
+    return { LU: LU, piv: piv };
+  }
+
+  function solveLUWithTwoRhs(factor, b1, b2) {
+    var n = b1.length;
+    if (n === 0) return { x1: [], x2: [] };
+    var LU = factor.LU;
+    var piv = factor.piv;
+    var y1 = new Array(n);
+    var y2 = new Array(n);
+    var i;
+    var j;
+
+    for (i = 0; i < n; i += 1) {
+      y1[i] = b1[piv[i]];
+      y2[i] = b2[piv[i]];
+    }
+    for (i = 0; i < n; i += 1) {
+      for (j = 0; j < i; j += 1) {
+        y1[i] -= LU[i][j] * y1[j];
+        y2[i] -= LU[i][j] * y2[j];
+      }
+    }
+
+    var x1 = new Array(n);
+    var x2 = new Array(n);
+    for (i = n - 1; i >= 0; i -= 1) {
+      var sum1 = y1[i];
+      var sum2 = y2[i];
+      for (j = i + 1; j < n; j += 1) {
+        sum1 -= LU[i][j] * x1[j];
+        sum2 -= LU[i][j] * x2[j];
+      }
+      var diag = LU[i][i];
+      if (!(Math.abs(diag) > 1e-12)) return null;
+      x1[i] = sum1 / diag;
+      x2[i] = sum2 / diag;
+    }
+    return { x1: x1, x2: x2 };
+  }
+
+  function solveTransposeLUWithTwoRhs(factor, b1, b2) {
+    var n = b1.length;
+    if (n === 0) return { x1: [], x2: [] };
+    var LU = factor.LU;
+    var piv = factor.piv;
+    var z1 = new Array(n);
+    var z2 = new Array(n);
+    var i;
+    var j;
+
+    for (i = 0; i < n; i += 1) {
+      var sum1 = b1[i];
+      var sum2 = b2[i];
+      for (j = 0; j < i; j += 1) {
+        sum1 -= LU[j][i] * z1[j];
+        sum2 -= LU[j][i] * z2[j];
+      }
+      var diag = LU[i][i];
+      if (!(Math.abs(diag) > 1e-12)) return null;
+      z1[i] = sum1 / diag;
+      z2[i] = sum2 / diag;
+    }
+
+    var w1 = new Array(n);
+    var w2 = new Array(n);
+    for (i = n - 1; i >= 0; i -= 1) {
+      var acc1 = z1[i];
+      var acc2 = z2[i];
+      for (j = i + 1; j < n; j += 1) {
+        acc1 -= LU[j][i] * w1[j];
+        acc2 -= LU[j][i] * w2[j];
+      }
+      w1[i] = acc1;
+      w2[i] = acc2;
+    }
+
+    var x1 = new Array(n);
+    var x2 = new Array(n);
+    for (i = 0; i < n; i += 1) {
+      x1[piv[i]] = w1[i];
+      x2[piv[i]] = w2[i];
+    }
+    return { x1: x1, x2: x2 };
   }
 
   function faceKey(face) {
@@ -174,6 +389,19 @@
     );
   }
 
+  function pointOnSegmentInterior(a, b, p, eps) {
+    if (!pointOnSegment(a, b, p, eps)) {
+      return false;
+    }
+    if (Math.abs(p.x - a.x) <= eps && Math.abs(p.y - a.y) <= eps) {
+      return false;
+    }
+    if (Math.abs(p.x - b.x) <= eps && Math.abs(p.y - b.y) <= eps) {
+      return false;
+    }
+    return true;
+  }
+
   function segmentsIntersectOrTouch(a, b, c, d, eps) {
     var o1 = triangleArea2(a, b, c);
     var o2 = triangleArea2(a, b, d);
@@ -190,6 +418,16 @@
     if (Math.abs(o3) <= eps && pointOnSegment(c, d, a, eps)) return true;
     if (Math.abs(o4) <= eps && pointOnSegment(c, d, b, eps)) return true;
     return false;
+  }
+
+  function segmentsIntersectStrict(a, b, c, d, eps) {
+    var o1 = triangleArea2(a, b, c);
+    var o2 = triangleArea2(a, b, d);
+    var o3 = triangleArea2(c, d, a);
+    var o4 = triangleArea2(c, d, b);
+
+    return (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
+      ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps)));
   }
 
   function createEmptyAdjacency(nodeIds) {
@@ -212,6 +450,8 @@
   }
 
   function buildAdjacencyArrays(nodeIds, edgePairs) {
+    // Use neighbor lists when callers want simple iteration order or indexable arrays.
+    // The edge input is normalized first, so duplicate undirected edges are removed.
     var ids = normalizeNodeIds(nodeIds);
     var pairs = normalizeSimpleEdgePairs(edgePairs);
     var adjacency = createEmptyAdjacency(ids);
@@ -230,6 +470,7 @@
   }
 
   function buildAdjacencySets(nodeIds, edgePairs) {
+    // Use neighbor sets when callers care about uniqueness and set-style membership/mutation.
     var ids = normalizeNodeIds(nodeIds);
     var pairs = normalizeSimpleEdgePairs(edgePairs);
     var adj = createEmptyAdjacencySets(ids);
@@ -246,14 +487,6 @@
       adj[v].add(u);
     }
     return adj;
-  }
-
-  function buildAdjacency(nodeIds, edgePairs) {
-    return buildAdjacencyArrays(nodeIds, edgePairs);
-  }
-
-  function buildSimpleAdjacencySets(nodeIds, edgePairs) {
-    return buildAdjacencySets(nodeIds, edgePairs);
   }
 
   function connectivityAfterRemoving(nodeIds, adjacency, removedSet) {
@@ -414,68 +647,6 @@
     return analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace).ok;
   }
 
-  function buildCycle(parent, fromId, toId) {
-    var cycle = [toId];
-    var cur = fromId;
-
-    while (cur !== undefined && cur !== toId) {
-      cycle.push(cur);
-      cur = parent[cur];
-    }
-
-    if (cur !== toId || cycle.length < 3) {
-      return null;
-    }
-    return cycle;
-  }
-
-  function detectCycleFromAdjacency(nodeIds, adjacency) {
-    var visited = {};
-    var inPath = {};
-    var parent = {};
-
-    function dfs(u, p) {
-      visited[u] = true;
-      inPath[u] = true;
-      var neighbors = adjacency[u] || [];
-
-      for (var i = 0; i < neighbors.length; i += 1) {
-        var v = neighbors[i];
-        if (v === p) {
-          continue;
-        }
-
-        if (!visited[v]) {
-          parent[v] = u;
-          var found = dfs(v, u);
-          if (found) {
-            return found;
-          }
-        } else if (inPath[v]) {
-          var cycle = buildCycle(parent, u, v);
-          if (cycle) {
-            return cycle;
-          }
-        }
-      }
-
-      inPath[u] = false;
-      return null;
-    }
-
-    for (var j = 0; j < nodeIds.length; j += 1) {
-      var id = nodeIds[j];
-      if (!visited[id]) {
-        parent[id] = undefined;
-        var c = dfs(id, undefined);
-        if (c) {
-          return c;
-        }
-      }
-    }
-    return null;
-  }
-
   function sameCyclicDirection(a, b) {
     if (!a || !b || a.length !== b.length || a.length === 0) return false;
     var arrA = a.map(String);
@@ -530,17 +701,13 @@
     return false;
   }
 
-  function outerFaceEdgeKey(u, v) {
-    return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
-  }
-
   function buildOuterFaceEdgeSet(edgePairs) {
     var out = {};
     if (!Array.isArray(edgePairs)) return out;
     for (var i = 0; i < edgePairs.length; i += 1) {
       var e = edgePairs[i];
       if (!e || e.length < 2) continue;
-      out[outerFaceEdgeKey(e[0], e[1])] = true;
+      out[edgeKey(e[0], e[1])] = true;
     }
     return out;
   }
@@ -552,7 +719,7 @@
       for (var j = i + 1; j < face.length; j += 1) {
         var isBoundaryEdge = (j === i + 1) || (i === 0 && j === face.length - 1);
         if (isBoundaryEdge) continue;
-        if (edgeSet[outerFaceEdgeKey(face[i], face[j])]) {
+        if (edgeSet[edgeKey(face[i], face[j])]) {
           count += 1;
         }
       }
@@ -561,7 +728,6 @@
   }
 
   function chooseOuterFace(nodeIds, adjacency) {
-    if (global.PlanarVibePlanarityTest && global.PlanarVibePlanarityTest.computePlanarEmbedding) {
       var edgePairs = [];
       var edgeSeen = {};
 
@@ -586,7 +752,6 @@
           return selected;
         }
       }
-    }
     return null;
   }
 
@@ -613,10 +778,6 @@
       return best;
     }
     return null;
-  }
-
-  function canonicalUndirectedEdgeKey(u, v) {
-    return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
   }
 
   function isTriangulatedEmbedding(embedding) {
@@ -696,6 +857,20 @@
     for (var i = 0; i < keys.length; i += 1) {
       var id = keys[i];
       var p = posById[id];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      out[id] = { x: p.x, y: p.y };
+    }
+    return out;
+  }
+
+  function filterPositionMap(posById, nodeIds) {
+    var ids = normalizeNodeIds(nodeIds);
+    var out = {};
+    for (var i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
+      var p = posById ? posById[id] : null;
       if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
         continue;
       }
@@ -787,20 +962,18 @@
     return rotatePositionMap(posById, computeFaceCentroid(posById, face), -angle);
   }
 
-  function computePositionMoveStats(nodeIds, prevPosById, nextPosById, options) {
+  function computeMoveStats(items, distanceFn, options) {
     var opts = options || {};
-    var moveTol = Number.isFinite(opts.moveTol) && opts.moveTol >= 0 ? opts.moveTol : 1e-9;
+    var moveTol = resolveNonNegativeOption(opts.moveTol, 1e-9);
     var movedVertices = 0;
     var totalMove = 0;
     var maxMove = 0;
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      var prev = prevPosById ? prevPosById[id] : null;
-      var next = nextPosById ? nextPosById[id] : null;
-      if (!prev || !next || !Number.isFinite(prev.x) || !Number.isFinite(prev.y) || !Number.isFinite(next.x) || !Number.isFinite(next.y)) {
+    var list = Array.isArray(items) ? items : [];
+    for (var i = 0; i < list.length; i += 1) {
+      var dist = distanceFn(list[i], i);
+      if (!Number.isFinite(dist) || dist < 0) {
         continue;
       }
-      var dist = Math.hypot(next.x - prev.x, next.y - prev.y);
       totalMove += dist;
       if (dist > maxMove) {
         maxMove = dist;
@@ -812,17 +985,128 @@
     return {
       movedVertices: movedVertices,
       totalMove: totalMove,
-      avgMove: nodeIds.length > 0 ? (totalMove / nodeIds.length) : 0,
+      avgMove: list.length > 0 ? (totalMove / list.length) : 0,
       maxMove: maxMove
     };
   }
 
+  function buildLayoutResult(fields) {
+    var base = fields || {};
+    var pos = base.pos !== undefined ? base.pos : (base.posById !== undefined ? base.posById : null);
+    var posById = base.posById !== undefined ? base.posById : pos;
+    var iters = Number.isFinite(base.iters) ? base.iters : (Number.isFinite(base.iterations) ? base.iterations : null);
+    var iterations = Number.isFinite(base.iterations) ? base.iterations : iters;
+    var status = base.status !== undefined ? base.status : (base.stopReason !== undefined ? base.stopReason : null);
+    var stopReason = base.stopReason !== undefined ? base.stopReason : (base.status !== undefined ? base.status : null);
+
+    return Object.assign({}, base, {
+      ok: base.ok !== false,
+      pos: pos,
+      posById: posById,
+      iters: iters,
+      iterations: iterations,
+      outerFace: base.outerFace !== undefined ? base.outerFace : null,
+      graph: base.graph !== undefined ? base.graph : null,
+      augmented: base.augmented !== undefined ? base.augmented : null,
+      status: status,
+      stopReason: stopReason
+    });
+  }
+
+  function buildLayoutError(fields) {
+    return buildLayoutResult(Object.assign({
+      ok: false,
+      pos: null,
+      posById: null,
+      iters: null,
+      iterations: null,
+      outerFace: null,
+      graph: null,
+      augmented: null,
+      status: null,
+      stopReason: null
+    }, fields || {}));
+  }
+
+  function buildLayoutStatusMessage(layoutName, stats) {
+    var name = String(layoutName || 'Layout');
+    var data = stats || {};
+    var parts = [];
+
+    if (Number.isFinite(data.outerFaceVertexCount)) {
+      parts.push(data.outerFaceVertexCount + '-vertex outer face');
+    }
+    if (Number.isFinite(data.boundedFaceCount)) {
+      parts.push(data.boundedFaceCount + ' bounded faces');
+    }
+    if (Number.isFinite(data.vertexCount)) {
+      parts.push(data.vertexCount + ' vertices');
+    }
+    if (Number.isFinite(data.dummyCount) && data.dummyCount > 0) {
+      parts.push('+' + data.dummyCount + ' dummy vertices');
+    }
+    if (Number.isFinite(data.iters)) {
+      parts.push(data.iters + ' iters');
+    }
+    if (Number.isFinite(data.outerSteps)) {
+      parts.push(data.outerSteps + ' steps');
+    }
+    if (Number.isFinite(data.accepted)) {
+      parts.push('accepted ' + data.accepted);
+    }
+    if (Number.isFinite(data.rejected)) {
+      parts.push('rejected ' + data.rejected);
+    }
+    if (data.status) {
+      parts.push('status ' + data.status);
+    } else if (data.stopReason) {
+      parts.push(String(data.stopReason));
+    }
+    if (Number.isFinite(data.maxRelError)) {
+      parts.push('max rel err ' + data.maxRelError.toFixed(3));
+    }
+    if (Number.isFinite(data.faceAreaScore)) {
+      parts.push('face score ' + data.faceAreaScore.toFixed(3));
+    }
+    if (Number.isFinite(data.faceAreaMinRatio)) {
+      parts.push('min ratio ' + data.faceAreaMinRatio.toFixed(3));
+    }
+    if (Number.isFinite(data.faceAreaMaxRatio)) {
+      parts.push('max ratio ' + data.faceAreaMaxRatio.toFixed(3));
+    }
+    if (Array.isArray(data.extraParts)) {
+      for (var i = 0; i < data.extraParts.length; i += 1) {
+        if (data.extraParts[i]) {
+          parts.push(String(data.extraParts[i]));
+        }
+      }
+    }
+
+    return 'Applied ' + name + ' (' + parts.join(', ') + ')';
+  }
+
+  function computePositionMoveStats(nodeIds, prevPosById, nextPosById, options) {
+    return computeMoveStats(nodeIds, function (nodeId) {
+      var id = String(nodeId);
+      var prev = prevPosById ? prevPosById[id] : null;
+      var next = nextPosById ? nextPosById[id] : null;
+      if (!prev || !next || !Number.isFinite(prev.x) || !Number.isFinite(prev.y) || !Number.isFinite(next.x) || !Number.isFinite(next.y)) {
+        return NaN;
+      }
+      return Math.hypot(next.x - prev.x, next.y - prev.y);
+    }, options);
+  }
+
+  function hasPositionCrossings(posById, edgePairs) {
+    return !!global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs);
+  }
+
   function createMovementConvergenceTracker(options) {
     var opts = options || {};
-    var minItersBeforeStop = Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 20;
-    var stableIterLimit = Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 5;
-    var maxMoveTol = Number.isFinite(opts.maxMoveTol) && opts.maxMoveTol >= 0 ? opts.maxMoveTol : 1e-3;
-    var avgMoveTol = Number.isFinite(opts.avgMoveTol) && opts.avgMoveTol >= 0 ? opts.avgMoveTol : maxMoveTol;
+    var minItersBeforeStop = resolveIntOption(opts.minItersBeforeStop, 20, 1);
+    var stableIterLimit = resolveIntOption(opts.stableIterLimit, 5, 1);
+    var maxMoveTol = resolveNonNegativeOption(opts.maxMoveTol, 1e-3);
+    var avgMoveTol = resolveNonNegativeOption(opts.avgMoveTol, maxMoveTol);
     var stableIterations = 0;
 
     return {
@@ -858,7 +1142,7 @@
     var forceSingleDummyPerFace = !!opts.forceSingleDummyPerFace;
 
     for (var i = 0; i < edges.length; i += 1) {
-      edgeSet.add(canonicalUndirectedEdgeKey(edges[i][0], edges[i][1]));
+      edgeSet.add(edgeKey(edges[i][0], edges[i][1]));
     }
 
     function nextDummyId() {
@@ -872,7 +1156,7 @@
     }
 
     function addEdge(u, v) {
-      var key = canonicalUndirectedEdgeKey(u, v);
+      var key = edgeKey(u, v);
       if (edgeSet.has(key)) {
         return;
       }
@@ -903,7 +1187,7 @@
           if (outerVertexSet.has(current[j]) && outerVertexSet.has(candidate)) {
             continue;
           }
-          if (edgeSet.has(canonicalUndirectedEdgeKey(current[j], candidate))) {
+          if (edgeSet.has(edgeKey(current[j], candidate))) {
             createsTriangle = true;
             break;
           }
@@ -1213,134 +1497,7 @@
     };
   }
 
-  function PlanarVertex(id, label) {
-    this.id = String(id);
-    this.label = label === undefined ? String(id) : String(label);
-    this.edgeIdsClockwise = [];
-    this.stNumber = -1;
-  }
-
-  PlanarVertex.prototype.degree = function () {
-    return this.edgeIdsClockwise.length;
-  };
-
-  PlanarVertex.prototype.addEdge = function (edgeId) {
-    this.edgeIdsClockwise.push(edgeId);
-  };
-
-  PlanarVertex.prototype.findEdgeIndex = function (edgeId) {
-    for (var i = 0; i < this.edgeIdsClockwise.length; i += 1) {
-      if (this.edgeIdsClockwise[i] === edgeId) {
-        return i;
-      }
-    }
-    return -1;
-  };
-
-  PlanarVertex.prototype.findEdgeAfter = function (edgeId) {
-    var idx = this.findEdgeIndex(edgeId);
-    if (idx === -1 || this.edgeIdsClockwise.length === 0) {
-      return null;
-    }
-    return this.edgeIdsClockwise[(idx + 1) % this.edgeIdsClockwise.length];
-  };
-
-  PlanarVertex.prototype.findEdgeBefore = function (edgeId) {
-    var idx = this.findEdgeIndex(edgeId);
-    if (idx === -1 || this.edgeIdsClockwise.length === 0) {
-      return null;
-    }
-    return this.edgeIdsClockwise[(idx - 1 + this.edgeIdsClockwise.length) % this.edgeIdsClockwise.length];
-  };
-
-  function PlanarEdge(id, sourceId, targetId, isGenerated) {
-    this.id = String(id);
-    this.sourceId = String(sourceId);
-    this.targetId = String(targetId);
-    this.isGenerated = !!isGenerated;
-  }
-
-  PlanarEdge.prototype.incident = function (vertexId) {
-    var id = String(vertexId);
-    return this.sourceId === id || this.targetId === id;
-  };
-
-  PlanarEdge.prototype.other = function (vertexId) {
-    var id = String(vertexId);
-    if (this.sourceId === id) {
-      return this.targetId;
-    }
-    if (this.targetId === id) {
-      return this.sourceId;
-    }
-    return null;
-  };
-
-  function PlanarFace(vertexIds, edgeIds) {
-    this.vertexIds = (vertexIds || []).map(String);
-    this.edgeIds = (edgeIds || []).map(String);
-  }
-
-  PlanarFace.prototype.empty = function () {
-    return this.vertexIds.length === 0;
-  };
-
-  PlanarFace.prototype.length = function () {
-    return this.vertexIds.length;
-  };
-
-  PlanarFace.prototype.containsVertex = function (vertexId) {
-    return this.vertexIds.indexOf(String(vertexId)) !== -1;
-  };
-
-  PlanarFace.prototype.containsEdge = function (edgeId) {
-    return this.edgeIds.indexOf(String(edgeId)) !== -1;
-  };
-
-  function PlanarGraph(nodeIds, adjacency) {
-    this.nodeIds = nodeIds.slice();
-    this.adjacency = adjacency;
-    this.verticesById = {};
-    this.edgesById = {};
-    this.edgeIdByUndirectedKey = {};
-    this.outerFace = null;
-  }
-
-  PlanarGraph.prototype.findCycle = function () {
-    return detectCycleFromAdjacency(this.nodeIds, this.adjacency);
-  };
-
-  PlanarGraph.prototype.chooseOuterFace = function () {
-    return chooseOuterFace(this.nodeIds, this.adjacency);
-  };
-
-  PlanarGraph.prototype.numberOfVertices = function () {
-    return this.nodeIds.length;
-  };
-
-  PlanarGraph.prototype.numberOfEdges = function () {
-    return Object.keys(this.edgesById).length;
-  };
-
-  PlanarGraph.prototype.getVertex = function (vertexId) {
-    return this.verticesById[String(vertexId)] || null;
-  };
-
-  PlanarGraph.prototype.getEdge = function (edgeId) {
-    return this.edgesById[String(edgeId)] || null;
-  };
-
-  PlanarGraph.prototype.getEdgeBetween = function (u, v) {
-    var key = canonicalUndirectedEdgeKey(u, v);
-    var edgeId = this.edgeIdByUndirectedKey[key];
-    return edgeId ? this.edgesById[edgeId] : null;
-  };
-
   global.GraphUtils = {
-    PlanarVertex: PlanarVertex,
-    PlanarEdge: PlanarEdge,
-    PlanarFace: PlanarFace,
-    PlanarGraph: PlanarGraph,
     faceKey: faceKey,
     polygonArea2: polygonArea2,
     polygonAreaAbs: polygonAreaAbs,
@@ -1352,6 +1509,7 @@
     pointNorm: pointNorm,
     pointEquals: pointEquals,
     pointOnSegment: pointOnSegment,
+    pointOnSegmentInterior: pointOnSegmentInterior,
     vecDot: vecDot,
     vecNorm: vecNorm,
     vecAddScaled: vecAddScaled,
@@ -1360,14 +1518,27 @@
     orientFaceCCW: orientFaceCCW,
     outerFaceDiameter: outerFaceDiameter,
     edgeKey: edgeKey,
+    hashString: hashString,
+    normalizedHash: normalizedHash,
+    resolveFiniteOption: resolveFiniteOption,
+    resolveFloatOption: resolveFloatOption,
+    resolveIntOption: resolveIntOption,
+    resolvePositiveOption: resolvePositiveOption,
+    resolveNonNegativeOption: resolveNonNegativeOption,
+    resolveGreaterThanOption: resolveGreaterThanOption,
+    resolveOpenIntervalOption: resolveOpenIntervalOption,
+    resolveFunctionOption: resolveFunctionOption,
+    luFactorize: luFactorize,
+    solveLUWithTwoRhs: solveLUWithTwoRhs,
+    solveTransposeLUWithTwoRhs: solveTransposeLUWithTwoRhs,
     triangleArea2: triangleArea2,
+    segmentsIntersectStrict: segmentsIntersectStrict,
     segmentsIntersectOrTouch: segmentsIntersectOrTouch,
     buildAdjacencyArrays: buildAdjacencyArrays,
     buildAdjacencySets: buildAdjacencySets,
-    buildAdjacency: buildAdjacency,
-    buildSimpleAdjacencySets: buildSimpleAdjacencySets,
     normalizeNodeIds: normalizeNodeIds,
     normalizeEdgePairs: normalizeEdgePairs,
+    normalizeGraphInput: normalizeGraphInput,
     normalizeSimpleEdgePairs: normalizeSimpleEdgePairs,
     normalizeOuterFace: normalizeOuterFace,
     sameCyclicDirection: sameCyclicDirection,
@@ -1377,9 +1548,15 @@
     cloneEdgePairs: cloneEdgePairs,
     computeDrawingDiameter: computeDrawingDiameter,
     copyPositions: copyPositionMap,
+    filterPositions: filterPositionMap,
     collectMovableVertices: collectMovableVertices,
     alignOuterFaceEdgeHorizontally: alignOuterFaceEdgeHorizontally,
+    computeMoveStats: computeMoveStats,
+    buildLayoutResult: buildLayoutResult,
+    buildLayoutError: buildLayoutError,
+    buildLayoutStatusMessage: buildLayoutStatusMessage,
     computePositionMoveStats: computePositionMoveStats,
+    hasPositionCrossings: hasPositionCrossings,
     createMovementConvergenceTracker: createMovementConvergenceTracker,
     analyzeThreeConnectivity: analyzeThreeConnectivity,
     analyzeInternallyThreeConnected: analyzeInternallyThreeConnected,
@@ -1388,7 +1565,6 @@
     isTriangulatedEmbedding: isTriangulatedEmbedding,
     augmentByFaceStellation: augmentByFaceStellation,
     triangulateByFaceStellation: triangulateByFaceStellation,
-    detectCycleFromAdjacency: detectCycleFromAdjacency,
     chooseOuterFace: chooseOuterFace,
     chooseOuterFaceFromEmbedding: chooseOuterFaceFromEmbedding
   };

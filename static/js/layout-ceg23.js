@@ -5,20 +5,18 @@
   var GraphUtils = global.GraphUtils;
   var Tutte = global.PlanarVibeTutteAlgorithm;
   var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
+  var buildLayoutError = GraphUtils.buildLayoutError;
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var edgeKey = GraphUtils.edgeKey;
-  var prepareTriangulatedLayoutData = PlaygroundUtils.prepareTriangulatedLayoutData;
-
-  function extractOriginalPositions(posById, nodeIds) {
-    var out = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      if (posById[id]) {
-        out[id] = { x: posById[id].x, y: posById[id].y };
-      }
-    }
-    return out;
-  }
+  var filterPositions = GraphUtils.filterPositions;
+  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
+  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
+  var resolveFiniteOption = GraphUtils.resolveFiniteOption;
+  var resolveGreaterThanOption = GraphUtils.resolveGreaterThanOption;
+  var resolveIntOption = GraphUtils.resolveIntOption;
+  var resolvePositiveOption = GraphUtils.resolvePositiveOption;
+  var prepareGraphAndLayoutData = PlaygroundUtils.prepareGraphAndLayoutData;
 
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
     var depth = {};
@@ -158,16 +156,17 @@
   }
 
   function prepareCEG23State(nodeIds, edgePairs, failureLabel) {
-    var ids = (nodeIds || []).map(String);
-    var pairs = (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; });
+    var graph = normalizeGraphInput(nodeIds, edgePairs);
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
     if (ids.length < 3) {
-      return {
-        ok: false,
-        message: failureLabel + ' requires at least 3 vertices'
-      };
+      return buildLayoutError({
+        message: failureLabel + ' requires at least 3 vertices',
+        graph: graph
+      });
     }
 
-    var prepared = prepareTriangulatedLayoutData({
+    var prepared = prepareGraphAndLayoutData({
       nodeIds: ids,
       edgePairs: pairs
     }, {
@@ -175,11 +174,14 @@
       minNodeCount: 3
     });
     if (!prepared || !prepared.ok) {
-      return prepared || { ok: false, message: failureLabel + ' requires a planar graph' };
+      return buildLayoutError(prepared || {
+        message: failureLabel + ' requires a planar graph',
+        graph: graph
+      });
     }
 
     var augmented = prepared.augmented;
-    return {
+    return buildLayoutResult({
       ok: true,
       failureLabel: failureLabel,
       ids: ids,
@@ -190,7 +192,7 @@
       augmentedIds: augmented.nodeIds,
       augmentedPairs: augmented.edgePairs,
       adjacency: buildAdjacencyArrays(augmented.nodeIds, augmented.edgePairs)
-    };
+    });
   }
 
   function solveAugmentedWeightedLayout(state, weights, maxIters, seedPos) {
@@ -212,19 +214,16 @@
   }
 
   function projectCEG23Positions(state, posById, failureLabel) {
-    var projected = extractOriginalPositions(posById, state.ids);
-    if (global.PlanarVibeMetrics &&
-        typeof global.PlanarVibeMetrics.hasCrossingsFromPositions === 'function' &&
-        global.PlanarVibeMetrics.hasCrossingsFromPositions(projected, state.pairs)) {
-      return {
-        ok: false,
+    var projected = filterPositions(posById, state.ids);
+    if (hasPositionCrossings(projected, state.pairs)) {
+      return buildLayoutError({
         message: failureLabel + ' produced a non-plane drawing'
-      };
+      });
     }
-    return {
+    return buildLayoutResult({
       ok: true,
       projected: projected
-    };
+    });
   }
 
   function buildCEG23SuccessResult(state, posById, iters, message) {
@@ -233,7 +232,7 @@
       return projectedResult;
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: state.ids,
       edgePairs: state.pairs,
@@ -244,7 +243,7 @@
       posById: posById,
       iters: iters,
       message: message
-    };
+    });
   }
 
   function computeCEG23BfsPositions(nodeIds, edgePairs, options) {
@@ -254,9 +253,9 @@
       return state;
     }
 
-    var A = Number.isFinite(opts.a) && opts.a > 0 ? opts.a : 1.0;
-    var R = Number.isFinite(opts.r) && opts.r > 1 ? opts.r : 1.35;
-    var MAX_ITERS = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 4000;
+    var A = resolvePositiveOption(opts.a, 1.0);
+    var R = resolveGreaterThanOption(opts.r, 1.35, 1);
+    var MAX_ITERS = resolveIntOption(opts.maxIters, 4000, 1);
     var DEPTH_SOURCE = String(opts.depthSource || 'outer-multi');
     var EDGE_DEPTH_MODE = String(opts.edgeDepthMode || 'min');
 
@@ -264,7 +263,12 @@
     var weights = buildDepthWeights(state.augmentedPairs, depthById, A, R, EDGE_DEPTH_MODE);
     var out = solveAugmentedWeightedLayout(state, weights, MAX_ITERS, opts.seedPos || null);
     if (!out.ok) {
-      return { ok: false, message: out.message || 'CEG23-bfs solver failed' };
+      return buildLayoutError({
+        message: out.message || 'CEG23-bfs solver failed',
+        graph: state.prepared.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented
+      });
     }
     out.pos = alignOuterFaceEdgeHorizontally(out.pos, state.outerFace);
 
@@ -285,15 +289,20 @@
       return state;
     }
 
-    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 2500;
-    var alpha = Number.isFinite(opts.alpha) ? opts.alpha : 0.5;
-    var beta = Number.isFinite(opts.beta) ? opts.beta : 1.0;
-    var lambdaX = Number.isFinite(opts.lambdaX) ? opts.lambdaX : 0.5;
+    var maxIters = resolveIntOption(opts.maxIters, 2500, 1);
+    var alpha = resolveFiniteOption(opts.alpha, 0.5);
+    var beta = resolveFiniteOption(opts.beta, 1.0);
+    var lambdaX = resolveFiniteOption(opts.lambdaX, 0.5);
 
     var uniformWeights = Tutte.buildUniformWeights(state.augmentedPairs, 1);
     var base = solveAugmentedWeightedLayout(state, uniformWeights, maxIters, opts.seedPos || null);
     if (!base.ok) {
-      return { ok: false, message: base.message || 'CEG23-xy baseline solve failed' };
+      return buildLayoutError({
+        message: base.message || 'CEG23-xy baseline solve failed',
+        graph: state.prepared.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented
+      });
     }
     base.pos = alignOuterFaceEdgeHorizontally(base.pos, state.outerFace);
 
@@ -304,7 +313,12 @@
     var wxy = combineWeights(state.augmentedPairs, wx, wy, lambdaX);
     var xySolve = solveAugmentedWeightedLayout(state, wxy, maxIters, base.pos);
     if (!xySolve.ok) {
-      return { ok: false, message: xySolve.message || 'CEG23-xy solve failed' };
+      return buildLayoutError({
+        message: xySolve.message || 'CEG23-xy solve failed',
+        graph: state.prepared.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented
+      });
     }
     xySolve.pos = alignOuterFaceEdgeHorizontally(xySolve.pos, state.outerFace);
 
@@ -322,7 +336,10 @@
     var graph = PlaygroundUtils.graphFromCy(cy);
     var result = computeLayout(graph.nodeIds, graph.edgePairs, options || {});
     if (!result || !result.ok) {
-      return result || { ok: false, message: failureMessage };
+      return buildLayoutError(result || {
+        message: failureMessage,
+        graph: graph
+      });
     }
     PlaygroundUtils.applyAndFit(cy, result.pos);
     return {

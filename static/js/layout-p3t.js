@@ -1,6 +1,10 @@
 (function (global) {
   'use strict';
 
+  var buildLayoutError = global.GraphUtils.buildLayoutError;
+  var buildLayoutResult = global.GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
+  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
   var PlanarityTest = global.PlanarVibePlanarityTest;
   var PlaygroundUtils = global.PlaygroundUtils;
 
@@ -13,14 +17,14 @@
   }
 
   function computeP3TPositions(nodeIds, edgePairs) {
-    var ids = (nodeIds || []).map(String);
-    var pairs = (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; });
+    var graph = normalizeGraphInput(nodeIds, edgePairs);
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
     var info = PlanarityTest.analyzePlanar3Tree(ids, pairs);
     if (!info.ok) {
-      return {
-        ok: false,
+      return buildLayoutError({
         message: 'P3T requires a planar 3-tree: ' + info.reason
-      };
+      });
     }
 
     var emb = info.embedding;
@@ -95,27 +99,36 @@
 
     processClique(outer[0], outer[1], outer[2]);
 
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: ids,
       edgePairs: pairs,
       outerFace: outer.slice(),
+      graph: {
+        nodeIds: ids,
+        edgePairs: pairs
+      },
       embedding: emb,
       pos: coord
-    };
+    });
   }
 
   function applyP3TLayout(cy) {
     var graph = PlaygroundUtils.graphFromCy(cy);
     var result = computeP3TPositions(graph.nodeIds, graph.edgePairs);
     if (!result || !result.ok) {
-      return result || { ok: false, message: 'P3T failed' };
+      return buildLayoutError(result || {
+        message: 'P3T failed',
+        graph: graph
+      });
     }
 
     PlaygroundUtils.applyAndFit(cy, result.pos);
     return {
       ok: true,
-      message: 'Applied P3T equal-face-area layout (' + result.nodeIds.length + ' vertices)'
+      message: buildLayoutStatusMessage('P3T equal-face-area layout', {
+        vertexCount: result.nodeIds.length
+      })
     };
   }
 

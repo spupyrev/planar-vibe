@@ -1,21 +1,10 @@
 (function (global) {
   'use strict';
 
+  var GraphUtils = global.GraphUtils;
   var PlaygroundUtils = global.PlaygroundUtils;
-
-  function hashString(value, seed) {
-    var hash = seed >>> 0;
-    var text = String(value);
-    for (var i = 0; i < text.length; i += 1) {
-      hash ^= text.charCodeAt(i);
-      hash = Math.imul(hash, 16777619);
-    }
-    return hash >>> 0;
-  }
-
-  function normalizedHash(value, seed) {
-    return hashString(value, seed) / 4294967295;
-  }
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var normalizedHash = GraphUtils.normalizedHash;
 
   function computeRandomPositions(nodeIds, width, height) {
     var ids = (nodeIds || []).map(String);
@@ -33,11 +22,11 @@
       var y = margin + normalizedHash(id + ':y', 33554467) * ySpan;
       posById[id] = { x: x, y: y };
     }
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: ids,
       pos: posById
-    };
+    });
   }
 
   function applyRandomLayout(cy) {

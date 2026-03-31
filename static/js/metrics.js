@@ -462,9 +462,6 @@
   function hasCrossingsFromPositions(posById, edgePairs) {
     var EPS = 1e-9;
     var graphUtils = global.GraphUtils;
-    if (!graphUtils || typeof graphUtils.segmentsIntersectOrTouch !== 'function') {
-      return false;
-    }
 
     for (var i = 0; i < edgePairs.length; i += 1) {
       var s1 = String(edgePairs[i][0]);

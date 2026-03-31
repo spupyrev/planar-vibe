@@ -752,29 +752,6 @@
     return computePlanarEmbedding(nodeIds, edgePairs);
   }
 
-  function buildFppInput(nodeIds, edgePairs) {
-    var emb = computePlanarEmbedding(nodeIds, edgePairs);
-    if (!emb.ok) {
-      return emb;
-    }
-
-    var rotationById = {};
-    for (var i = 0; i < emb.idByIndex.length; i += 1) {
-      rotationById[emb.idByIndex[i]] = emb.rotation[i] ? emb.rotation[i].slice() : [];
-    }
-
-    return {
-      ok: true,
-      nodeIds: emb.idByIndex.slice(),
-      edgePairs: emb.edges.map(function (e) { return e.slice(); }),
-      rotationById: rotationById,
-      rotation: emb.rotation.map(function (row) { return row.slice(); }),
-      faces: emb.faces.map(function (f) { return f.slice(); }),
-      outerFace: emb.outerFace ? emb.outerFace.slice() : null,
-      indexById: Object.assign({}, emb.indexById)
-    };
-  }
-
   function analyzePlanar3Tree(nodeIds, edgePairs) {
     var emb = computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb.ok) {
@@ -889,7 +866,6 @@
     computePlanarEmbedding: computePlanarEmbedding,
     computePlanarEmbeddingFromCy: computePlanarEmbeddingFromCy,
     computePlanarEmbeddingFromEdgeListText: computePlanarEmbeddingFromEdgeListText,
-    buildFppInput: buildFppInput,
     analyzePlanar3Tree: analyzePlanar3Tree,
     isPlanar3Tree: isPlanar3Tree
   };

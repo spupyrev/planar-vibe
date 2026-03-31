@@ -2,87 +2,59 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
-  var PlanarityTest = global.PlanarVibePlanarityTest;
+  var buildLayoutError = GraphUtils.buildLayoutError;
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
+  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
   var PlaygroundUtils = global.PlaygroundUtils;
   var buildAdjacencySets = GraphUtils.buildAdjacencySets;
+  var prepareGraphData = PlaygroundUtils.prepareGraphData;
 
   function prepareTriangulatedEmbedding(nodeIds, edgePairs) {
-    var embedding = PlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
-    if (!embedding.ok) {
-      return {
-        ok: false,
-        reason: 'Graph is not planar'
-      };
-    }
-    var outerFace = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
-    if (!outerFace || outerFace.length < 3) {
-      return {
-        ok: false,
-        reason: 'Could not determine outer face'
-      };
-    }
-
-    var augmented = {
-      nodeIds: nodeIds.map(String),
-      edgePairs: edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
-      dummyCount: 0
-    };
-    if (!GraphUtils.isTriangulatedEmbedding(embedding)) {
-      var prepared = GraphUtils.triangulateByFaceStellation(augmented.nodeIds, augmented.edgePairs, embedding, outerFace, {
+    var prepared = prepareGraphData({
+      nodeIds: nodeIds,
+      edgePairs: edgePairs
+    }, {
+      failureLabel: 'FPP',
+      minNodeCount: 3,
+      augmentationOptions: {
         triangulateOuterFace: true
-      });
-      if (!prepared || !prepared.ok) {
-        return {
-          ok: false,
-          reason: (prepared && prepared.reason) || 'Augmentation failed to triangulate all faces'
-        };
       }
-      augmented = {
-        nodeIds: prepared.nodeIds.map(String),
-        edgePairs: prepared.edgePairs.map(function (e) { return [String(e[0]), String(e[1])]; }),
-        dummyCount: prepared.dummyCount || 0
-      };
-      embedding = prepared.embedding;
+    });
+    if (!prepared || !prepared.ok) {
+      return prepared;
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
-      embedding: embedding,
-      augmentedNodeIds: augmented.nodeIds,
-      augmentedEdgePairs: augmented.edgePairs,
-      augmentedDummyCount: augmented.dummyCount
-    };
+      graph: prepared.graph,
+      baseEmbedding: prepared.baseEmbedding,
+      outerFace: prepared.outerFace,
+      embedding: prepared.embedding,
+      augmented: prepared.augmented,
+      augmentedNodeIds: prepared.augmentedNodeIds,
+      augmentedEdgePairs: prepared.augmentedEdgePairs,
+      augmentedDummyCount: prepared.augmentedDummyCount
+    });
   }
 
   function computeCanonicalOrdering(prepared) {
     if (!prepared || !prepared.ok) {
-      return {
-        ok: false,
-        reason: 'Missing prepared embedding'
-      };
+      return buildLayoutError({ reason: 'Missing prepared embedding' });
     }
     if (!prepared.embedding || !prepared.embedding.ok) {
-      return {
-        ok: false,
-        reason: 'Missing embedding'
-      };
+      return buildLayoutError({ reason: 'Missing embedding' });
     }
 
     var embedding = prepared.embedding;
     var nodeIds = embedding.idByIndex.slice();
     if (nodeIds.length < 3) {
-      return {
-        ok: false,
-        reason: 'Need at least 3 vertices'
-      };
+      return buildLayoutError({ reason: 'Need at least 3 vertices' });
     }
 
     var outerFace = embedding.outerFace ? embedding.outerFace.slice() : null;
     if (!outerFace || outerFace.length !== 3) {
-      return {
-        ok: false,
-        reason: 'Triangulated embedding must have triangular outer face'
-      };
+      return buildLayoutError({ reason: 'Triangulated embedding must have triangular outer face' });
     }
 
     var rotationById = {};
@@ -278,10 +250,7 @@
       }
 
       if (!chosen || chosenIdx === -1) {
-        return {
-          ok: false,
-          reason: 'Could not find shelling vertex for canonical ordering'
-        };
+        return buildLayoutError({ reason: 'Could not find shelling vertex for canonical ordering' });
       }
 
       var pred = outerCycle[(chosenIdx - 1 + outerCycle.length) % outerCycle.length];
@@ -293,10 +262,7 @@
 
       var nextCycle = buildNextOuterCycle(outerCycle, chosenIdx, replacementPath);
       if (!nextCycle || nextCycle.length < 2) {
-        return {
-          ok: false,
-          reason: 'Failed to update outer cycle during canonical ordering'
-        };
+        return buildLayoutError({ reason: 'Failed to update outer cycle during canonical ordering' });
       }
 
       mark[chosen] = true;
@@ -319,16 +285,10 @@
 
     var base = Array.from(remaining);
     if (base.length !== 3) {
-      return {
-        ok: false,
-        reason: 'Canonical reduction did not end with 3 vertices'
-      };
+      return buildLayoutError({ reason: 'Canonical reduction did not end with 3 vertices' });
     }
     if (!base.includes(v1) || !base.includes(v2)) {
-      return {
-        ok: false,
-        reason: 'Canonical base does not contain fixed outer edge'
-      };
+      return buildLayoutError({ reason: 'Canonical base does not contain fixed outer edge' });
     }
 
     var v3 = null;
@@ -339,10 +299,7 @@
       }
     }
     if (v3 === null) {
-      return {
-        ok: false,
-        reason: 'Canonical base triangle is invalid'
-      };
+      return buildLayoutError({ reason: 'Canonical base triangle is invalid' });
     }
 
     var order = [v1, v2, v3];
@@ -351,18 +308,15 @@
     }
 
     if (order.length !== nodeIds.length || new Set(order).size !== nodeIds.length) {
-      return {
-        ok: false,
-        reason: 'Canonical ordering has duplicate or missing vertices'
-      };
+      return buildLayoutError({ reason: 'Canonical ordering has duplicate or missing vertices' });
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       order: order.slice(),
       outerFace: [v1, v2, v3],
       contourNeighborsByVertex: contourNeighborsByVertex
-    };
+    });
   }
 
   function normalizeCoordinates(coords, order) {
@@ -433,10 +387,7 @@
   function computeFPPPositionsFromCanonical(canonical) {
     var order = canonical.order;
     if (!order || order.length < 3) {
-      return {
-        ok: false,
-        message: 'Canonical ordering is too short for FPP'
-      };
+      return buildLayoutError({ message: 'Canonical ordering is too short for FPP' });
     }
 
     var contourNeighborsByVertex = canonical.contourNeighborsByVertex || {};
@@ -489,18 +440,12 @@
       var vk = order[i];
       var neigh = contourNeighborsByVertex[vk];
       if (!neigh || neigh.length < 2) {
-        return {
-          ok: false,
-          message: 'Missing contour neighbors for vertex ' + vk
-        };
+        return buildLayoutError({ message: 'Missing contour neighbors for vertex ' + vk });
       }
 
       var segment = findNeighborSegment(contour, neigh);
       if (!segment) {
-        return {
-          ok: false,
-          message: 'Could not find consecutive contour segment for vertex ' + vk
-        };
+        return buildLayoutError({ message: 'Could not find consecutive contour segment for vertex ' + vk });
       }
 
       var p = segment.start;
@@ -509,10 +454,7 @@
       var wp = contour[p];
       var wq = contour[q];
       if (!coords[wp] || !coords[wq]) {
-        return {
-          ok: false,
-          message: 'Missing endpoint coordinates for vertex ' + vk
-        };
+        return buildLayoutError({ message: 'Missing endpoint coordinates for vertex ' + vk });
       }
 
       // Shift method (de Fraysseix-Pach-Pollack).
@@ -525,10 +467,7 @@
       var x = (coords[wq].x + coords[wq].y + coords[wp].x - coords[wp].y) / 2.0;
       var y = (coords[wq].x + coords[wq].y - coords[wp].x + coords[wp].y) / 2.0;
       if (y < baseY) {
-        return {
-          ok: false,
-          message: 'FPP invariant violated: vertex ' + vk + ' placed below base edge (v1,v2)'
-        };
+        return buildLayoutError({ message: 'FPP invariant violated: vertex ' + vk + ' placed below base edge (v1,v2)' });
       }
       coords[vk] = { x: x, y: y };
       layers[vk] = new Set(innerLayerVertices);
@@ -563,63 +502,71 @@
         y: (maxY - coords[pid].y) * SCALE + 20
       };
     }
-    return {
+    return buildLayoutResult({
       ok: true,
       order: order.slice(),
       outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
       pos: screenPos
-    };
+    });
   }
 
   function computeFPPPositions(nodeIds, edgePairs) {
-    var ids = (nodeIds || []).map(String);
-    var pairs = (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; });
+    var graph = normalizeGraphInput(nodeIds, edgePairs);
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
     var prepared = prepareTriangulatedEmbedding(ids, pairs);
     if (!prepared.ok) {
-      return {
-        ok: false,
-        message: prepared.reason
-      };
+      return buildLayoutError({
+        message: prepared.message || prepared.reason,
+        graph: graph
+      });
     }
 
     var canonical = computeCanonicalOrdering(prepared);
     if (!canonical.ok) {
-      return {
-        ok: false,
-        message: canonical.reason
-      };
+      return buildLayoutError({
+        message: canonical.reason,
+        graph: graph,
+        outerFace: prepared.outerFace || null
+      });
     }
 
     var result = computeFPPPositionsFromCanonical(canonical);
     if (!result || !result.ok) {
-      return result || { ok: false, message: 'FPP placement failed' };
+      return buildLayoutError(result || { message: 'FPP placement failed' });
     }
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: ids,
       edgePairs: pairs,
+      outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
+      graph: graph,
       augmentedDummyCount: prepared.augmentedDummyCount || 0,
       prepared: prepared,
       canonical: canonical,
       pos: result.pos
-    };
+    });
   }
 
   function applyFPPLayout(cy) {
     var graph = PlaygroundUtils.graphFromCy(cy);
     var result = computeFPPPositions(graph.nodeIds, graph.edgePairs);
     if (!result || !result.ok) {
-      return result || { ok: false, message: 'FPP failed' };
+      return buildLayoutError(result || {
+        message: 'FPP failed',
+        graph: graph
+      });
     }
 
     PlaygroundUtils.applyAndFit(cy, result.pos);
-    var message = 'Applied FPP layout (' + result.nodeIds.length + ' vertices)';
-    if (result.augmentedDummyCount > 0) {
-      message += ' after augmentation (+' + result.augmentedDummyCount + ' dummy vertices)';
-    }
     return {
       ok: true,
-      message: message
+      message: buildLayoutStatusMessage('FPP layout', {
+        vertexCount: result.nodeIds.length,
+        extraParts: result.augmentedDummyCount > 0
+          ? ['after augmentation (+' + result.augmentedDummyCount + ' dummy vertices)']
+          : null
+      })
     };
   }
 

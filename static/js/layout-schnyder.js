@@ -2,10 +2,16 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var buildLayoutError = GraphUtils.buildLayoutError;
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var PlaygroundUtils = global.PlaygroundUtils;
   var applyAndFit = PlaygroundUtils.applyAndFit;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var copyPositions = GraphUtils.copyPositions;
+  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
+  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
+  var prepareGraphData = PlaygroundUtils.prepareGraphData;
   var graphFromCy = PlaygroundUtils.graphFromCy;
 
   function buildRotationById(embedding) {
@@ -146,7 +152,7 @@
       var v = L[p];
       var rot = rotationById[v] || [];
       if (rot.length === 0) {
-        return { ok: false, reason: 'Missing rotation at vertex ' + v };
+        return buildLayoutError({ reason: 'Missing rotation at vertex ' + v });
       }
 
       var firstIdx = -1;
@@ -157,7 +163,7 @@
         }
       }
       if (firstIdx < 0) {
-        return { ok: false, reason: 'Could not find higher-order neighbor at vertex ' + v };
+        return buildLayoutError({ reason: 'Could not find higher-order neighbor at vertex ' + v });
       }
 
       var idx1 = firstIdx;
@@ -188,11 +194,11 @@
     addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, c, a, 3);
     addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, c, b, 3);
 
-    return {
+    return buildLayoutResult({
       ok: true,
       ord: ord,
       outAdjByLabel: outAdjByLabel
-    };
+    });
   }
 
   function subtreeSizes(outAdjByLabel, label, root) {
@@ -380,13 +386,6 @@
     return out;
   }
 
-  function hasCrossings(posById, edgePairs) {
-    if (!global.PlanarVibeMetrics || typeof global.PlanarVibeMetrics.hasCrossingsFromPositions !== 'function') {
-      return false;
-    }
-    return !!global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs);
-  }
-
   function resolveOverlapsWithoutCrossings(posById, edgePairs) {
     if (!hasOverlappingVertices(posById)) {
       return copyPositions(posById);
@@ -423,7 +422,7 @@
           if (hasOverlappingVertices(trial)) {
             continue;
           }
-          if (hasCrossings(trial, edgePairs)) {
+          if (hasPositionCrossings(trial, edgePairs)) {
             continue;
           }
           pos = trial;
@@ -435,7 +434,7 @@
       }
     }
 
-    if (hasOverlappingVertices(pos) || hasCrossings(pos, edgePairs)) {
+    if (hasOverlappingVertices(pos) || hasPositionCrossings(pos, edgePairs)) {
       return null;
     }
     return pos;
@@ -463,10 +462,7 @@
   }
 
   function computeSchnyderPositions(nodeIds, edgePairs) {
-    var g = {
-      nodeIds: (nodeIds || []).map(String),
-      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    };
+    var g = normalizeGraphInput(nodeIds, edgePairs);
     if (g.nodeIds.length < 3) {
       var smallPos = {};
       if (g.nodeIds.length === 2) {
@@ -475,24 +471,32 @@
       } else if (g.nodeIds.length === 1) {
         smallPos[g.nodeIds[0]] = { x: 20, y: 20 };
       }
-      return {
+      return buildLayoutResult({
         ok: true,
         nodeIds: g.nodeIds,
         edgePairs: g.edgePairs,
+        graph: g,
         pos: smallPos
-      };
+      });
     }
 
-    var triangulated = GraphUtils.triangulateByFaceStellation(g.nodeIds, g.edgePairs, null, null, {
-      triangulateOuterFace: true
+    var prepared = prepareGraphData(g, {
+      failureLabel: 'Schnyder',
+      minNodeCount: 3,
+      augmentationOptions: {
+        triangulateOuterFace: true
+      }
     });
-    if (!triangulated.ok) {
-      return { ok: false, message: triangulated.reason || 'Schnyder triangulation failed' };
+    if (!prepared || !prepared.ok) {
+      return buildLayoutError({
+        message: (prepared && prepared.message) || 'Schnyder triangulation failed',
+        graph: g
+      });
     }
 
-    var emb = triangulated.embedding;
+    var emb = prepared.embedding;
     var rotationById = buildRotationById(emb);
-    var adjacency = buildAdjacencyArrays(triangulated.nodeIds, triangulated.edgePairs);
+    var adjacency = buildAdjacencyArrays(prepared.augmentedNodeIds, prepared.augmentedEdgePairs);
     var bestPos = null;
     var bestOverlapCount = Infinity;
     var candidates = candidateOuterTriples(emb, rotationById);
@@ -505,21 +509,21 @@
       var b = tri[1];
       var c = tri[2];
 
-      var L = contract(triangulated.nodeIds, adjacency, a, b, c);
-      if (L.length !== triangulated.nodeIds.length - 3) {
+      var L = contract(prepared.augmentedNodeIds, adjacency, a, b, c);
+      if (L.length !== prepared.augmentedNodeIds.length - 3) {
         continue;
       }
-      var r = realizer(triangulated.nodeIds, L, a, b, c, rotationById, adjacency);
+      var r = realizer(prepared.augmentedNodeIds, L, a, b, c, rotationById, adjacency);
       if (!r.ok) {
         continue;
       }
 
-      var coords = computeSchnyderCoordinates(triangulated.nodeIds, r, a, b, c);
+      var coords = computeSchnyderCoordinates(prepared.augmentedNodeIds, r, a, b, c);
       var pos = buildScreenPositions(coords, g.nodeIds);
       if (!pos) {
         continue;
       }
-      if (hasCrossings(pos, g.edgePairs)) {
+      if (hasPositionCrossings(pos, g.edgePairs)) {
         continue;
       }
       if (hasOverlappingVertices(pos)) {
@@ -539,27 +543,36 @@
     }
 
     if (!bestPos) {
-      return { ok: false, message: 'Schnyder failed to find crossing-free embedding' };
+      return buildLayoutError({
+        message: 'Schnyder failed to find crossing-free embedding',
+        graph: g
+      });
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
+      graph: g,
       pos: bestPos
-    };
+    });
   }
 
   function applySchnyderLayout(cy) {
     var graph = graphFromCy(cy);
     var result = computeSchnyderPositions(graph.nodeIds, graph.edgePairs);
     if (!result || !result.ok) {
-      return result || { ok: false, message: 'Schnyder failed' };
+      return buildLayoutError(result || {
+        message: 'Schnyder failed',
+        graph: graph
+      });
     }
     applyAndFit(cy, result.pos);
     return {
       ok: true,
-      message: 'Applied Schnyder layout (' + String(graph.nodeIds.length) + ' vertices)'
+      message: buildLayoutStatusMessage('Schnyder layout', {
+        vertexCount: graph.nodeIds.length
+      })
     };
   }
 

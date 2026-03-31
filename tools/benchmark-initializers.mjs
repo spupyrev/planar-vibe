@@ -1,0 +1,485 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+
+function parseEdgeListText(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const nodes = new Set();
+  const edges = [];
+  const seen = new Set();
+
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+    const parts = line.split(/\s+/);
+    if (parts[0] === 'v' || parts[0] === 'V') {
+      if (parts.length >= 2) {
+        nodes.add(String(parts[1]));
+      }
+      continue;
+    }
+    if (parts.length < 2) {
+      continue;
+    }
+    const a = String(parts[0]);
+    const b = String(parts[1]);
+    if (a === b) {
+      continue;
+    }
+    nodes.add(a);
+    nodes.add(b);
+    const key = a < b ? `${a}::${b}` : `${b}::${a}`;
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    edges.push([a, b]);
+  }
+
+  return { nodeIds: [...nodes], edgePairs: edges };
+}
+
+function loadBrowserModules() {
+  const window = {};
+  window.window = window;
+
+  const context = vm.createContext({
+    window,
+    console,
+    Math,
+    Set,
+    Map,
+    Array,
+    Object,
+    String,
+    Number,
+    Promise
+  });
+
+  const files = [
+    'static/js/planarity-test.js',
+    'static/js/metrics.js',
+    'static/js/graph-utils.js',
+    'static/js/graph-generator.js',
+    'static/js/playground-utils.js',
+    'static/js/layout-tutte.js',
+    'static/js/layout-air.js',
+    'static/js/layout-ppag.js',
+    'static/js/layout-facebalancer.js',
+    'static/js/layout-reweight.js',
+    'static/js/layout-fd-uniform.js'
+  ];
+
+  for (const rel of files) {
+    const abs = path.resolve(process.cwd(), rel);
+    const code = fs.readFileSync(abs, 'utf8');
+    new vm.Script(code, { filename: rel }).runInContext(context);
+  }
+
+  return window;
+}
+
+function nowNs() {
+  return process.hrtime.bigint();
+}
+
+function nsToMs(ns) {
+  return Number(ns) / 1e6;
+}
+
+async function measureAsync(fn) {
+  const start = nowNs();
+  const value = await fn();
+  return {
+    value,
+    ms: nsToMs(nowNs() - start)
+  };
+}
+
+function projectOriginalPositions(GraphUtils, graph, result) {
+  return GraphUtils.filterPositions((result && (result.pos || result.posById)) || {}, graph.nodeIds);
+}
+
+function validateSeedContext(modules, nodeIds, edgePairs, outerFace, context) {
+  const GraphUtils = modules.GraphUtils;
+  const embedding = context && context.augmented ? context.augmented.embedding : null;
+  if (!embedding || !embedding.ok) {
+    return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
+  }
+  if (!GraphUtils.embeddingHasFace(embedding, outerFace)) {
+    return { ok: false, message: 'Provided outer face is not a face of the embedding' };
+  }
+  const connectivity = GraphUtils.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
+  if (!connectivity || !connectivity.ok) {
+    return {
+      ok: false,
+      message: (connectivity && connectivity.reason) || 'Barycentric layout requires an internally 3-connected planar graph'
+    };
+  }
+  return { ok: true };
+}
+
+function computeIterativeSeedForBenchmark(modules, nodeIds, edgePairs, outerFace, context, options) {
+  const validation = validateSeedContext(modules, nodeIds, edgePairs, outerFace, context);
+  if (!validation.ok) {
+    return validation;
+  }
+  const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
+  const opts = options || {};
+  return TutteAlgorithm.computeBarycentricPositions(
+    nodeIds,
+    edgePairs,
+    outerFace,
+    {
+      maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000,
+      tolerance: Number.isFinite(opts.tolerance) ? Math.max(0, opts.tolerance) : 1e-7,
+      initOptions: TutteAlgorithm.defaultOuterPlacementOptions({ useSeedOuter: false })
+    }
+  );
+}
+
+function computeExactSeedForBenchmark(modules, nodeIds, edgePairs, outerFace, context) {
+  const validation = validateSeedContext(modules, nodeIds, edgePairs, outerFace, context);
+  if (!validation.ok) {
+    return validation;
+  }
+  const GraphUtils = modules.GraphUtils;
+  const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
+  const ids = (nodeIds || []).map(String);
+  const adjacency = GraphUtils.buildAdjacencyArrays(ids, edgePairs || []);
+  const pos = TutteAlgorithm.placeOuterFaceVertices(
+    ids,
+    outerFace,
+    TutteAlgorithm.defaultOuterPlacementOptions({ useSeedOuter: false })
+  );
+  const outerSet = new Set((outerFace || []).map(String));
+  const interiorIds = [];
+  const interiorIndexById = {};
+
+  for (let i = 0; i < ids.length; i += 1) {
+    const id = ids[i];
+    if (!outerSet.has(id)) {
+      interiorIndexById[id] = interiorIds.length;
+      interiorIds.push(id);
+    }
+  }
+  if (interiorIds.length === 0) {
+    return { ok: true, pos, iters: 0 };
+  }
+
+  const L = new Array(interiorIds.length);
+  const bx = new Array(interiorIds.length).fill(0);
+  const by = new Array(interiorIds.length).fill(0);
+  for (let i = 0; i < interiorIds.length; i += 1) {
+    L[i] = new Array(interiorIds.length).fill(0);
+    L[i][i] = 1;
+    const neighbors = adjacency[interiorIds[i]] || [];
+    if (neighbors.length === 0) {
+      continue;
+    }
+    const weight = 1 / neighbors.length;
+    for (let j = 0; j < neighbors.length; j += 1) {
+      const neighborId = String(neighbors[j]);
+      const interiorIdx = interiorIndexById[neighborId];
+      if (interiorIdx === undefined) {
+        bx[i] += weight * pos[neighborId].x;
+        by[i] += weight * pos[neighborId].y;
+      } else {
+        L[i][interiorIdx] -= weight;
+      }
+    }
+  }
+
+  const n = L.length;
+  const LU = L.map((row) => row.slice());
+  const piv = new Array(n);
+  for (let i = 0; i < n; i += 1) {
+    piv[i] = i;
+  }
+  for (let k = 0; k < n; k += 1) {
+    let pivotRow = k;
+    let pivotValue = Math.abs(LU[k][k]);
+    for (let i = k + 1; i < n; i += 1) {
+      const cand = Math.abs(LU[i][k]);
+      if (cand > pivotValue) {
+        pivotValue = cand;
+        pivotRow = i;
+      }
+    }
+    if (!(pivotValue > 1e-14)) {
+      return { ok: false, message: 'Exact barycentric solve failed' };
+    }
+    if (pivotRow !== k) {
+      const tmpRow = LU[k];
+      LU[k] = LU[pivotRow];
+      LU[pivotRow] = tmpRow;
+      const tmpP = piv[k];
+      piv[k] = piv[pivotRow];
+      piv[pivotRow] = tmpP;
+    }
+    for (let i = k + 1; i < n; i += 1) {
+      LU[i][k] /= LU[k][k];
+      const factor = LU[i][k];
+      for (let j = k + 1; j < n; j += 1) {
+        LU[i][j] -= factor * LU[k][j];
+      }
+    }
+  }
+
+  const y1 = new Array(n);
+  const y2 = new Array(n);
+  for (let i = 0; i < n; i += 1) {
+    y1[i] = bx[piv[i]];
+    y2[i] = by[piv[i]];
+    for (let j = 0; j < i; j += 1) {
+      y1[i] -= LU[i][j] * y1[j];
+      y2[i] -= LU[i][j] * y2[j];
+    }
+  }
+  const x1 = new Array(n);
+  const x2 = new Array(n);
+  for (let i = n - 1; i >= 0; i -= 1) {
+    let sum1 = y1[i];
+    let sum2 = y2[i];
+    for (let j = i + 1; j < n; j += 1) {
+      sum1 -= LU[i][j] * x1[j];
+      sum2 -= LU[i][j] * x2[j];
+    }
+    x1[i] = sum1 / LU[i][i];
+    x2[i] = sum2 / LU[i][i];
+  }
+
+  for (let i = 0; i < interiorIds.length; i += 1) {
+    pos[interiorIds[i]] = { x: x1[i], y: x2[i] };
+  }
+  return { ok: true, pos, iters: 1 };
+}
+
+function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
+  const PlaygroundUtils = modules.PlaygroundUtils;
+  const GraphUtils = modules.GraphUtils;
+  const prepared = PlaygroundUtils.prepareGraphData(graph, cfg);
+  if (!prepared || !prepared.ok) {
+    return prepared || { ok: false, message: 'prepareGraphData failed' };
+  }
+
+  const seedHelper = seedName === 'exact'
+    ? computeExactSeedForBenchmark
+    : computeIterativeSeedForBenchmark;
+
+  const init = seedHelper(
+    modules,
+    prepared.augmented.nodeIds,
+    prepared.augmented.edgePairs,
+    prepared.outerFace,
+    {
+      graph: prepared.graph,
+      baseEmbedding: prepared.baseEmbedding,
+      augmented: prepared.augmented,
+      outerFace: prepared.outerFace,
+      config: cfg
+    },
+    iterativeOptions
+  );
+  if (!init || !init.ok || !init.pos) {
+    return init || { ok: false, message: 'seed initializer failed' };
+  }
+
+  return {
+    ok: true,
+    graph: prepared.graph,
+    baseEmbedding: prepared.baseEmbedding,
+    outerFace: prepared.outerFace,
+    augmented: prepared.augmented,
+    posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.pos, prepared.outerFace),
+    movableVertices: GraphUtils.collectMovableVertices(prepared.augmented.nodeIds, prepared.outerFace),
+    initResult: init
+  };
+}
+
+async function withSeedMethod(modules, seedName, fn) {
+  const PlaygroundUtils = modules.PlaygroundUtils;
+  const original = PlaygroundUtils.prepareGraphAndLayoutData;
+  PlaygroundUtils.prepareGraphAndLayoutData = function patchedPrepareGraphAndLayoutData(graph, config) {
+    return buildPreparedContext(modules, graph, config || {}, seedName);
+  };
+  try {
+    return await fn();
+  } finally {
+    PlaygroundUtils.prepareGraphAndLayoutData = original;
+  }
+}
+
+function average(rows, key) {
+  if (!rows.length) {
+    return null;
+  }
+  let total = 0;
+  let count = 0;
+  for (const row of rows) {
+    if (Number.isFinite(row[key])) {
+      total += row[key];
+      count += 1;
+    }
+  }
+  return count > 0 ? total / count : null;
+}
+
+function summarizeBy(rows, groupKeys) {
+  const groups = new Map();
+  for (const row of rows) {
+    const key = groupKeys.map((k) => row[k]).join('||');
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(row);
+  }
+
+  const out = [];
+  for (const rowsInGroup of groups.values()) {
+    const sample = rowsInGroup[0];
+    const summary = {};
+    for (const key of groupKeys) {
+      summary[key] = sample[key];
+    }
+    summary.runs = rowsInGroup.length;
+    summary.successes = rowsInGroup.filter((row) => row.ok).length;
+    summary.avgMs = average(rowsInGroup, 'ms');
+    summary.avgFaceScore = average(rowsInGroup.filter((row) => row.ok), 'faceScore');
+    summary.avgIters = average(rowsInGroup.filter((row) => row.ok), 'iters');
+    out.push(summary);
+  }
+  out.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return out;
+}
+
+async function main() {
+  const modules = loadBrowserModules();
+  const GraphUtils = modules.GraphUtils;
+  const Metrics = modules.PlanarVibeMetrics;
+  const Generator = modules.PlanarVibeGraphGenerator;
+  const PlaygroundUtils = modules.PlaygroundUtils;
+  const Air = modules.PlanarVibeAir;
+  const PPAG = modules.PlanarVibePPAG;
+  const FaceBalancer = modules.PlanarVibeFaceBalancer;
+  const Reweight = modules.PlanarVibeReweightTutte;
+  const FDUniform = modules.PlanarVibeFDUniform;
+
+  const graphNames = ['sample1', 'grid4x20', 'randomplanar2', 'randomplanar4', 'planar3tree30'];
+  const graphs = graphNames.map((name) => ({
+    name,
+    ...parseEdgeListText(Generator.getSample(name))
+  }));
+
+  const seedBenchConfig = {
+    failureLabel: 'Benchmark seed',
+    minNodeCount: 3
+  };
+  const iterativeSeedOptions = {
+    maxIters: 2000,
+    tolerance: 1e-8
+  };
+
+  const layoutBenchmarks = [
+    {
+      name: 'Air',
+      run: (graph) => Air.computeAirPositions(graph.nodeIds, graph.edgePairs, {
+        maxSweeps: 80,
+        delayMs: 0,
+        yieldEvery: 50,
+        renderEvery: 100
+      })
+    },
+    {
+      name: 'PPAG',
+      run: (graph) => PPAG.computePPAGPositions(graph.nodeIds, graph.edgePairs, {
+        maxIters: 120,
+        delayMs: 0,
+        yieldEvery: 50,
+        renderEvery: 100
+      })
+    },
+    {
+      name: 'FaceBalancer',
+      run: (graph) => FaceBalancer.computeFaceBalancerPositions(graph.nodeIds, graph.edgePairs, {
+        maxIters: 30,
+        delayMs: 0
+      })
+    },
+    {
+      name: 'ReweightTutte',
+      run: (graph) => Reweight.computeReweightTuttePositions(graph.nodeIds, graph.edgePairs, {
+        maxOuterIters: 6,
+        warmIters: 1200,
+        innerIters: 1600,
+        finalIters: 1600,
+        delayMs: 0
+      })
+    },
+    {
+      name: 'FD-uniform',
+      run: (graph) => FDUniform.computeFDUniformPositions(graph.nodeIds, graph.edgePairs, {
+        maxIters: 120,
+        delayMs: 0
+      })
+    }
+  ];
+
+  const seedRows = [];
+  for (const graph of graphs) {
+    for (const seedName of ['iterative', 'exact']) {
+      const measured = await measureAsync(async () => buildPreparedContext(modules, graph, seedBenchConfig, seedName, iterativeSeedOptions));
+      const result = measured.value;
+      const posById = result && result.ok ? GraphUtils.filterPositions(result.posById || {}, graph.nodeIds) : null;
+      const face = posById ? Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, posById) : null;
+      seedRows.push({
+        graph: graph.name,
+        seed: seedName,
+        ok: !!(result && result.ok),
+        ms: measured.ms,
+        faceScore: face && face.ok ? face.quality : null,
+        iters: result && result.initResult && Number.isFinite(result.initResult.iters) ? result.initResult.iters : null,
+        crossings: posById ? Metrics.hasCrossingsFromPositions(posById, graph.edgePairs) : null
+      });
+    }
+  }
+
+  const layoutRows = [];
+  for (const graph of graphs) {
+    for (const seedName of ['iterative', 'exact']) {
+      for (const layout of layoutBenchmarks) {
+        const measured = await measureAsync(async () => withSeedMethod(modules, seedName, async () => layout.run(graph)));
+        const result = measured.value;
+        const posById = result && result.ok ? projectOriginalPositions(GraphUtils, graph, result) : null;
+        const face = posById ? Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, posById) : null;
+        layoutRows.push({
+          graph: graph.name,
+          seed: seedName,
+          layout: layout.name,
+          ok: !!(result && result.ok),
+          ms: measured.ms,
+          faceScore: face && face.ok ? face.quality : null,
+          iters: result && Number.isFinite(result.iters) ? result.iters : null,
+          crossings: posById ? Metrics.hasCrossingsFromPositions(posById, graph.edgePairs) : null,
+          message: result && (result.message || result.reason || result.status || result.stopReason || null)
+        });
+      }
+    }
+  }
+
+  const report = {
+    seedPerGraph: seedRows,
+    seedSummary: summarizeBy(seedRows, ['seed']),
+    layoutPerRun: layoutRows,
+    layoutSummary: summarizeBy(layoutRows, ['seed', 'layout'])
+  };
+
+  console.log(JSON.stringify(report, null, 2));
+}
+
+main().catch((err) => {
+  console.error(err && err.stack ? err.stack : err);
+  process.exitCode = 1;
+});

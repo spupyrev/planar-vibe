@@ -6,6 +6,9 @@
   var PlaygroundUtils = global.PlaygroundUtils;
   var Tutte = global.PlanarVibeTutteAlgorithm;
   var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
+  var buildLayoutError = GraphUtils.buildLayoutError;
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var chooseOuterFaceFromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding;
   var collectMovableVertices = GraphUtils.collectMovableVertices;
@@ -16,7 +19,12 @@
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
   var edgeKey = GraphUtils.edgeKey;
   var findOuterFaceIndex = GraphUtils.findOuterFaceIndex;
+  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
   var polygonAreaAbs = GraphUtils.polygonAreaAbs;
+  var resolveFloatOption = GraphUtils.resolveFloatOption;
+  var resolveFunctionOption = GraphUtils.resolveFunctionOption;
+  var resolveIntOption = GraphUtils.resolveIntOption;
+  var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
 
   function buildOuterFacePositions(nodeIds, outerFace, fixedOuterPos) {
     var pos = Tutte.placeOuterFaceVertices(
@@ -39,40 +47,17 @@
   }
 
   function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, fixedOuterPos) {
-    var pos = buildOuterFacePositions(nodeIds, outerFace, fixedOuterPos);
-    var outerSet = new Set(outerFace.map(String));
-    var iters = 0;
-    var converged = false;
-
-    while (!converged && iters < maxIters) {
-      converged = true;
-      iters += 1;
-      for (var i = 0; i < nodeIds.length; i += 1) {
-        var v = String(nodeIds[i]);
-        if (outerSet.has(v)) continue;
-        var ngh = adj[v] || [];
-        if (ngh.length === 0) continue;
-        var sx = 0;
-        var sy = 0;
-        var sw = 0;
-        for (var j = 0; j < ngh.length; j += 1) {
-          var u = String(ngh[j]);
-          var w = weights[edgeKey(v, u)];
-          if (!Number.isFinite(w) || w <= 0) w = 1;
-          sx += w * pos[u].x;
-          sy += w * pos[u].y;
-          sw += w;
-        }
-        if (!(sw > 0)) continue;
-        var nx = sx / sw;
-        var ny = sy / sw;
-        if (Math.abs(pos[v].x - nx) > 1e-8 || Math.abs(pos[v].y - ny) > 1e-8) {
-          pos[v] = { x: nx, y: ny };
-          converged = false;
-        }
-      }
-    }
-    return { pos: pos, iters: iters };
+    var outerPos = fixedOuterPos ? alignOuterFaceEdgeHorizontally(fixedOuterPos, outerFace) : null;
+    return Tutte.computeBarycentricPositions(nodeIds, [], outerFace, {
+      adjacency: adj,
+      weights: weights,
+      maxIters: maxIters,
+      tolerance: 1e-8,
+      initOptions: Tutte.defaultOuterPlacementOptions({
+        useSeedOuter: false,
+        fixedOuterPos: outerPos
+      })
+    });
   }
 
   function fillMissingPositionsByNeighborAverage(nodeIds, adj, posById, maxPasses) {
@@ -284,40 +269,42 @@
 
   function normalizeReweightOptions(options) {
     var opts = options || {};
+    var scaleMin = resolveFloatOption(opts.scaleMin, 0.25, 0.01);
+    var pressureScaleMin = resolveFloatOption(opts.pressureScaleMin, 1.0, 0.01);
     return {
-      maxOuterIters: Number.isFinite(opts.maxOuterIters) ? Math.max(1, Math.floor(opts.maxOuterIters)) : 8,
-      pressureStep: Number.isFinite(opts.pressureStep) ? Math.max(0, opts.pressureStep) : 0.16,
-      pressureClamp: Number.isFinite(opts.pressureClamp) ? Math.max(0.05, opts.pressureClamp) : 1.20,
-      pressureBeta: Number.isFinite(opts.pressureBeta) ? Math.max(0, opts.pressureBeta) : 0.18,
-      warmIters: Number.isFinite(opts.warmIters) ? Math.max(1, Math.floor(opts.warmIters)) : 2000,
-      warmFillPasses: Number.isFinite(opts.warmFillPasses) ? Math.max(1, Math.floor(opts.warmFillPasses)) : 5,
-      innerIters: Number.isFinite(opts.innerIters) ? Math.max(1, Math.floor(opts.innerIters)) : 3000,
-      finalIters: Number.isFinite(opts.finalIters) ? Math.max(1, Math.floor(opts.finalIters)) : 3000,
-      pressureDeltaClamp: Number.isFinite(opts.pressureDeltaClamp) ? Math.max(0.05, opts.pressureDeltaClamp) : 0.75,
-      scaleMin: Number.isFinite(opts.scaleMin) ? Math.max(0.01, opts.scaleMin) : 0.25,
-      scaleMax: Number.isFinite(opts.scaleMax) ? Math.max(Math.max(0.01, Number.isFinite(opts.scaleMin) ? opts.scaleMin : 0.25), opts.scaleMax) : 10.0,
-      pressureScaleMin: Number.isFinite(opts.pressureScaleMin) ? Math.max(0.01, opts.pressureScaleMin) : 1.0,
-      pressureScaleMax: Number.isFinite(opts.pressureScaleMax) ? Math.max(Number.isFinite(opts.pressureScaleMin) ? Math.max(0.01, opts.pressureScaleMin) : 1.0, opts.pressureScaleMax) : 1.25,
-      minItersBeforeStop: Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 8,
-      stableIterLimit: Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 4,
-      movementStopTol: Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : null,
-      avgMovementStopTol: Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : null,
-      onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null
+      maxOuterIters: resolveIntOption(opts.maxOuterIters, 8, 1),
+      pressureStep: resolveFloatOption(opts.pressureStep, 0.16, 0),
+      pressureClamp: resolveFloatOption(opts.pressureClamp, 1.20, 0.05),
+      pressureBeta: resolveFloatOption(opts.pressureBeta, 0.18, 0),
+      warmIters: resolveIntOption(opts.warmIters, 2000, 1),
+      warmFillPasses: resolveIntOption(opts.warmFillPasses, 5, 1),
+      innerIters: resolveIntOption(opts.innerIters, 3000, 1),
+      finalIters: resolveIntOption(opts.finalIters, 3000, 1),
+      pressureDeltaClamp: resolveFloatOption(opts.pressureDeltaClamp, 0.75, 0.05),
+      scaleMin: scaleMin,
+      scaleMax: resolveFloatOption(opts.scaleMax, 10.0, scaleMin),
+      pressureScaleMin: pressureScaleMin,
+      pressureScaleMax: resolveFloatOption(opts.pressureScaleMax, 1.25, pressureScaleMin),
+      minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, 8, 1),
+      stableIterLimit: resolveIntOption(opts.stableIterLimit, 4, 1),
+      movementStopTol: resolveNonNegativeOption(opts.movementStopTol, null),
+      avgMovementStopTol: resolveNonNegativeOption(opts.avgMovementStopTol, null),
+      onIteration: resolveFunctionOption(opts.onIteration, null)
     };
   }
 
   function prepareReweightState(graph, options) {
     var opts = normalizeReweightOptions(options);
-    var graph = {
-      nodeIds: (graph.nodeIds || []).map(String),
-      edgePairs: (graph.edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    };
-    var context = PlaygroundUtils.prepareTriangulatedLayoutData(graph, {
+    graph = normalizeGraphInput(graph && graph.nodeIds, graph && graph.edgePairs);
+    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'ReweightTutte',
       minNodeCount: 3
     });
     if (!context || !context.ok) {
-      return context || { ok: false, message: 'ReweightTutte setup failed' };
+      return buildLayoutError(context || {
+        message: 'ReweightTutte setup failed',
+        graph: graph
+      });
     }
 
     var g = context.graph;
@@ -333,14 +320,23 @@
       outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
     }
     if (outerFaceIdx < 0 || !outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
-      return { ok: false, message: 'Could not determine augmented outer face' };
+      return buildLayoutError({
+        message: 'Could not determine augmented outer face',
+        graph: g,
+        augmented: augmented
+      });
     }
     var boundedFaceIdx = [];
     for (var i = 0; i < faces.length; i += 1) {
       if (i !== outerFaceIdx) boundedFaceIdx.push(i);
     }
     if (boundedFaceIdx.length === 0) {
-      return { ok: false, message: 'No bounded faces' };
+      return buildLayoutError({
+        message: 'No bounded faces',
+        graph: g,
+        outerFace: outer,
+        augmented: augmented
+      });
     }
 
     var adj = buildAdjacencyArrays(augmented.nodeIds, augmented.edgePairs);
@@ -459,17 +455,19 @@
         await opts.onIteration({
           iter: iter + 1,
           maxIters: opts.maxOuterIters,
-          outerFace: outer.slice(),
           positions: pos,
           faceAreaScore: iterStats ? iterStats.score : null,
-          faceAreaMinRatio: iterStats ? iterStats.minRatio : null,
-          faceAreaMaxRatio: iterStats ? iterStats.maxRatio : null,
-          boundedFaceCount: iterStats ? iterStats.faceCount : boundedFaceIdx.length,
           movedVertices: moveStats.movedVertices,
           maxMove: moveStats.maxMove,
           avgMove: moveStats.avgMove,
-          stableIterCount: movementStatus.stableIterations,
-          stableIterLimit: movementStatus.stableIterLimit
+          debug: {
+            outerFace: outer.slice(),
+            faceAreaMinRatio: iterStats ? iterStats.minRatio : null,
+            faceAreaMaxRatio: iterStats ? iterStats.maxRatio : null,
+            boundedFaceCount: iterStats ? iterStats.faceCount : boundedFaceIdx.length,
+            stableIterCount: movementStatus.stableIterations,
+            stableIterLimit: movementStatus.stableIterLimit
+          }
         });
       }
       if (movementStatus.converged) {
@@ -481,7 +479,7 @@
     var finalLayout = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, opts.finalIters, fixedOuterPos);
     totalInnerIters += finalLayout.iters;
 
-    return {
+    return buildLayoutResult({
       ok: true,
       graph: g,
       outerFace: outer,
@@ -495,7 +493,7 @@
       boundedFaceCount: finalIterationStats ? finalIterationStats.faceCount : boundedFaceIdx.length,
       faceAreaMinRatio: finalIterationStats ? finalIterationStats.minRatio : null,
       faceAreaMaxRatio: finalIterationStats ? finalIterationStats.maxRatio : null
-    };
+    });
   }
 
   async function computeReweightTuttePositions(nodeIds, edgePairs, options) {
@@ -504,7 +502,7 @@
       edgePairs: edgePairs
     }, options);
     if (!prepared || !prepared.ok) {
-      return prepared || { ok: false, message: 'ReweightTutte setup failed' };
+      return buildLayoutError(prepared || { message: 'ReweightTutte setup failed' });
     }
     return runReweightIterations(prepared, prepared.opts);
   }
@@ -523,9 +521,13 @@
         return {
           ok: true,
           stopReason: result.stopReason,
-          message: 'Applied ReweightTutte (' + result.outerFace.length + '-vertex outer face' +
-            (result.augmented.dummyCount > 0 ? ', +' + result.augmented.dummyCount + ' dummy vertices' : '') +
-            ', ' + result.iters + ' iters, ' + result.outerSteps + ' steps, ' + result.stopReason + ')',
+          message: buildLayoutStatusMessage('ReweightTutte', {
+            outerFaceVertexCount: result.outerFace.length,
+            dummyCount: result.augmented.dummyCount,
+            iters: result.iters,
+            outerSteps: result.outerSteps,
+            stopReason: result.stopReason
+          }),
           faceAreaScore: result.faceAreaScore,
           faceAreaMinRatio: result.faceAreaMinRatio,
           faceAreaMaxRatio: result.faceAreaMaxRatio,

@@ -34,14 +34,45 @@ function loadMetricsModules() {
   }
 
   return {
+    GraphUtils: window.GraphUtils,
     Metrics: window.PlanarVibeMetrics,
     PlanarityTest: window.PlanarVibePlanarityTest
   };
 }
 
 const loaded = loadMetricsModules();
+const GraphUtils = loaded.GraphUtils;
 const Metrics = loaded.Metrics;
 const PlanarityTest = loaded.PlanarityTest;
+
+test('adjacency builders normalize duplicate simple edges consistently', () => {
+  const nodeIds = ['1', '2', '3'];
+  const edgePairs = [
+    ['1', '2'],
+    ['2', '1'],
+    ['1', '2'],
+    ['2', '2'],
+    ['2', '3']
+  ];
+
+  const adjacencyArrays = GraphUtils.buildAdjacencyArrays(nodeIds, edgePairs);
+  assert.deepEqual(JSON.parse(JSON.stringify(adjacencyArrays)), {
+    '1': ['2'],
+    '2': ['1', '3'],
+    '3': ['2']
+  });
+
+  const adjacencySets = GraphUtils.buildAdjacencySets(nodeIds, edgePairs);
+  assert.deepEqual({
+    '1': Array.from(adjacencySets['1']).sort(),
+    '2': Array.from(adjacencySets['2']).sort(),
+    '3': Array.from(adjacencySets['3']).sort()
+  }, {
+    '1': ['2'],
+    '2': ['1', '3'],
+    '3': ['2']
+  });
+});
 
 test('computeUniformityScore: uniform distribution scores 1', () => {
   const values = [0.25, 0.25, 0.25, 0.25];

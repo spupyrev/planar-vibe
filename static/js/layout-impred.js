@@ -8,11 +8,21 @@
   var Tutte = global.PlanarVibeTutteAlgorithm;
   var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
+  var buildLayoutError = GraphUtils.buildLayoutError;
+  var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var chooseOuterFaceFromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding;
+  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
+  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
   var copyPositions = GraphUtils.copyPositions;
   var polygonAreaAbs = GraphUtils.polygonAreaAbs;
+  var resolveFiniteOption = GraphUtils.resolveFiniteOption;
+  var resolveFloatOption = GraphUtils.resolveFloatOption;
+  var resolveIntOption = GraphUtils.resolveIntOption;
+  var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
+  var resolvePositiveOption = GraphUtils.resolvePositiveOption;
   var segmentsIntersectOrTouch = GraphUtils.segmentsIntersectOrTouch;
 
   function estimateDelta(edgePairs, posById) {
@@ -368,15 +378,12 @@
 
   async function computeImPrEdPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var g = {
-      nodeIds: (nodeIds || []).map(String),
-      edgePairs: (edgePairs || []).map(function (edge) { return [String(edge[0]), String(edge[1])]; })
-    };
+    var g = normalizeGraphInput(nodeIds, edgePairs);
     if (!g.nodeIds || g.nodeIds.length < 2) {
-      return { ok: false, message: 'ImPrEd requires at least 2 vertices' };
+      return buildLayoutError({ message: 'ImPrEd requires at least 2 vertices', graph: g });
     }
     if (!g.edgePairs || g.edgePairs.length === 0) {
-      return { ok: false, message: 'ImPrEd requires at least 1 edge' };
+      return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
     }
 
     var posById = copyPositions(opts.initialPositions || {});
@@ -384,8 +391,8 @@
     var adj = buildAdjacencyArrays(g.nodeIds, g.edgePairs);
     var emb = null;
     var initialHadCrossings = false;
-    if (haveCompletePositions && Metrics && Metrics.hasCrossingsFromPositions) {
-      initialHadCrossings = !!Metrics.hasCrossingsFromPositions(posById, g.edgePairs);
+    if (haveCompletePositions) {
+      initialHadCrossings = hasPositionCrossings(posById, g.edgePairs);
     }
     var fixedOuter = new Set();
     if (PlanarityTest && PlanarityTest.computePlanarEmbedding) {
@@ -431,24 +438,24 @@
     if (!haveCompletePositions) {
       posById = buildDefaultCirclePositions(g.nodeIds);
     }
-    var delta = Number.isFinite(opts.delta) && opts.delta > 0 ? opts.delta : estimateDelta(g.edgePairs, posById);
-    var maxIters = Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 600;
-    var startMaxMove = Number.isFinite(opts.maxMove) && opts.maxMove > 0 ? opts.maxMove : 3 * delta;
-    var minMaxMove = Number.isFinite(opts.minMaxMove) && opts.minMaxMove >= 0 ? opts.minMaxMove : 0.05 * delta;
-    var minItersBeforeStop = Number.isFinite(opts.minItersBeforeStop) ? Math.max(1, Math.floor(opts.minItersBeforeStop)) : 60;
-    var stableIterLimit = Number.isFinite(opts.stableIterLimit) ? Math.max(1, Math.floor(opts.stableIterLimit)) : 16;
-    var movementStopTol = Number.isFinite(opts.movementStopTol) && opts.movementStopTol >= 0 ? opts.movementStopTol : 0.008 * delta;
-    var avgMovementStopTol = Number.isFinite(opts.avgMovementStopTol) && opts.avgMovementStopTol >= 0 ? opts.avgMovementStopTol : 0.0015 * delta;
+    var delta = resolvePositiveOption(opts.delta, estimateDelta(g.edgePairs, posById));
+    var maxIters = resolveIntOption(opts.maxIters, 600, 1);
+    var startMaxMove = resolvePositiveOption(opts.maxMove, 3 * delta);
+    var minMaxMove = resolveNonNegativeOption(opts.minMaxMove, 0.05 * delta);
+    var minItersBeforeStop = resolveIntOption(opts.minItersBeforeStop, 60, 1);
+    var stableIterLimit = resolveIntOption(opts.stableIterLimit, 16, 1);
+    var movementStopTol = resolveNonNegativeOption(opts.movementStopTol, 0.008 * delta);
+    var avgMovementStopTol = resolveNonNegativeOption(opts.avgMovementStopTol, 0.0015 * delta);
     var sectorCount = 8;
-    var forceScale = Number.isFinite(opts.forceScale) && opts.forceScale > 0 ? opts.forceScale : 0.04;
-    var cNodeRep = Number.isFinite(opts.cNodeRep) ? opts.cNodeRep : 1.0;
-    var cEdgeAttr = Number.isFinite(opts.cEdgeAttr) ? opts.cEdgeAttr : 1.0;
-    var cNodeEdgeRep = Number.isFinite(opts.cNodeEdgeRep) ? opts.cNodeEdgeRep : 0.75;
-    var nearbyFactor = Number.isFinite(opts.nearbyFactor) && opts.nearbyFactor > 0 ? opts.nearbyFactor : 6.0;
-    var momentumBeta = Number.isFinite(opts.momentumBeta) ? Math.max(0, Math.min(0.98, opts.momentumBeta)) : 0.78;
-    var rejectedVelocityDamp = Number.isFinite(opts.rejectedVelocityDamp) ? Math.max(0, Math.min(1, opts.rejectedVelocityDamp)) : 0.25;
-    var rollbackVelocityDamp = Number.isFinite(opts.rollbackVelocityDamp) ? Math.max(0, Math.min(1, opts.rollbackVelocityDamp)) : 0.0;
-    var fullRollbackVelocityDamp = Number.isFinite(opts.fullRollbackVelocityDamp) ? Math.max(0, Math.min(1, opts.fullRollbackVelocityDamp)) : 0.5;
+    var forceScale = resolvePositiveOption(opts.forceScale, 0.04);
+    var cNodeRep = resolveFiniteOption(opts.cNodeRep, 1.0);
+    var cEdgeAttr = resolveFiniteOption(opts.cEdgeAttr, 1.0);
+    var cNodeEdgeRep = resolveFiniteOption(opts.cNodeEdgeRep, 0.75);
+    var nearbyFactor = resolvePositiveOption(opts.nearbyFactor, 6.0);
+    var momentumBeta = resolveFloatOption(opts.momentumBeta, 0.78, 0, 0.98);
+    var rejectedVelocityDamp = resolveFloatOption(opts.rejectedVelocityDamp, 0.25, 0, 1);
+    var rollbackVelocityDamp = resolveFloatOption(opts.rollbackVelocityDamp, 0.0, 0, 1);
+    var fullRollbackVelocityDamp = resolveFloatOption(opts.fullRollbackVelocityDamp, 0.5, 0, 1);
     var iter;
     var stopReason = 'max-iters';
     var lastStats = { movedNodes: 0, totalMove: 0, avgActualMove: 0, maxActualMove: 0 };
@@ -532,8 +539,8 @@
       }
 
       var hasCrossings = false;
-      if (Metrics && Metrics.hasCrossingsFromPositions) {
-        hasCrossings = !!Metrics.hasCrossingsFromPositions(posById, g.edgePairs);
+      if (Metrics) {
+        hasCrossings = hasPositionCrossings(posById, g.edgePairs);
       }
       if (hasCrossings) {
         // Prefer reverting only vertices involved in crossing pairs.
@@ -547,14 +554,14 @@
             velocityById[vid].y *= fullRollbackVelocityDamp;
           }
           hasCrossings = false;
-        } else if (Metrics && Metrics.hasCrossingsFromPositions) {
+        } else if (Metrics) {
           rollbackResult.rolledBack.forEach(function (rv) {
             if (velocityById[rv]) {
               velocityById[rv].x *= rollbackVelocityDamp;
               velocityById[rv].y *= rollbackVelocityDamp;
             }
           });
-          hasCrossings = !!Metrics.hasCrossingsFromPositions(posById, g.edgePairs);
+          hasCrossings = hasPositionCrossings(posById, g.edgePairs);
         } else {
           hasCrossings = false;
         }
@@ -576,15 +583,17 @@
         await opts.onIteration({
           iter: iter + 1,
           maxIters: maxIters,
-          movedNodes: lastStats.movedNodes,
-          maxMove: maxMove,
-          maxActualMove: lastStats.maxActualMove,
-          avgActualMove: lastStats.avgActualMove,
-          totalMove: lastStats.totalMove,
-          hasCrossings: hasCrossings,
-          stableIterCount: movementStatus.stableIterations,
-          stableIterLimit: movementStatus.stableIterLimit,
-          positions: posById
+          positions: posById,
+          movedVertices: lastStats.movedNodes,
+          maxMove: lastStats.maxActualMove,
+          avgMove: lastStats.avgActualMove,
+          debug: {
+            moveCap: maxMove,
+            totalMove: lastStats.totalMove,
+            hasCrossings: hasCrossings,
+            stableIterCount: movementStatus.stableIterations,
+            stableIterLimit: movementStatus.stableIterLimit
+          }
         });
       }
       if (lastStats.movedNodes === 0) {
@@ -597,17 +606,19 @@
       }
     }
 
-    return {
+    return buildLayoutResult({
       ok: true,
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
+      graph: g,
+      outerFace: emb ? chooseCurrentOuterFaceByArea(emb, posById) : null,
       embedding: emb,
       pos: posById,
       iterations: iter + 1,
       stopReason: stopReason,
       maxActualMove: lastStats.maxActualMove,
       avgActualMove: lastStats.avgActualMove
-    };
+    });
   }
 
   async function applyImPrEdLayout(cy, options) {
@@ -630,7 +641,11 @@
           stopReason: result.stopReason,
           maxActualMove: result.maxActualMove,
           avgActualMove: result.avgActualMove,
-          message: 'Applied ImPrEd (' + result.nodeIds.length + ' vertices, ' + result.iterations + ' iters, ' + result.stopReason + ')'
+          message: buildLayoutStatusMessage('ImPrEd', {
+            vertexCount: result.nodeIds.length,
+            iters: result.iterations,
+            stopReason: result.stopReason
+          })
         };
       },
       failureMessage: 'ImPrEd failed'
