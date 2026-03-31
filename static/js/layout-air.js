@@ -14,26 +14,12 @@
   var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
   var triangleArea2 = global.GraphUtils.triangleArea2;
 
-  var originalFaceKeyForAugmentedFace = PlaygroundUtils.originalFaceKeyForAugmentedFace;
-
-  function buildAirData(baseEmbedding, augmentedEmbedding, outerFace, dummyFaceKeyById, dummyFaceVerticesById, posById) {
-    var outerOriginalKey = originalFaceKeyForAugmentedFace(outerFace, dummyFaceKeyById, dummyFaceVerticesById);
-    var originalFaceKeys = [];
-    var originalFaceSet = new Set();
+  function buildAirData(augmentedEmbedding, outerFace, posById) {
+    var outerKey = faceKey(outerFace);
     var i;
-
-    for (i = 0; i < baseEmbedding.faces.length; i += 1) {
-      var baseKey = faceKey(baseEmbedding.faces[i]);
-      if (baseKey === outerOriginalKey) continue;
-      if (!originalFaceSet.has(baseKey)) {
-        originalFaceSet.add(baseKey);
-        originalFaceKeys.push(baseKey);
-      }
-    }
 
     var triangles = [];
     var incident = {};
-    var triangleCountByOriginal = {};
 
     for (i = 0; i < augmentedEmbedding.idByIndex.length; i += 1) {
       incident[String(augmentedEmbedding.idByIndex[i])] = [];
@@ -46,24 +32,18 @@
       }
 
       var oriented = orientFaceCCW(face, posById);
-      var originalKey = originalFaceKeyForAugmentedFace(oriented, dummyFaceKeyById, dummyFaceVerticesById);
-      if (originalKey === outerOriginalKey) {
+      if (faceKey(oriented) === outerKey) {
         continue;
       }
       if (face.length !== 3) {
         return { ok: false, reason: 'Air requires all non-outer augmented faces to be triangles' };
       }
-      if (!originalFaceSet.has(originalKey)) {
-        return { ok: false, reason: 'Air face mapping failed for face ' + oriented.join(',') };
-      }
 
       var triangleIndex = triangles.length;
       triangles.push({
         vertices: oriented,
-        originalKey: originalKey,
         targetArea: 0
       });
-      triangleCountByOriginal[originalKey] = (triangleCountByOriginal[originalKey] || 0) + 1;
 
       for (var j = 0; j < 3; j += 1) {
         var v = String(oriented[j]);
@@ -75,13 +55,12 @@
       }
     }
 
-    if (originalFaceKeys.length === 0 || triangles.length === 0) {
+    if (triangles.length === 0) {
       return {
         ok: true,
-        originalFaceKeys: [],
         triangles: triangles,
         incident: incident,
-        desiredOriginalArea: 0
+        targetTriangleArea: 0
       };
     }
 
@@ -89,20 +68,17 @@
     if (!(outerArea > 1e-12)) {
       return { ok: false, reason: 'Air initialization failed: outer face has zero area' };
     }
-    var desiredOriginalArea = outerArea / originalFaceKeys.length;
+    var targetTriangleArea = outerArea / triangles.length;
     for (i = 0; i < triangles.length; i += 1) {
-      var original = triangles[i].originalKey;
-      var cnt = triangleCountByOriginal[original] || 1;
-      triangles[i].targetArea = desiredOriginalArea / cnt;
+      triangles[i].targetArea = targetTriangleArea;
     }
 
     return {
       ok: true,
       outerFace: outerFace.slice().map(String),
-      originalFaceKeys: originalFaceKeys,
       triangles: triangles,
       incident: incident,
-      desiredOriginalArea: desiredOriginalArea
+      targetTriangleArea: targetTriangleArea
     };
   }
 
@@ -228,31 +204,16 @@
     };
   }
 
-  function computeOriginalFaceAreas(airData, posById) {
-    var sums = {};
-    for (var i = 0; i < airData.originalFaceKeys.length; i += 1) {
-      sums[airData.originalFaceKeys[i]] = 0;
-    }
-    for (i = 0; i < airData.triangles.length; i += 1) {
+  function computeAirStats(airData, posById, movableVertices, tolAreaPositive) {
+    var maxRelError = 0;
+    for (var i = 0; i < airData.triangles.length; i += 1) {
       var tri = airData.triangles[i];
       var a = posById[tri.vertices[0]];
       var b = posById[tri.vertices[1]];
       var c = posById[tri.vertices[2]];
-      if (!a || !b || !c) continue;
-      var area = Math.abs(triangleArea2(a, b, c)) / 2;
-      if (!Number.isFinite(area)) area = 0;
-      sums[tri.originalKey] = (sums[tri.originalKey] || 0) + area;
-    }
-    return sums;
-  }
-
-  function computeAirStats(airData, posById, movableVertices, tolAreaPositive) {
-    var faceAreas = computeOriginalFaceAreas(airData, posById);
-    var maxRelError = 0;
-    for (var i = 0; i < airData.originalFaceKeys.length; i += 1) {
-      var key = airData.originalFaceKeys[i];
-      var area = faceAreas[key] || 0;
-      var rel = Math.abs(area - airData.desiredOriginalArea) / Math.max(airData.desiredOriginalArea, 1e-12);
+      var area = (a && b && c) ? (Math.abs(triangleArea2(a, b, c)) / 2) : 0;
+      var targetArea = tri.targetArea;
+      var rel = Math.abs(area - targetArea) / Math.max(targetArea, 1e-12);
       if (!Number.isFinite(rel)) rel = Infinity;
       if (rel > maxRelError) {
         maxRelError = rel;
@@ -277,7 +238,7 @@
       maxRelError: maxRelError,
       maxForce: maxForce,
       balancedCount: balancedCount,
-      boundedFaceCount: airData.originalFaceKeys.length
+      boundedFaceCount: airData.triangles.length
     };
   }
 
@@ -342,18 +303,15 @@
     }
 
     var airData = buildAirData(
-      context.baseEmbedding,
       context.augmented.embedding,
       context.outerFace,
-      context.augmented.dummyFaceKeyById,
-      context.augmented.dummyFaceVerticesById,
       context.posById
     );
     if (!airData.ok) {
       return { ok: false, message: airData.reason || 'Air setup failed' };
     }
 
-    if (airData.originalFaceKeys.length === 0) {
+    if (airData.triangles.length === 0) {
       return {
         ok: true,
         opts: opts,
@@ -432,7 +390,7 @@
         pos: posById,
         stats: lastStats,
         moveStats: lastMoveStats,
-        boundedFaceCount: airData.originalFaceKeys.length,
+        boundedFaceCount: airData.triangles.length,
         dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
         hasCrossings: originalDrawingHasCrossings(posById, g.edgePairs)
       };
@@ -597,7 +555,7 @@
       pos: posById,
       stats: lastStats,
       moveStats: lastMoveStats,
-      boundedFaceCount: airData.originalFaceKeys.length,
+      boundedFaceCount: airData.triangles.length,
       dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
       hasCrossings: originalDrawingHasCrossings(posById, g.edgePairs)
     };
@@ -613,7 +571,7 @@
       return prepared || { ok: false, message: 'Air failed' };
     }
 
-    if (prepared.airData.originalFaceKeys.length === 0) {
+    if (prepared.airData.triangles.length === 0) {
       return {
         ok: true,
         status: 'realized',
@@ -639,7 +597,7 @@
         status: status,
         message: 'Air produced a non-plane drawing',
         maxRelError: lastStats ? lastStats.maxRelError : null,
-        boundedFaceCount: prepared.airData.originalFaceKeys.length,
+        boundedFaceCount: prepared.airData.triangles.length,
         dummyCount: prepared.augmented.dummyCount
       };
     }
@@ -649,8 +607,7 @@
       faceScore = global.PlanarVibeMetrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
     }
 
-    var message = 'Applied Air (' + prepared.airData.originalFaceKeys.length + ' bounded faces, ' +
-      prepared.airData.triangles.length + ' triangles';
+    var message = 'Applied Air (' + prepared.airData.triangles.length + ' bounded triangles';
     if (prepared.augmented.dummyCount > 0) {
       message += ', +' + prepared.augmented.dummyCount + ' dummy';
     }
@@ -674,7 +631,7 @@
       message: message,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: lastStats ? lastStats.maxRelError : null,
-      boundedFaceCount: prepared.airData.originalFaceKeys.length,
+      boundedFaceCount: prepared.airData.triangles.length,
       dummyCount: prepared.augmented.dummyCount,
       iters: lastStats && Number.isFinite(lastStats.sweeps) ? lastStats.sweeps : null
     };

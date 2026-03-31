@@ -1148,7 +1148,9 @@
         return;
       }
       renderFaceAreaPlot(result.values, result.idealValues || result.ideal, !hasCrossings);
-      updateFaceAreaQuality(result.values);
+      global.$('#stats-face-quality').text(
+        Number.isFinite(result.quality) ? result.quality.toFixed(3) : '--'
+      );
     }
 
     function updateEdgeLengthPlot() {
@@ -1189,27 +1191,11 @@
         return;
       }
       renderEdgeLengthPlot(result.values, result.ideal);
-      updateEdgeLengthQuality(result.values);
+      global.$('#stats-edge-quality').text(
+        Number.isFinite(result.quality) ? result.quality.toFixed(3) : '--'
+      );
       updateEdgeLengthRatio(edgePairs, posById);
       updateSpacingUniformity(nodeIds, posById);
-    }
-
-    function updateFaceAreaQuality(values) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeDistributionQuality) {
-        global.$('#stats-face-quality').text('--');
-        return;
-      }
-      var quality = global.PlanarVibeMetrics.computeDistributionQuality(values);
-      global.$('#stats-face-quality').text(quality === null ? '--' : quality.toFixed(3));
-    }
-
-    function updateEdgeLengthQuality(values) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeDistributionQuality) {
-        global.$('#stats-edge-quality').text('--');
-        return;
-      }
-      var quality = global.PlanarVibeMetrics.computeDistributionQuality(values);
-      global.$('#stats-edge-quality').text(quality === null ? '--' : quality.toFixed(3));
     }
 
     function updateEdgeLengthRatio(edgePairs, posById) {
