@@ -244,7 +244,7 @@
       onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
       onSweep: typeof opts.onSweep === 'function' ? opts.onSweep : null,
       yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
-      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 4
+      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 2
     };
   }
 

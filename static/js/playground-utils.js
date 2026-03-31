@@ -178,7 +178,7 @@
     var getPositions = typeof config.getPositions === 'function' ? config.getPositions : function () { return {}; };
     var interactive = config.interactive !== false;
     var delayMs = Math.max(0, Number(config.delayMs) || 0);
-    var renderEvery = Number.isFinite(config.renderEvery) ? Math.max(1, Math.floor(config.renderEvery)) : 4;
+    var renderEvery = Number.isFinite(config.renderEvery) ? Math.max(1, Math.floor(config.renderEvery)) : 2;
     var yieldEvery = Number.isFinite(config.yieldEvery) ? Math.max(1, Math.floor(config.yieldEvery)) : 5;
     var fitPadding = Number.isFinite(config.fitPadding) ? Math.max(0, config.fitPadding) : 24;
     var didFit = false;

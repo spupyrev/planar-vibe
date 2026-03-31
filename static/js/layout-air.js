@@ -306,7 +306,7 @@
       delayMs: Number.isFinite(opts.delayMs) ? Math.max(0, opts.delayMs) : 0,
       onIteration: typeof opts.onIteration === 'function' ? opts.onIteration : null,
       yieldEvery: Number.isFinite(opts.yieldEvery) ? Math.max(1, Math.floor(opts.yieldEvery)) : 5,
-      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 4,
+      renderEvery: Number.isFinite(opts.renderEvery) ? Math.max(1, Math.floor(opts.renderEvery)) : 2,
       moveTolRel: Number.isFinite(opts.moveTolRel) && opts.moveTolRel >= 0 ? opts.moveTolRel : 1e-5,
       moveTolAbs: Number.isFinite(opts.moveTolAbs) && opts.moveTolAbs >= 0 ? opts.moveTolAbs : 1e-12,
       errTolRel: Number.isFinite(opts.errTolRel) && opts.errTolRel >= 0 ? opts.errTolRel : 1e-4,

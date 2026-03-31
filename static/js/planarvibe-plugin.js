@@ -157,6 +157,16 @@
     var PREF_INTERACTIVE_KEY = 'planarvibe_interactive_mode';
     var PREF_STATUS_COLLAPSED_KEY = 'planarvibe_status_collapsed';
 
+    function defaultIncrementalLayoutMethodOptions(overrides) {
+      return Object.assign({
+        incremental: true,
+        interactive: true,
+        delayMs: 0,
+        renderEvery: 2,
+        yieldEvery: 5
+      }, overrides || {});
+    }
+
     function writeCookie(name, value, days) {
       var d = new Date();
       d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
@@ -1852,9 +1862,7 @@
           },
           buildMethodOptions: function () {
             var lastStatsIter = 0;
-            return {
-              incremental: true,
-              delayMs: 0,
+            return defaultIncrementalLayoutMethodOptions({
               onIteration: function (progress) {
                 if (!progress) return;
                 var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
@@ -1869,7 +1877,7 @@
                   updateEdgeLengthPlot();
                 }
               }
-            };
+            });
           },
           normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
@@ -1912,11 +1920,7 @@
             return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
           },
           buildMethodOptions: function () {
-            return {
-              incremental: true,
-              interactive: true,
-              delayMs: 0,
-              renderEvery: 1,
+            return defaultIncrementalLayoutMethodOptions({
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -1942,7 +1946,7 @@
                 }
                 setStatus(parts.join(' | '), false);
               }
-            };
+            });
           },
           disableOtherButtonsWhileRunning: true
         }, function () {
@@ -1964,11 +1968,7 @@
             return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareTriangulatedLayoutData']);
           },
           buildMethodOptions: function () {
-            return {
-              incremental: true,
-              interactive: true,
-              delayMs: 0,
-              renderEvery: 4,
+            return defaultIncrementalLayoutMethodOptions({
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -1990,7 +1990,7 @@
                 }
                 setStatus(parts.join(' | '), false);
               }
-            };
+            });
           },
           normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
@@ -2014,12 +2014,7 @@
               missingTutteUtilities(['defaultOuterPlacementOptions']);
           },
           buildMethodOptions: function () {
-            return {
-              incremental: true,
-              interactive: true,
-              delayMs: 0,
-              renderEvery: 2,
-              yieldEvery: 5,
+            return defaultIncrementalLayoutMethodOptions({
               onIteration: function (progress) {
                 if (!progress) return;
                 var parts = [];
@@ -2035,7 +2030,7 @@
                 }
                 setStatus(parts.join(' | '), false);
               }
-            };
+            });
           },
           normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
@@ -2160,12 +2155,7 @@
               missingTutteUtilities(['placeOuterFaceVertices', 'defaultOuterPlacementOptions']);
           },
           buildMethodOptions: function () {
-            return {
-              incremental: true,
-              interactive: true,
-              delayMs: 0,
-              renderEvery: 2,
-              yieldEvery: 5,
+            return defaultIncrementalLayoutMethodOptions({
               onIteration: function (progress) {
                 if (!progress) {
                   return;
@@ -2183,7 +2173,7 @@
                 }
                 setStatus(parts.join(' | '), false);
               }
-            };
+            });
           },
           normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
@@ -2207,12 +2197,7 @@
               missingGraphUtilities(['buildAdjacencyArrays', 'computeDrawingDiameter', 'copyPositions', 'segmentsIntersectOrTouch', 'computePositionMoveStats', 'createMovementConvergenceTracker']);
           },
           buildMethodOptions: function () {
-            return {
-              incremental: true,
-              interactive: true,
-              delayMs: 0,
-              renderEvery: 2,
-              yieldEvery: 5,
+            return defaultIncrementalLayoutMethodOptions({
               useSeedOuter: true,
               onIteration: function (progress) {
                 if (!progress || progress.iter % 10 !== 0) {
@@ -2225,7 +2210,7 @@
                   false
                 );
               }
-            };
+            });
           },
           normalizeOnSuccess: false,
           disableOtherButtonsWhileRunning: true
