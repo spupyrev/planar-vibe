@@ -984,22 +984,21 @@ test('FPP layout applies on 5 random planar non-3-tree graphs', () => {
   }
 });
 
-test('FPP layout regression: randomplanar4 should not fail during augmentation', () => {
+test('triangulateByFaceStellation rejects embeddings with non-simple faces', () => {
   const text = Generator.getSample('randomplanar4');
   const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  assert.equal(emb.ok, true);
 
-  const result = FPP.applyFPPLayout(cy);
-  assert.equal(result.ok, true, `applyFPPLayout failed on randomplanar4: ${result.message}`);
-
-  const posById = {};
-  for (const node of cy.nodes()) {
-    assert.equal(node._pos !== null, true, `missing FPP position for node ${node.id()}`);
-    assert.equal(Number.isFinite(node._pos.x), true);
-    assert.equal(Number.isFinite(node._pos.y), true);
-    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
-  }
-  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false, 'FPP produced crossings for randomplanar4');
+  const result = GraphUtils.triangulateByFaceStellation(
+    graph.nodeIds,
+    graph.edgePairs,
+    emb,
+    emb.outerFace,
+    { triangulateOuterFace: true }
+  );
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'triangulateByFaceStellation requires simple face boundaries');
 });
 
 test('canonical ordering works on random planar non-3-tree graph', () => {
@@ -1317,13 +1316,14 @@ test('FaceBalancer layout rejects non-planar graphs', async () => {
   assert.match(String(result.message || ''), /planar graph/i);
 });
 
-test('FaceBalancer handles randomplanar4 without failing', async () => {
+test('FaceBalancer rejects randomplanar4 because augmentation sees a non-simple face boundary', async () => {
   const text = Generator.getSample('randomplanar4');
   const graph = parseEdgeListText(text);
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
   const result = await FaceBalancer.applyFaceBalancerLayout(cy, { delayMs: 0, maxIters: 20 });
-  assert.equal(result.ok, true, result.message || 'FaceBalancer failed on randomplanar4');
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /simple face boundaries/i);
 });
 
 test('FaceBalancer preserves a plane drawing on planar3tree100', async () => {

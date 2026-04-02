@@ -1426,6 +1426,18 @@
   }
 
   function triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
+    function faceHasSimpleBoundary(face) {
+      var seen = new Set();
+      for (var j = 0; j < (face || []).length; j += 1) {
+        var v = String(face[j]);
+        if (seen.has(v)) {
+          return false;
+        }
+        seen.add(v);
+      }
+      return true;
+    }
+
     if (!PlanarGraphUtils || !PlanarGraphUtils.PlanarEmbedding) {
       return {
         ok: false,
@@ -1445,6 +1457,14 @@
         ok: false,
         reason: 'triangulateByFaceStellation requires an outer face'
       };
+    }
+    for (var f = 0; f < (emb.faces || []).length; f += 1) {
+      if (!faceHasSimpleBoundary(emb.faces[f])) {
+        return {
+          ok: false,
+          reason: 'triangulateByFaceStellation requires simple face boundaries'
+        };
+      }
     }
     var nodes = normalizeNodeIds(nodeIds);
     var edges = normalizeSimpleEdgePairs(edgePairs);
