@@ -686,7 +686,8 @@
 
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FaceBalancer layout',
-      minNodeCount: 3
+      minNodeCount: 3,
+      currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'FaceBalancer setup failed' });
@@ -813,6 +814,7 @@
       compute: computeFaceBalancerPositions,
       patchComputeOptions: function (ctx) {
         return {
+          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy),
           onIteration: async function (progress) {
             iterationCount = progress.iter;
             await ctx.onProgress(progress);

@@ -130,6 +130,197 @@
     };
   }
 
+  function computeQuantile(values, q) {
+    if (!values || values.length === 0) {
+      return null;
+    }
+    var qq = Number.isFinite(q) ? Math.max(0, Math.min(1, q)) : 0.2;
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var idx = qq * (sorted.length - 1);
+    var lo = Math.floor(idx);
+    var hi = Math.ceil(idx);
+    var t = idx - lo;
+    if (lo === hi) {
+      return sorted[lo];
+    }
+    return sorted[lo] * (1 - t) + sorted[hi] * t;
+  }
+
+  function collectPositiveGaps(sortedValues, range) {
+    var gaps = [];
+    if (!sortedValues || sortedValues.length < 2) {
+      return gaps;
+    }
+    var minPositiveGap = Math.max(1e-12, (Number.isFinite(range) ? range : 0) * 1e-12);
+    for (var i = 1; i < sortedValues.length; i += 1) {
+      var gap = sortedValues[i] - sortedValues[i - 1];
+      if (gap > minPositiveGap) {
+        gaps.push(gap);
+      }
+    }
+    return gaps;
+  }
+
+  function clusterSortedValues(sortedValues, tolerance) {
+    if (!sortedValues || sortedValues.length === 0) {
+      return [];
+    }
+    var eps = Number.isFinite(tolerance) ? Math.max(0, tolerance) : 0;
+    var sizes = [1];
+    for (var i = 1; i < sortedValues.length; i += 1) {
+      var gap = sortedValues[i] - sortedValues[i - 1];
+      if (gap > eps) {
+        sizes.push(1);
+      } else {
+        sizes[sizes.length - 1] += 1;
+      }
+    }
+    return sizes;
+  }
+
+  function computeEffectiveLineCount(clusterSizes, totalCount) {
+    if (!clusterSizes || clusterSizes.length === 0 || !(totalCount > 0)) {
+      return null;
+    }
+    var sumSq = 0;
+    for (var i = 0; i < clusterSizes.length; i += 1) {
+      var frac = clusterSizes[i] / totalCount;
+      sumSq += frac * frac;
+    }
+    if (!(sumSq > 0)) {
+      return null;
+    }
+    return 1 / sumSq;
+  }
+
+  function computeAxisClustering(values, options) {
+    if (!values || values.length === 0) {
+      return null;
+    }
+    var opts = options || {};
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var min = sorted[0];
+    var max = sorted[sorted.length - 1];
+    var range = max - min;
+    var rawTolerance = null;
+    var tolerance = 0;
+    var source = 'range-zero';
+    var i;
+
+    if (range > 0) {
+      if (Number.isFinite(opts.tolerance)) {
+        tolerance = Math.max(0, opts.tolerance);
+        rawTolerance = tolerance;
+        source = 'fixed';
+      } else {
+        var gaps = collectPositiveGaps(sorted, range);
+        var quantile = computeQuantile(gaps, opts.quantile);
+        var scale = Number.isFinite(opts.toleranceScale) ? opts.toleranceScale : 2;
+        var minTolerance = Number.isFinite(opts.minTolerance)
+          ? Math.max(0, opts.minTolerance)
+          : Math.max(1e-12, range * 1e-9);
+        var capFraction = Number.isFinite(opts.toleranceCapFraction)
+          ? Math.max(0, opts.toleranceCapFraction)
+          : 0.05;
+        var fallbackFraction = Number.isFinite(opts.fallbackToleranceFraction)
+          ? Math.max(0, opts.fallbackToleranceFraction)
+          : 0.01;
+
+        if (gaps.length >= 3 && Number.isFinite(quantile)) {
+          rawTolerance = scale * quantile;
+          tolerance = Math.min(range * capFraction, Math.max(minTolerance, rawTolerance));
+          source = 'quantile';
+        } else {
+          rawTolerance = range * fallbackFraction;
+          tolerance = rawTolerance;
+          source = 'fallback';
+        }
+      }
+    }
+
+    var clusterSizes = clusterSortedValues(sorted, tolerance);
+    var effectiveLineCount = computeEffectiveLineCount(clusterSizes, sorted.length);
+    return {
+      sortedValues: sorted,
+      clusterSizes: clusterSizes,
+      lineCount: clusterSizes.length,
+      effectiveLineCount: effectiveLineCount,
+      tolerance: tolerance,
+      rawTolerance: rawTolerance,
+      toleranceSource: source,
+      range: range
+    };
+  }
+
+  function computeAxisAlignmentScore(nodeIds, posById, options) {
+    if (!nodeIds || nodeIds.length === 0) {
+      return { ok: false, reason: 'No nodes' };
+    }
+
+    var opts = options || {};
+    var xs = [];
+    var ys = [];
+    var usedNodeIds = [];
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      var p = posById[id];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      xs.push(p.x);
+      ys.push(p.y);
+      usedNodeIds.push(id);
+    }
+    if (xs.length < 2) {
+      return { ok: false, reason: 'Not enough positioned nodes' };
+    }
+
+    var sharedTolerance = Number.isFinite(opts.tolerance) ? opts.tolerance : null;
+    var xAxis = computeAxisClustering(xs, {
+      tolerance: Number.isFinite(opts.toleranceX) ? opts.toleranceX : sharedTolerance,
+      quantile: opts.quantile,
+      toleranceScale: opts.toleranceScale,
+      toleranceCapFraction: opts.toleranceCapFraction,
+      minTolerance: opts.minToleranceX,
+      fallbackToleranceFraction: opts.fallbackToleranceFraction
+    });
+    var yAxis = computeAxisClustering(ys, {
+      tolerance: Number.isFinite(opts.toleranceY) ? opts.toleranceY : sharedTolerance,
+      quantile: opts.quantile,
+      toleranceScale: opts.toleranceScale,
+      toleranceCapFraction: opts.toleranceCapFraction,
+      minTolerance: opts.minToleranceY,
+      fallbackToleranceFraction: opts.fallbackToleranceFraction
+    });
+    if (!xAxis || !yAxis || !Number.isFinite(xAxis.effectiveLineCount) || !Number.isFinite(yAxis.effectiveLineCount)) {
+      return { ok: false, reason: 'Invalid axis clustering' };
+    }
+
+    var denom = xs.length - 1;
+    var scoreX = denom > 0 ? (xs.length - xAxis.effectiveLineCount) / denom : 1;
+    var scoreY = denom > 0 ? (ys.length - yAxis.effectiveLineCount) / denom : 1;
+    var score = (scoreX + scoreY) / 2;
+
+    return {
+      ok: true,
+      score: Math.max(0, Math.min(1, score)),
+      scoreX: Math.max(0, Math.min(1, scoreX)),
+      scoreY: Math.max(0, Math.min(1, scoreY)),
+      usedNodeCount: xs.length,
+      usedNodeIds: usedNodeIds,
+      lineCountX: xAxis.lineCount,
+      lineCountY: yAxis.lineCount,
+      effectiveLineCountX: xAxis.effectiveLineCount,
+      effectiveLineCountY: yAxis.effectiveLineCount,
+      clusterSizesX: xAxis.clusterSizes,
+      clusterSizesY: yAxis.clusterSizes,
+      toleranceX: xAxis.tolerance,
+      toleranceY: yAxis.tolerance,
+      toleranceSourceX: xAxis.toleranceSource,
+      toleranceSourceY: yAxis.toleranceSource
+    };
+  }
+
   function computeUniformFaceAreaScore(nodeIds, edgePairs, posById) {
     var graphUtils = global.GraphUtils;
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
@@ -459,39 +650,6 @@
     };
   }
 
-  function hasCrossingsFromPositions(posById, edgePairs) {
-    var EPS = 1e-9;
-    var graphUtils = global.GraphUtils;
-
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var s1 = String(edgePairs[i][0]);
-      var t1 = String(edgePairs[i][1]);
-      var p1 = posById[s1];
-      var q1 = posById[t1];
-      if (!p1 || !q1) {
-        continue;
-      }
-
-      for (var j = i + 1; j < edgePairs.length; j += 1) {
-        var s2 = String(edgePairs[j][0]);
-        var t2 = String(edgePairs[j][1]);
-        if (s1 === s2 || s1 === t2 || t1 === s2 || t1 === t2) {
-          continue;
-        }
-        var p2 = posById[s2];
-        var q2 = posById[t2];
-        if (!p2 || !q2) {
-          continue;
-        }
-
-        if (graphUtils.segmentsIntersectOrTouch(p1, q1, p2, q2, EPS)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   function isBipartiteGraph(nodeIds, edgePairs) {
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
@@ -532,11 +690,11 @@
     computeUniformFaceAreaScoreFromCy: computeUniformFaceAreaScoreFromCy,
     computeUniformEdgeLengthScore: computeUniformEdgeLengthScore,
     computeEdgeLengthRatio: computeEdgeLengthRatio,
+    computeAxisAlignmentScore: computeAxisAlignmentScore,
     computeSpacingUniformityScore: computeSpacingUniformityScore,
     computeUniformAngleResolutionScore: computeUniformAngleResolutionScore,
     computeUniformityScore: computeUniformityScore,
     computeDistributionQuality: computeDistributionQuality,
-    hasCrossingsFromPositions: hasCrossingsFromPositions,
     isBipartiteGraph: isBipartiteGraph
   };
 })(window);

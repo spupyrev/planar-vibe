@@ -23,7 +23,8 @@
   var hasPositionCrossings = GraphUtils.hasPositionCrossings;
   var PPAG_INTERNAL = {
     tolGrad: 1e-8,
-    acceptanceTol: 1e-12
+    acceptanceTol: 1e-12,
+    minTriangleAreaRel: 1e-10
   };
 
   function buildPPAGData(augmentedEmbedding, outerFace, posById) {
@@ -118,6 +119,16 @@
     return true;
   }
 
+  function effectiveMinTriangleArea(ppagData, opts) {
+    var targetArea = ppagData && Number.isFinite(ppagData.targetTriangleArea)
+      ? ppagData.targetTriangleArea
+      : 0;
+    return Math.max(
+      Number.isFinite(opts && opts.tolAreaPositive) ? opts.tolAreaPositive : 0,
+      PPAG_INTERNAL.minTriangleAreaRel * Math.max(targetArea, 0)
+    );
+  }
+
   function computeTriangleResiduals(ppagData, posById, tolAreaPositive) {
     var triangles = ppagData.triangles || [];
     var residuals = new Array(triangles.length);
@@ -155,7 +166,7 @@
   }
 
   function computePPAGState(ppagData, posById, opts) {
-    var residualState = computeTriangleResiduals(ppagData, posById, opts.tolAreaPositive);
+    var residualState = computeTriangleResiduals(ppagData, posById, effectiveMinTriangleArea(ppagData, opts));
     if (!residualState.ok) {
       return residualState;
     }
@@ -260,7 +271,8 @@
     var opts = normalizePPAGOptions(options);
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'PPAG layout',
-      minNodeCount: 3
+      minNodeCount: 3,
+      currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'PPAG setup failed' });
@@ -284,10 +296,11 @@
       });
     }
 
+    var minTriangleArea = effectiveMinTriangleArea(ppagData, opts);
     for (var fi = 0; fi < ppagData.triangles.length; fi += 1) {
       var tri = ppagData.triangles[fi];
       var area = triangleArea2(context.posById[tri.vertices[0]], context.posById[tri.vertices[1]], context.posById[tri.vertices[2]]) / 2;
-      if (!(area > opts.tolAreaPositive)) {
+      if (!(area > minTriangleArea)) {
         return buildLayoutError({ message: 'PPAG initialization failed: degenerate augmented triangle' });
       }
     }
@@ -312,6 +325,7 @@
     var movableVertices = prepared.movableVertices || [];
     var outerDiameter = outerFaceDiameter(posById, prepared.outerFace || ppagData.outerFace || []);
     opts.maxVertexMove = opts.maxVertexMoveRel * outerDiameter;
+    opts.minTriangleArea = effectiveMinTriangleArea(ppagData, opts);
     var status = 'max_iters';
     var lastMoveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
     var state = computePPAGState(ppagData, posById, opts);
@@ -356,7 +370,7 @@
             x: basePos.x + dx,
             y: basePos.y + dy
           };
-          if (!incidentTrianglesStayPositive(vertexId, ppagData, posById, opts.tolAreaPositive)) {
+          if (!incidentTrianglesStayPositive(vertexId, ppagData, posById, opts.minTriangleArea)) {
             posById[vertexId] = basePos;
             stepScale *= opts.stepShrink;
             lineSearchSteps += 1;
@@ -500,7 +514,10 @@
     return PlaygroundUtils.runIncrementalLayout(cy, options, {
       compute: computePPAGPositions,
       patchComputeOptions: function (ctx) {
-        return { onIteration: ctx.onProgress };
+        return {
+          onIteration: ctx.onProgress,
+          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
+        };
       },
       getPositions: function (result) {
         return result.pos;

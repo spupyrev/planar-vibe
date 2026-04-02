@@ -85,6 +85,7 @@ function loadBrowserModules() {
     'static/js/graph-generator.js',
     'static/js/planarity-test.js',
     'static/js/metrics.js',
+    'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
@@ -127,6 +128,7 @@ const Schnyder = modules.PlanarVibeSchnyder;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
 const FDUniform = modules.PlanarVibeFDUniform;
+const PlaygroundUtils = modules.PlaygroundUtils;
 
 function buildMockCy(nodeIds, edgePairs) {
   const nodeMap = new Map();
@@ -533,6 +535,26 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
   assert.equal(degreeThreeDummies.length, 0);
 });
 
+test('triangulateByFaceStellation triangulates a cycle when the outer face must also be triangulated', () => {
+  const text = Generator.cycleGraph(8);
+  const graph = parseEdgeListText(text);
+  const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  const outerFace = embedding.outerFace.slice();
+
+  const prepared = GraphUtils.triangulateByFaceStellation(
+    graph.nodeIds,
+    graph.edgePairs,
+    embedding,
+    outerFace,
+    { triangulateOuterFace: true }
+  );
+
+  assert.equal(prepared.ok, true, prepared.reason || 'triangulation failed');
+  for (const face of prepared.embedding.faces) {
+    assert.equal(face.length, 3);
+  }
+});
+
 test('common outer-face helper prefers a chordless explicit outer face and otherwise falls back to the longest chordless face', () => {
   const explicit = GraphUtils.chooseOuterFaceFromEmbedding({
     outerFace: ['a', 'b', 'c'],
@@ -562,6 +584,96 @@ test('common outer-face helper ignores an explicit outer face when it contains a
     faces: [['1', '2', '3', '4'], ['5', '6', '7', '8', '9']]
   });
   assert.deepEqual(chosen, ['5', '6', '7', '8', '9']);
+});
+
+test('outer-face helper recovers the visible outer face from a plane drawing', () => {
+  const text = Generator.getSample('sample5');
+  const graph = parseEdgeListText(text);
+  const pos = parseVertexPositionsFromEdgeList(text);
+  const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  const fromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
+  const outer = GraphUtils.chooseOuterFaceFromPositions(graph.nodeIds, graph.edgePairs, pos);
+  assert.ok(Array.isArray(outer) && outer.length >= 3, 'expected a geometric outer face');
+  assert.notEqual(faceCanonicalKeyForTest(outer || []), faceCanonicalKeyForTest(fromEmbedding || []));
+});
+
+test('shared initializer prefers the current plane drawing when choosing the outer face', () => {
+  const text = Generator.getSample('sample5');
+  const graph = parseEdgeListText(text);
+  const pos = parseVertexPositionsFromEdgeList(text);
+  const outer = GraphUtils.chooseOuterFaceFromPositions(graph.nodeIds, graph.edgePairs, pos);
+  const prepared = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    failureLabel: 'test',
+    currentPositions: pos
+  });
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'shared initializer failed');
+  assert.equal(
+    faceCanonicalKeyForTest(prepared.outerFace || []),
+    faceCanonicalKeyForTest(outer || [])
+  );
+});
+
+test('shared embedding-position verifier rejects degenerate faces', () => {
+  const embedding = {
+    ok: true,
+    idByIndex: ['1', '2', '3'],
+    edges: [['1', '2'], ['2', '3'], ['3', '1']],
+    faces: [['1', '2', '3']],
+    outerFace: ['1', '2', '3']
+  };
+  const pos = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 1, y: 0 },
+    '3': { x: 2, y: 0 }
+  };
+
+  const verify = PlaygroundUtils.verifyEmbeddingWithPositions(embedding, pos);
+  assert.equal(verify.ok, false);
+  assert.match(String(verify.message || ''), /degenerate/i);
+});
+
+test('shared initializer rejects grid2x20 when the chosen embedding outer face yields a degenerate seed', () => {
+  const text = Generator.getSample('grid2x20');
+  const graph = parseEdgeListText(text);
+  const prepared = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    failureLabel: 'Shared seed test'
+  });
+
+  assert.equal(prepared && prepared.ok, false);
+  assert.match(String(prepared && prepared.message || ''), /verification|crossings|degenerate/i);
+});
+
+test('raw shared barycentric seed on grid2x20 returns coordinates that fail embedding verification', () => {
+  const text = Generator.getSample('grid2x20');
+  const graph = parseEdgeListText(text);
+  const prepared = PlaygroundUtils.prepareGraphData(graph, {
+    failureLabel: 'Shared seed test'
+  });
+
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
+
+  const seed = PlaygroundUtils.computeSharedBarycentricSeed(
+    prepared.augmented.nodeIds,
+    prepared.augmented.edgePairs,
+    prepared.outerFace,
+    {
+      graph: prepared.graph,
+      baseEmbedding: prepared.baseEmbedding,
+      augmented: prepared.augmented,
+      outerFace: prepared.outerFace
+    }
+  );
+
+  assert.equal(seed && seed.ok, true, seed && seed.message ? seed.message : 'shared seed failed');
+  assert.ok(seed && seed.pos, 'expected raw seed coordinates');
+
+  const verify = PlaygroundUtils.verifyEmbeddingWithPositions(prepared.augmented.embedding, seed.pos, {
+    edgePairs: prepared.augmented.edgePairs,
+    outerFace: prepared.outerFace
+  });
+
+  assert.equal(verify.ok, false);
+  assert.match(String(verify.message || ''), /crossings|degenerate/i);
 });
 
 test('shared movement convergence helper stops after enough stable iterations', () => {
@@ -761,7 +873,7 @@ test('Schnyder layout produces non-crossing drawing on randomplanar3', () => {
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
   assertNoVertexOverlaps(cy, 'Schnyder randomplanar3');
-  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('Schnyder layout produces non-crossing drawing on randomplanar2 (G(50, 130))', () => {
@@ -779,7 +891,7 @@ test('Schnyder layout produces non-crossing drawing on randomplanar2 (G(50, 130)
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
   assertNoVertexOverlaps(cy, 'Schnyder randomplanar2');
-  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('FPP layout produces non-crossing drawings on 10 small planar 3-trees', () => {
@@ -887,7 +999,7 @@ test('FPP layout regression: randomplanar4 should not fail during augmentation',
     assert.equal(Number.isFinite(node._pos.y), true);
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
-  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false, 'FPP produced crossings for randomplanar4');
+  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false, 'FPP produced crossings for randomplanar4');
 });
 
 test('canonical ordering works on random planar non-3-tree graph', () => {
@@ -1150,6 +1262,22 @@ test('PPAG layout still improves formerly plateaued instances under the simplifi
   }
 });
 
+test('PPAG layout stays plane on randomplanar5 benchmark graph', async () => {
+  const text = Generator.getSample('randomplanar5');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await PPAG.applyPPAGLayout(cy, { delayMs: 0, maxIters: 200, yieldEvery: 50 });
+  assert.equal(result.ok, true, `PPAG failed on randomplanar5: ${result.message || ''}`);
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing PPAG position for node ${node.id()}`);
+    positionsById[node.id()] = node._pos;
+  }
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'PPAG produced crossings on randomplanar5');
+});
+
 test('FaceBalancer layout applies on planar sample and improves bounded face balance', async () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
@@ -1304,7 +1432,7 @@ test('CEG23-xy runs on G(50, 144) without crossings', () => {
     assert.equal(Number.isFinite(node._pos.y), true);
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
-  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('ImPrEd layout applies on sample1 and assigns finite positions', async () => {
@@ -1323,17 +1451,14 @@ test('ImPrEd layout applies on sample1 and assigns finite positions', async () =
   }
 });
 
-test('ImPrEd handles non-planar graph by preserving a valid drawing state', async () => {
+test('ImPrEd rejects non-planar graphs', async () => {
   const text = Generator.getSample('nonplanar1');
   const graph = parseEdgeListText(text);
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
   const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 30, delayMs: 0 });
-  assert.equal(result.ok, true, result.message || 'ImPrEd failed on non-planar graph');
-  for (const node of cy.nodes()) {
-    assert.equal(Number.isFinite(node._pos.x), true);
-    assert.equal(Number.isFinite(node._pos.y), true);
-  }
+  assert.equal(result.ok, false, 'ImPrEd should reject non-planar graphs');
+  assert.match(String(result.message || ''), /requires a planar graph/i);
 });
 
 test('ImPrEd keeps planar G(50, 144) drawing without crossings', async () => {
@@ -1348,7 +1473,28 @@ test('ImPrEd keeps planar G(50, 144) drawing without crossings', async () => {
   for (const node of cy.nodes()) {
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
-  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
+});
+
+test('ImPrEd rebuilds a crossing start on xtree30 into a plane drawing', async () => {
+  const text = Generator.getSample('xtree30');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const before = {};
+  for (const node of cy.nodes()) {
+    before[String(node.id())] = { x: node.position().x, y: node.position().y };
+  }
+  assert.equal(GraphUtils.hasPositionCrossings(before, graph.edgePairs), true, 'xtree30 mock start should be non-plane');
+
+  const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 120, delayMs: 0 });
+  assert.equal(result.ok, true, result.message || 'ImPrEd failed on xtree30');
+
+  const after = {};
+  for (const node of cy.nodes()) {
+    after[String(node.id())] = { x: node.position().x, y: node.position().y };
+  }
+  assert.equal(GraphUtils.hasPositionCrossings(after, graph.edgePairs), false, 'ImPrEd should rebuild xtree30 to a plane drawing');
 });
 
 test('ImPrEd does not introduce crossings on sample1 with original coordinates', async () => {
@@ -1369,7 +1515,7 @@ test('ImPrEd does not introduce crossings on sample1 with original coordinates',
   for (const node of cy.nodes()) {
     before[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(Metrics.hasCrossingsFromPositions(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
+  assert.equal(GraphUtils.hasPositionCrossings(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
 
   const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 80, delayMs: -1 });
   assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
@@ -1378,7 +1524,7 @@ test('ImPrEd does not introduce crossings on sample1 with original coordinates',
   for (const node of cy.nodes()) {
     after[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(Metrics.hasCrossingsFromPositions(after, graph.edgePairs), false, 'ImPrEd introduced crossings on sample1');
+  assert.equal(GraphUtils.hasPositionCrossings(after, graph.edgePairs), false, 'ImPrEd introduced crossings on sample1');
 });
 
 test('ImPrEd keeps drawing plane after every iteration on sample1 coordinates', async () => {
@@ -1399,7 +1545,7 @@ test('ImPrEd keeps drawing plane after every iteration on sample1 coordinates', 
   for (const node of cy.nodes()) {
     before[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(Metrics.hasCrossingsFromPositions(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
+  assert.equal(GraphUtils.hasPositionCrossings(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
 
   let seenIterations = 0;
   const result = await ImPrEd.applyImPrEdLayout(cy, {
@@ -1601,7 +1747,7 @@ test('FD-uniform preserves planarity on randomplanar2 (G(50, 130))', () => {
     assert.equal(node._pos !== null, true, `missing FD-uniform position for node ${node.id()}`);
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
-  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false);
+  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('P3T layout applies on planar3tree10 sample', () => {

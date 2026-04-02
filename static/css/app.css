@@ -354,7 +354,7 @@ body {
 .reset-zoom-btn {
   position: absolute;
   top: 10px;
-  right: 10px;
+  right: 224px;
   z-index: 5;
   width: 34px;
   height: 34px;
@@ -420,35 +420,73 @@ body {
 .style-controls {
   position: absolute;
   top: 10px;
-  right: 52px;
+  right: 10px;
   z-index: 5;
-  width: 238px;
+  width: 210px;
   border: 1px solid #c9d7ea;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.08);
-  padding: 4px 8px;
+  padding: 3px 6px;
 }
 
-.interactive-toggle {
+.interactive-toggle-btn {
   position: absolute;
-  top: 12px;
-  right: 300px;
+  top: 10px;
+  right: 262px;
   z-index: 5;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid #9fb4cf;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #9fb4cf;
-  border-radius: 6px;
-  padding: 2px 8px;
-  font-size: 0.82rem;
-  color: var(--pv-ink);
-  user-select: none;
 }
 
-.interactive-toggle input {
+.interactive-toggle-btn[aria-pressed="true"] {
+  background: #e5f0fb;
+  border-color: #6f9dcb;
+}
+
+.interactive-toggle-btn.is-inactive {
+  background: rgba(243, 246, 251, 0.92);
+  border-color: #c9d7ea;
+}
+
+.align-axis-btn {
+  position: absolute;
+  top: 10px;
+  right: 300px;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  padding: 0;
   margin: 0;
+  border: 1px solid #9fb4cf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.align-axis-btn:disabled {
+  background: rgba(243, 246, 251, 0.92);
+  border-color: #c9d7ea;
+  opacity: 1;
+}
+
+.align-axis-btn img {
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  margin: 0;
+  display: block;
+  object-fit: contain;
+}
+
+.align-axis-btn:disabled img {
+  opacity: 0.45;
 }
 
 #cy-static-wrap {
@@ -477,17 +515,17 @@ body {
 .style-control-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.78rem;
+  gap: 4px;
+  font-size: 0.74rem;
   color: var(--pv-ink);
 }
 
 .style-control-row + .style-control-row {
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .style-control-row label {
-  width: 40px;
+  width: 34px;
   margin: 0;
 }
 
@@ -497,18 +535,27 @@ body {
 }
 
 .style-control-value {
-  width: 30px;
+  width: 26px;
   text-align: right;
   color: #5f6c80;
 }
 
-.reset-zoom-btn img {
+.reset-zoom-btn img,
+.interactive-toggle-btn img {
   width: 100%;
   height: 100%;
+  padding: 3px;
   margin: 0;
-  padding: 0;
   display: block;
   object-fit: contain;
+}
+
+.interactive-toggle-btn.is-inactive img {
+  opacity: 0.35;
+}
+
+.interactive-toggle-btn[aria-pressed="true"] img {
+  opacity: 1;
 }
 
 #status {
@@ -669,15 +716,21 @@ body {
   }
 
   .style-controls {
-    right: 48px;
-    width: 206px;
-    padding: 4px 6px;
+    right: 8px;
+    width: 186px;
+    padding: 3px 5px;
   }
 
-  .interactive-toggle {
-    right: 258px;
-    padding: 2px 6px;
-    font-size: 0.8rem;
+  .reset-zoom-btn {
+    right: 196px;
+  }
+
+  .interactive-toggle-btn {
+    right: 234px;
+  }
+
+  .align-axis-btn {
+    right: 272px;
   }
 
   .layout-toolbar .layout-btn {
@@ -780,7 +833,8 @@ body {
 
   .save-svg-btn,
   .debug-augmentation-toggle,
-  .reset-zoom-btn {
+  .reset-zoom-btn,
+  .align-axis-btn {
     height: 32px;
     top: 8px;
   }
@@ -799,11 +853,16 @@ body {
     right: 8px;
   }
 
-  .interactive-toggle {
+  .interactive-toggle-btn {
     top: 8px;
     right: 46px;
-    padding: 2px 6px;
-    font-size: 0.78rem;
+    width: 32px;
+    height: 32px;
+  }
+
+  .align-axis-btn {
+    right: 82px;
+    width: 32px;
   }
 
   .style-controls {

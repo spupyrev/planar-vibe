@@ -418,7 +418,8 @@
 
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FD-uniform',
-      minNodeCount: 3
+      minNodeCount: 3,
+      currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'FD-uniform setup failed' });
@@ -555,7 +556,10 @@
       }), {
         compute: computeFDUniformPositions,
         patchComputeOptions: function (ctx) {
-          return { onIteration: ctx.onProgress };
+          return {
+            onIteration: ctx.onProgress,
+            currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
+          };
         },
         getPositions: function (result) {
           return result.pos;

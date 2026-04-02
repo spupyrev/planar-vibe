@@ -296,7 +296,8 @@
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'Air layout',
       minNodeCount: 3,
-      augmentationOptions: opts.augmentationOptions
+      augmentationOptions: opts.augmentationOptions,
+      currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'Air setup failed' });
@@ -635,7 +636,10 @@
     return PlaygroundUtils.runIncrementalLayout(cy, options, {
       compute: computeAirPositions,
       patchComputeOptions: function (ctx) {
-        return { onIteration: ctx.onProgress };
+        return {
+          onIteration: ctx.onProgress,
+          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
+        };
       },
       getPositions: function (result) {
         return result.pos;

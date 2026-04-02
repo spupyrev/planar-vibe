@@ -214,8 +214,6 @@
     }, {
       failureLabel: 'Tutte layout',
       minNodeCount: 3,
-      baseEmbedding: opts.embedding || null,
-      outerFace: Array.isArray(opts.outerFace) ? normalizeOuterFace(opts.outerFace) : null,
       augmentationOptions: opts.augmentationOptions || null
     });
     if (!prepared || !prepared.ok) {

@@ -73,6 +73,12 @@
   }
 
   function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
+    if (!embedding || !embedding.ok) {
+      return { ok: false, reason: 'prepareAugmentedTriangulation requires a planar embedding' };
+    }
+    if (!Array.isArray(outerFace) || outerFace.length < 3) {
+      return { ok: false, reason: 'prepareAugmentedTriangulation requires an outer face' };
+    }
     var augmented = GraphUtils.triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
     var label = failureLabel || 'layout';
     if (!augmented || !augmented.ok) {
@@ -108,14 +114,20 @@
       return { ok: false, message: label + ' requires at least ' + minNodeCount + ' vertices' };
     }
 
-    var baseEmbedding = cfg.baseEmbedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(normalizedGraph.nodeIds, normalizedGraph.edgePairs);
+    var drawingEmbedding = GraphUtils.extractEmbeddingFromPositions(
+      normalizedGraph.nodeIds,
+      normalizedGraph.edgePairs,
+      cfg.currentPositions || null
+    );
+    var baseEmbedding = drawingEmbedding ||
+      global.PlanarVibePlanarityTest.computePlanarEmbedding(normalizedGraph.nodeIds, normalizedGraph.edgePairs);
     if (!baseEmbedding || !baseEmbedding.ok) {
       return { ok: false, message: label + ' requires a planar graph' };
     }
 
-    var outerFace = Array.isArray(cfg.outerFace) && cfg.outerFace.length >= 3
-      ? cfg.outerFace.slice().map(String)
-      : GraphUtils.chooseOuterFaceFromEmbedding(baseEmbedding);
+    var outerFace = Array.isArray(baseEmbedding.outerFace) && baseEmbedding.outerFace.length >= 3
+      ? baseEmbedding.outerFace.slice().map(String)
+      : null;
     if (!outerFace || outerFace.length < 3) {
       return { ok: false, message: 'Could not determine outer boundary for ' + label };
     }
@@ -411,6 +423,7 @@
         ? (cfg.patchComputeOptions({
           options: opts,
           graph: graph,
+          cy: cy,
           onProgress: onProgress
         }) || {})
         : {}
@@ -537,6 +550,60 @@
     return { ok: true, pos: pos, iters: 1 };
   }
 
+  function verifyEmbeddingWithPositions(embedding, posById, options) {
+    var opts = options || {};
+    var emb = embedding || null;
+    if (!emb || !emb.ok) {
+      return { ok: false, message: 'Position verification requires a planar embedding' };
+    }
+
+    var ids = Array.isArray(emb.idByIndex) ? emb.idByIndex.map(String) : [];
+    if (ids.length === 0) {
+      return { ok: false, message: 'Position verification requires embedding vertices' };
+    }
+    if (!posById || typeof posById !== 'object') {
+      return { ok: false, message: 'Position verification requires coordinates' };
+    }
+
+    for (var i = 0; i < ids.length; i += 1) {
+      var p = posById[ids[i]];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        return { ok: false, message: 'Position verification found missing or non-finite coordinates for vertex ' + ids[i] };
+      }
+    }
+
+    var outerFace = Array.isArray(opts.outerFace) && opts.outerFace.length >= 3
+      ? opts.outerFace.slice().map(String)
+      : (Array.isArray(emb.outerFace) && emb.outerFace.length >= 3 ? emb.outerFace.slice().map(String) : null);
+    if (!outerFace) {
+      return { ok: false, message: 'Position verification requires an outer face' };
+    }
+    if (!GraphUtils.embeddingHasFace(emb, outerFace)) {
+      return { ok: false, message: 'Position verification found an outer face that is not present in the embedding' };
+    }
+    if (!(GraphUtils.polygonAreaAbs(outerFace, posById) > 1e-12)) {
+      return { ok: false, message: 'Position verification found a degenerate outer face' };
+    }
+
+    var edges = Array.isArray(opts.edgePairs) ? opts.edgePairs : emb.edges;
+    if (GraphUtils.hasPositionCrossings(posById, edges || [])) {
+      return { ok: false, message: 'Position verification found crossings in the drawing' };
+    }
+
+    var faces = Array.isArray(emb.faces) ? emb.faces : [];
+    for (i = 0; i < faces.length; i += 1) {
+      var face = faces[i];
+      if (!Array.isArray(face) || face.length < 3) {
+        return { ok: false, message: 'Position verification found an invalid face in the embedding' };
+      }
+      if (!(GraphUtils.polygonAreaAbs(face, posById) > 1e-12)) {
+        return { ok: false, message: 'Position verification found a degenerate face' };
+      }
+    }
+
+    return { ok: true };
+  }
+
   function prepareGraphAndLayoutData(graph, config) {
     var cfg = config || {};
     var label = String(cfg.failureLabel || 'Layout');
@@ -559,6 +626,13 @@
     if (!init || !init.ok || !init.pos) {
       return { ok: false, message: (init && init.message) || (label + ' initialization failed') };
     }
+    var verification = verifyEmbeddingWithPositions(augmented.embedding, init.pos, {
+      edgePairs: augmented.edgePairs,
+      outerFace: outerFace
+    });
+    if (!verification.ok) {
+      return { ok: false, message: verification.message || (label + ' initialization failed') };
+    }
 
     return {
       ok: true,
@@ -572,15 +646,10 @@
     };
   }
 
-  function prepareGraphAndLayoutContext(cy, config) {
-    return prepareGraphAndLayoutData(graphFromCy(cy), config);
-  }
-
   global.PlaygroundUtils = {
     graphFromCy: graphFromCy,
     currentPositionsFromCy: currentPositionsFromCy,
     sharedLayoutMethodOptionsByName: sharedLayoutMethodOptionsByName,
-    prepareAugmentedTriangulation: prepareAugmentedTriangulation,
     prepareGraphData: prepareGraphData,
     originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
     createAugmentationDebugState: createAugmentationDebugState,
@@ -591,7 +660,8 @@
     resolveIncrementalLayoutTimingOptions: resolveIncrementalLayoutTimingOptions,
     createIncrementalRenderer: createIncrementalRenderer,
     runIncrementalLayout: runIncrementalLayout,
-    prepareGraphAndLayoutData: prepareGraphAndLayoutData,
-    prepareGraphAndLayoutContext: prepareGraphAndLayoutContext
+    computeSharedBarycentricSeed: computeSharedBarycentricSeed,
+    verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
+    prepareGraphAndLayoutData: prepareGraphAndLayoutData
   };
 })(window);

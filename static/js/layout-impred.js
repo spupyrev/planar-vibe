@@ -3,21 +3,17 @@
 
   var GraphUtils = global.GraphUtils;
   var Metrics = global.PlanarVibeMetrics;
-  var PlanarityTest = global.PlanarVibePlanarityTest;
   var PlaygroundUtils = global.PlaygroundUtils;
-  var Tutte = global.PlanarVibeTutteAlgorithm;
-  var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
-  var chooseOuterFaceFromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding;
   var hasPositionCrossings = GraphUtils.hasPositionCrossings;
   var normalizeGraphInput = GraphUtils.normalizeGraphInput;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
   var copyPositions = GraphUtils.copyPositions;
-  var polygonAreaAbs = GraphUtils.polygonAreaAbs;
+  var pointOnSegmentInterior = GraphUtils.pointOnSegmentInterior;
   var resolveFiniteOption = GraphUtils.resolveFiniteOption;
   var resolveFloatOption = GraphUtils.resolveFloatOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
@@ -43,55 +39,6 @@
     }
     if (cnt === 0) return 40;
     return sum / cnt;
-  }
-
-  function hasCompleteFinitePositions(nodeIds, posById) {
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var p = posById[nodeIds[i]];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function buildDefaultCirclePositions(nodeIds) {
-    var defaults = (Tutte && typeof Tutte.defaultOuterPlacementOptions === 'function')
-      ? Tutte.defaultOuterPlacementOptions({ useSeedOuter: false })
-      : { defaultCenterX: 450, defaultCenterY: 310, defaultRadius: 300 };
-    var cx = Number.isFinite(defaults.defaultCenterX) ? defaults.defaultCenterX : 450;
-    var cy = Number.isFinite(defaults.defaultCenterY) ? defaults.defaultCenterY : 310;
-    var radius = Number.isFinite(defaults.defaultRadius) ? defaults.defaultRadius : 300;
-    var count = Math.max(1, nodeIds.length);
-    var step = (2 * Math.PI) / count;
-    var pos = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      pos[nodeIds[i]] = {
-        x: cx + radius * Math.cos(-i * step),
-        y: cy + radius * Math.sin(-i * step)
-      };
-    }
-    return pos;
-  }
-
-  function chooseCurrentOuterFaceByArea(embedding, posById) {
-    if (!embedding || !embedding.faces || embedding.faces.length === 0) {
-      return embedding && embedding.outerFace ? embedding.outerFace.slice() : null;
-    }
-    var best = null;
-    var bestArea = -1;
-    for (var i = 0; i < embedding.faces.length; i += 1) {
-      var face = embedding.faces[i];
-      var area = polygonAreaAbs(face, posById);
-      if (area > bestArea) {
-        bestArea = area;
-        best = face;
-      }
-    }
-    if (best && best.length >= 3) {
-      return best.slice();
-    }
-    return embedding.outerFace ? embedding.outerFace.slice() : null;
   }
 
   function cross(ax, ay, bx, by) {
@@ -129,20 +76,64 @@
     return Infinity;
   }
 
-  function moveWouldCross(v, oldPos, newPos, edgePairs, posById) {
+  function moveWouldCross(v, oldPos, newPos, nodeIds, edgePairs, posById) {
+    var EPS = 1e-9;
+    var incidentNeighbors = [];
+
     for (var i = 0; i < edgePairs.length; i += 1) {
       var a = String(edgePairs[i][0]);
       var b = String(edgePairs[i][1]);
-      if (a === v || b === v) {
+      if (a === v) {
+        incidentNeighbors.push(b);
+        continue;
+      }
+      if (b === v) {
+        incidentNeighbors.push(a);
         continue;
       }
       var pa = posById[a];
       var pb = posById[b];
       if (!pa || !pb) continue;
-      if (segmentsIntersectOrTouch(oldPos, newPos, pa, pb, 1e-9)) {
+      if (pointOnSegmentInterior(pa, pb, newPos, EPS)) {
+        return true;
+      }
+      if (segmentsIntersectOrTouch(oldPos, newPos, pa, pb, EPS)) {
         return true;
       }
     }
+
+    for (i = 0; i < incidentNeighbors.length; i += 1) {
+      var u = String(incidentNeighbors[i]);
+      var pu = posById[u];
+      if (!pu) continue;
+
+      for (var j = 0; j < edgePairs.length; j += 1) {
+        a = String(edgePairs[j][0]);
+        b = String(edgePairs[j][1]);
+        if (a === v || b === v || a === u || b === u) {
+          continue;
+        }
+        pa = posById[a];
+        pb = posById[b];
+        if (!pa || !pb) continue;
+        if (segmentsIntersectOrTouch(newPos, pu, pa, pb, EPS)) {
+          return true;
+        }
+      }
+
+      for (j = 0; j < nodeIds.length; j += 1) {
+        var w = String(nodeIds[j]);
+        if (w === v || w === u) {
+          continue;
+        }
+        var pw = posById[w];
+        if (!pw) continue;
+        if (pointOnSegmentInterior(newPos, pu, pw, EPS)) {
+          return true;
+        }
+      }
+    }
+
     return false;
   }
 
@@ -386,58 +377,55 @@
       return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
     }
 
-    var posById = copyPositions(opts.initialPositions || {});
-    var haveCompletePositions = hasCompleteFinitePositions(g.nodeIds, posById);
+    var currentSource = opts.currentPositions || {};
+    var currentPositions = {};
+    var currentCount = 0;
+    for (var ci = 0; ci < g.nodeIds.length; ci += 1) {
+      var currentId = g.nodeIds[ci];
+      var currentPos = currentSource[currentId];
+      if (currentPos && Number.isFinite(currentPos.x) && Number.isFinite(currentPos.y)) {
+        currentPositions[currentId] = { x: currentPos.x, y: currentPos.y };
+        currentCount += 1;
+      }
+    }
+
+    var seed = null;
+    var currentEmbedding = currentCount === g.nodeIds.length
+      ? GraphUtils.extractEmbeddingFromPositions(g.nodeIds, g.edgePairs, currentPositions)
+      : null;
+    if (currentEmbedding && currentEmbedding.ok) {
+      seed = {
+        ok: true,
+        graph: g,
+        baseEmbedding: currentEmbedding,
+        outerFace: currentEmbedding.outerFace ? currentEmbedding.outerFace.slice().map(String) : null,
+        posById: currentPositions,
+        movableVertices: GraphUtils.collectMovableVertices(g.nodeIds, currentEmbedding.outerFace || []),
+        initSource: 'current-plane'
+      };
+    } else {
+      seed = PlaygroundUtils.prepareGraphAndLayoutData(g, {
+        failureLabel: 'ImPrEd layout',
+        currentPositions: currentCount === g.nodeIds.length ? currentPositions : null
+      });
+      if (!seed || !seed.ok) {
+        return buildLayoutError(seed || { message: 'ImPrEd initialization failed', graph: g });
+      }
+      seed = {
+        ok: true,
+        graph: seed.graph,
+        baseEmbedding: seed.baseEmbedding || null,
+        outerFace: seed.outerFace ? seed.outerFace.slice() : null,
+        posById: copyPositions(seed.posById || {}),
+        movableVertices: seed.movableVertices ? seed.movableVertices.slice() : g.nodeIds.slice(),
+        initSource: 'shared-seed'
+      };
+    }
+
+    var posById = copyPositions(seed.posById || {});
     var adj = buildAdjacencyArrays(g.nodeIds, g.edgePairs);
-    var emb = null;
-    var initialHadCrossings = false;
-    if (haveCompletePositions) {
-      initialHadCrossings = hasPositionCrossings(posById, g.edgePairs);
-    }
-    var fixedOuter = new Set();
-    if (PlanarityTest && PlanarityTest.computePlanarEmbedding) {
-      emb = PlanarityTest.computePlanarEmbedding(g.nodeIds, g.edgePairs);
-      if (
-        emb && emb.ok &&
-        (!haveCompletePositions || initialHadCrossings) &&
-        Tutte &&
-        typeof Tutte.computeBarycentricPositions === 'function' &&
-        typeof Tutte.buildUniformWeights === 'function'
-      ) {
-        var initOuter = chooseOuterFaceFromEmbedding(emb);
-        if (initOuter && initOuter.length >= 3) {
-          var initSolve = Tutte.computeBarycentricPositions(
-            g.nodeIds.slice(),
-            g.edgePairs.slice(),
-            initOuter,
-            {
-              adjacency: adj,
-              weights: Tutte.buildUniformWeights(g.edgePairs, 1),
-              maxIters: 4000,
-              tolerance: 1e-8,
-              initOptions: Tutte.defaultOuterPlacementOptions({
-                useSeedOuter: false
-              })
-            }
-          );
-          if (initSolve && initSolve.ok && initSolve.pos) {
-            posById = alignOuterFaceEdgeHorizontally(initSolve.pos, initOuter);
-            haveCompletePositions = hasCompleteFinitePositions(g.nodeIds, posById);
-          }
-        }
-      }
-      if (emb && emb.ok && haveCompletePositions) {
-        var visibleOuter = chooseCurrentOuterFaceByArea(emb, posById);
-        if (visibleOuter && visibleOuter.length >= 3) {
-          for (var fo = 0; fo < visibleOuter.length; fo += 1) {
-            fixedOuter.add(String(visibleOuter[fo]));
-          }
-        }
-      }
-    }
-    if (!haveCompletePositions) {
-      posById = buildDefaultCirclePositions(g.nodeIds);
-    }
+    var emb = seed.baseEmbedding || null;
+    var fixedOuter = new Set((seed.outerFace || []).map(String));
     var delta = resolvePositiveOption(opts.delta, estimateDelta(g.edgePairs, posById));
     var maxIters = resolveIntOption(opts.maxIters, 600, 1);
     var startMaxMove = resolvePositiveOption(opts.maxMove, 3 * delta);
@@ -516,12 +504,12 @@
 
         // Additional safeguard: binary-shrink movement until no node-edge crossing.
         var shrink = 0;
-        while (moveWouldCross(v, oldP, newP, g.edgePairs, posById) && shrink < 12) {
+        while (moveWouldCross(v, oldP, newP, g.nodeIds, g.edgePairs, posById) && shrink < 12) {
           newP.x = oldP.x + (newP.x - oldP.x) * 0.5;
           newP.y = oldP.y + (newP.y - oldP.y) * 0.5;
           shrink += 1;
         }
-        if (moveWouldCross(v, oldP, newP, g.edgePairs, posById)) {
+        if (moveWouldCross(v, oldP, newP, g.nodeIds, g.edgePairs, posById)) {
           velocityById[v].x *= rejectedVelocityDamp;
           velocityById[v].y *= rejectedVelocityDamp;
           continue;
@@ -562,6 +550,15 @@
             }
           });
           hasCrossings = hasPositionCrossings(posById, g.edgePairs);
+          if (hasCrossings) {
+            posById = prevPosById;
+            for (vi = 0; vi < g.nodeIds.length; vi += 1) {
+              vid = g.nodeIds[vi];
+              velocityById[vid].x *= fullRollbackVelocityDamp;
+              velocityById[vid].y *= fullRollbackVelocityDamp;
+            }
+            hasCrossings = false;
+          }
         } else {
           hasCrossings = false;
         }
@@ -611,7 +608,7 @@
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
       graph: g,
-      outerFace: emb ? chooseCurrentOuterFaceByArea(emb, posById) : null,
+      outerFace: seed.outerFace ? seed.outerFace.slice() : (emb && emb.outerFace ? emb.outerFace.slice() : null),
       embedding: emb,
       pos: posById,
       iterations: iter + 1,
@@ -626,7 +623,7 @@
       compute: computeImPrEdPositions,
       patchComputeOptions: function (ctx) {
         return {
-          initialPositions: {},
+          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy),
           onIteration: ctx.onProgress
         };
       },

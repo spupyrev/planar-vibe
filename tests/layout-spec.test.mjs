@@ -23,6 +23,7 @@ function loadBrowserModules() {
   const files = [
     'static/js/planarity-test.js',
     'static/js/metrics.js',
+    'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
@@ -110,7 +111,7 @@ function assertFiniteOriginalPositions(graph, posById, label) {
 }
 
 function assertPlaneDrawing(graph, posById, label) {
-  assert.equal(Metrics.hasCrossingsFromPositions(posById, graph.edgePairs), false, `${label}: drawing has crossings`);
+  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false, `${label}: drawing has crossings`);
 }
 
 function assertFaceScoreRange(graph, posById, label) {
@@ -257,7 +258,6 @@ const layoutSpecs = [
     run(graph) {
       return Reweight.computeReweightTuttePositions(graph.nodeIds, graph.edgePairs, {
         maxOuterIters: 6,
-        warmIters: 300,
         innerIters: 300,
         finalIters: 400
       });

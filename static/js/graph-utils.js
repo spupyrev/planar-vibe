@@ -1,6 +1,8 @@
 (function (global) {
   'use strict';
 
+  var PlanarGraphUtils = global.PlanarGraphUtils;
+
   function normalizeNodeIds(nodeIds) {
     return (nodeIds || []).map(String);
   }
@@ -393,6 +395,9 @@
     if (!pointOnSegment(a, b, p, eps)) {
       return false;
     }
+    if (Math.abs(triangleArea2(a, b, p)) > eps) {
+      return false;
+    }
     if (Math.abs(p.x - a.x) <= eps && Math.abs(p.y - a.y) <= eps) {
       return false;
     }
@@ -745,14 +750,150 @@
         }
       }
 
+      if (arguments.length >= 3) {
+        var selectedFromPositions = chooseOuterFaceFromPositions(nodeIds, edgePairs, arguments[2]);
+        if (selectedFromPositions && selectedFromPositions.length >= 3) {
+          return selectedFromPositions;
+        }
+      }
+
       var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
       if (embedding && embedding.ok && embedding.faces && embedding.faces.length > 0) {
         var selected = chooseOuterFaceFromEmbedding(embedding);
         if (selected && selected.length >= 3) {
           return selected;
         }
-      }
+    }
     return null;
+  }
+
+  function hasCompleteFinitePositions(nodeIds, posById) {
+    if (!Array.isArray(nodeIds) || !posById) {
+      return false;
+    }
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var p = posById[String(nodeIds[i])];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function buildRotationFromPositions(nodeIds, adjacency, posById) {
+    var rotation = {};
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var u = String(nodeIds[i]);
+      var pu = posById[u];
+      if (!pu || !Number.isFinite(pu.x) || !Number.isFinite(pu.y)) {
+        return null;
+      }
+      var neighbors = (adjacency[u] || []).slice().map(String);
+      neighbors.sort(function (a, b) {
+        var pa = posById[a];
+        var pb = posById[b];
+        var angleA = pa ? Math.atan2(pa.y - pu.y, pa.x - pu.x) : 0;
+        var angleB = pb ? Math.atan2(pb.y - pu.y, pb.x - pu.x) : 0;
+        if (Math.abs(angleA - angleB) > 1e-12) {
+          return angleA - angleB;
+        }
+        var distA = pa ? ((pa.x - pu.x) * (pa.x - pu.x) + (pa.y - pu.y) * (pa.y - pu.y)) : 0;
+        var distB = pb ? ((pb.x - pu.x) * (pb.x - pu.x) + (pb.y - pu.y) * (pb.y - pu.y)) : 0;
+        if (Math.abs(distA - distB) > 1e-12) {
+          return distA - distB;
+        }
+        return a < b ? -1 : (a > b ? 1 : 0);
+      });
+      rotation[u] = neighbors;
+    }
+    return rotation;
+  }
+
+  function extractFacesFromRotationMap(rotation) {
+    var seenHalfEdges = new Set();
+    var faces = [];
+
+    function halfEdgeKey(u, v) {
+      return String(u) + '|' + String(v);
+    }
+
+    var vertices = Object.keys(rotation || {});
+    for (var i = 0; i < vertices.length; i += 1) {
+      var u = String(vertices[i]);
+      var row = rotation[u] || [];
+      for (var j = 0; j < row.length; j += 1) {
+        var v = String(row[j]);
+        var startKey = halfEdgeKey(u, v);
+        if (seenHalfEdges.has(startKey)) {
+          continue;
+        }
+
+        var startU = u;
+        var startV = v;
+        var curU = startU;
+        var curV = startV;
+        var face = [];
+
+        while (true) {
+          var curKey = halfEdgeKey(curU, curV);
+          if (seenHalfEdges.has(curKey)) {
+            break;
+          }
+          seenHalfEdges.add(curKey);
+          face.push(curU);
+
+          var adj = rotation[curV];
+          if (!adj || adj.length === 0) {
+            face = [];
+            break;
+          }
+
+          var idx = adj.indexOf(curU);
+          if (idx < 0) {
+            face = [];
+            break;
+          }
+
+          var prevIdx = (idx - 1 + adj.length) % adj.length;
+          var nextV = String(adj[prevIdx]);
+          curU = curV;
+          curV = nextV;
+
+          if (curU === startU && curV === startV) {
+            break;
+          }
+        }
+
+        if (face.length >= 3) {
+          faces.push(face);
+        }
+      }
+    }
+
+    return faces;
+  }
+
+  function extractEmbeddingFromPositions(nodeIds, edgePairs, posById) {
+    if (!PlanarGraphUtils || !PlanarGraphUtils.PlanarEmbedding) {
+      return null;
+    }
+    if (!Array.isArray(nodeIds) || !Array.isArray(edgePairs) || !posById) {
+      return null;
+    }
+    if (!hasCompleteFinitePositions(nodeIds, posById)) {
+      return null;
+    }
+    if (hasPositionCrossings(posById, edgePairs)) {
+      return null;
+    }
+
+    var embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(nodeIds, edgePairs, posById);
+    return embedding ? embedding.toEmbeddingObject() : null;
+  }
+
+  function chooseOuterFaceFromPositions(nodeIds, edgePairs, posById) {
+    var embedding = extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
+    return embedding && embedding.ok && embedding.outerFace ? embedding.outerFace.slice().map(String) : null;
   }
 
   function chooseOuterFaceFromEmbedding(embedding) {
@@ -1098,7 +1239,63 @@
   }
 
   function hasPositionCrossings(posById, edgePairs) {
-    return !!global.PlanarVibeMetrics.hasCrossingsFromPositions(posById, edgePairs);
+    var EPS = 1e-9;
+    var i;
+    var j;
+
+    for (i = 0; i < edgePairs.length; i += 1) {
+      var s1 = String(edgePairs[i][0]);
+      var t1 = String(edgePairs[i][1]);
+      var p1 = posById[s1];
+      var q1 = posById[t1];
+      if (!p1 || !q1) {
+        continue;
+      }
+
+      for (j = i + 1; j < edgePairs.length; j += 1) {
+        var s2 = String(edgePairs[j][0]);
+        var t2 = String(edgePairs[j][1]);
+        if (s1 === s2 || s1 === t2 || t1 === s2 || t1 === t2) {
+          continue;
+        }
+        var p2 = posById[s2];
+        var q2 = posById[t2];
+        if (!p2 || !q2) {
+          continue;
+        }
+
+        if (segmentsIntersectOrTouch(p1, q1, p2, q2, EPS)) {
+          return true;
+        }
+      }
+    }
+
+    var nodeIds = Object.keys(posById || {});
+    for (i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      var p = posById[id];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      for (j = 0; j < edgePairs.length; j += 1) {
+        var u = String(edgePairs[j][0]);
+        var v = String(edgePairs[j][1]);
+        if (id === u || id === v) {
+          continue;
+        }
+        var a = posById[u];
+        var b = posById[v];
+        if (!a || !b) {
+          continue;
+        }
+        var area2 = triangleArea2(a, b, p);
+        if (Math.abs(area2) <= EPS && pointOnSegmentInterior(a, b, p, EPS)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   function createMovementConvergenceTracker(options) {
@@ -1130,154 +1327,44 @@
   }
 
   function augmentByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
-    var nodes = nodeIds.map(String);
+    if (!PlanarGraphUtils || !PlanarGraphUtils.PlanarEmbedding) {
+      return {
+        nodeIds: normalizeNodeIds(nodeIds),
+        edgePairs: cloneEdgePairs(edgePairs),
+        dummyCount: 0,
+        dummyFaceVerticesById: {},
+        reason: 'PlanarEmbedding support is unavailable'
+      };
+    }
+    var nodes = normalizeNodeIds(nodeIds);
     var edges = cloneEdgePairs(edgePairs);
-    var edgeSet = new Set();
-    var idSet = new Set(nodes);
-    var dummyCount = 0;
+    var fixedOuter = Array.isArray(outerFace) && outerFace.length >= 3 ? outerFace.slice().map(String) : null;
+    var pe = PlanarGraphUtils.PlanarEmbedding.fromEmbeddingObject(nodes, edges, embedding, fixedOuter);
     var dummyFaceVerticesById = {};
-    var outerIndex = findOuterFaceIndex(embedding.faces, outerFace);
-    var outerVertexSet = new Set((outerFace || []).map(String));
-    var opts = options || {};
-    var forceSingleDummyPerFace = !!opts.forceSingleDummyPerFace;
+    var dummyCount = 0;
+    var faces = pe.faces.slice();
 
-    for (var i = 0; i < edges.length; i += 1) {
-      edgeSet.add(edgeKey(edges[i][0], edges[i][1]));
-    }
-
-    function nextDummyId() {
-      var id;
-      do {
-        id = '@dummy' + dummyCount;
-        dummyCount += 1;
-      } while (idSet.has(id));
-      idSet.add(id);
-      return id;
-    }
-
-    function addEdge(u, v) {
-      var key = edgeKey(u, v);
-      if (edgeSet.has(key)) {
-        return;
-      }
-      edgeSet.add(key);
-      edges.push([u, v]);
-    }
-
-    function buildTriangleAvoidingBlocks(face) {
-      var boundary = face.map(String);
-      var n = boundary.length;
-      if (n <= 3) {
-        return [];
-      }
-
-      var blocks = [];
-      var current = [boundary[0]];
-      for (var step = 1; step < n; step += 1) {
-        var candidate = boundary[step];
-        var createsTriangle = false;
-        for (var j = 0; j < current.length - 1; j += 1) {
-          // The final boundary edge back to the starting vertex is part of the
-          // intended one-dummy fan, not a premature separating triangle.
-          if (j === 0 && current[0] === boundary[0] && candidate === boundary[n - 1]) {
-            continue;
-          }
-          // Boundary shortcuts between two chosen outer-face vertices are not
-          // treated as premature triangles for block splitting.
-          if (outerVertexSet.has(current[j]) && outerVertexSet.has(candidate)) {
-            continue;
-          }
-          if (edgeSet.has(edgeKey(current[j], candidate))) {
-            createsTriangle = true;
-            break;
-          }
-        }
-        if (!createsTriangle) {
-          current.push(candidate);
-          continue;
-        }
-        if (current.length < 2) {
-          return null;
-        }
-        blocks.push(current.slice());
-        current = [current[current.length - 1], candidate];
-      }
-
-      if (current.length < 2) {
-        return null;
-      }
-      blocks.push(current.slice());
-      return blocks;
-    }
-
-    function augmentFaceWithPath(face) {
-      var blocks = forceSingleDummyPerFace
-        ? [face.slice().map(String)]
-        : buildTriangleAvoidingBlocks(face);
-      if (!Array.isArray(blocks) || blocks.length === 0) {
-        return false;
-      }
-
-      var dummies = [];
-      for (var bi = 0; bi < blocks.length; bi += 1) {
-        var dummy = nextDummyId();
-        dummies.push(dummy);
-        nodes.push(dummy);
-        dummyFaceVerticesById[dummy] = face.slice().map(String);
-        var seenBoundary = new Set();
-        for (var bj = 0; bj < blocks[bi].length; bj += 1) {
-          var boundaryId = String(blocks[bi][bj]);
-          if (seenBoundary.has(boundaryId)) {
-            continue;
-          }
-          seenBoundary.add(boundaryId);
-          addEdge(dummy, boundaryId);
-        }
-      }
-
-      for (bi = 0; bi < dummies.length - 1; bi += 1) {
-        addEdge(dummies[bi], dummies[bi + 1]);
-      }
-
-      if (dummies.length === 1) {
-        return true;
-      }
-
-      // The greedy blocks triangulate the boundary chains but leave one cap
-      // polygon [apex, d0, d1, ..., d{k-1}]. Triangulate it explicitly.
-      var apex = String(blocks[0][0]);
-      for (bi = 1; bi < dummies.length; bi += 1) {
-        addEdge(apex, dummies[bi]);
-      }
-
-      return true;
-    }
-
-    for (i = 0; i < embedding.faces.length; i += 1) {
-      var face = embedding.faces[i];
+    for (var i = 0; i < faces.length; i += 1) {
+      var face = faces[i];
       if (!face || face.length <= 3) {
         continue;
       }
-      if (i === outerIndex) {
+      if (fixedOuter && sameCyclicEitherDirection(face, fixedOuter)) {
         continue;
       }
-
-      if (!augmentFaceWithPath(face)) {
-        return {
-          nodeIds: nodes,
-          edgePairs: edges,
-          dummyCount: 0,
-          dummyFaceVerticesById: {},
-          reason: 'Path augmentation failed for face ' + face.join(',')
-        };
-      }
+      var dummyId = '@dummy' + dummyCount;
+      dummyCount += 1;
+      dummyFaceVerticesById[dummyId] = face.slice().map(String);
+      pe.addFaceDummy(face, dummyId);
     }
 
+    var graph = pe.toGraph();
     return {
-      nodeIds: nodes,
-      edgePairs: edges,
-      dummyCount: dummyCount,
-      dummyFaceVerticesById: dummyFaceVerticesById
+      nodeIds: graph.nodeIds,
+      edgePairs: graph.edgePairs,
+      dummyCount: Object.keys(dummyFaceVerticesById).length,
+      dummyFaceVerticesById: dummyFaceVerticesById,
+      embedding: pe.toEmbeddingObject()
     };
   }
 
@@ -1339,161 +1426,77 @@
   }
 
   function triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
-    var nodes = nodeIds.map(String);
-    var edges = normalizeSimpleEdgePairs(edgePairs);
-    var emb = embedding || global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
+    if (!PlanarGraphUtils || !PlanarGraphUtils.PlanarEmbedding) {
+      return {
+        ok: false,
+        reason: 'PlanarEmbedding support is unavailable'
+      };
+    }
+    var emb = embedding;
     if (!emb || !emb.ok) {
       return {
         ok: false,
-        reason: 'Graph is not planar'
+        reason: 'triangulateByFaceStellation requires a planar embedding'
       };
     }
-    var selectedOuterFace = Array.isArray(outerFace) ? outerFace.slice().map(String) : chooseOuterFaceFromEmbedding(emb);
+    var selectedOuterFace = Array.isArray(outerFace) ? outerFace.slice().map(String) : null;
     if (!selectedOuterFace || selectedOuterFace.length < 3) {
       return {
         ok: false,
-        reason: 'Could not determine outer face'
+        reason: 'triangulateByFaceStellation requires an outer face'
       };
     }
+    var nodes = normalizeNodeIds(nodeIds);
+    var edges = normalizeSimpleEdgePairs(edgePairs);
     var opts = options || {};
-
+    var pe = PlanarGraphUtils.PlanarEmbedding.fromEmbeddingObject(nodes, edges, emb, selectedOuterFace);
     var dummyFaceVerticesById = {};
-    var round = 0;
-    var maxRounds = 1000;
+    var dummyCount = 0;
 
-    while (!isTriangulatedEmbeddingExceptOuter(emb, selectedOuterFace)) {
-      if (round >= maxRounds) {
-        return {
-          ok: false,
-          reason: 'Augmentation failed to triangulate all faces'
-        };
+    while (!isTriangulatedEmbeddingExceptOuter(pe.toEmbeddingObject(), selectedOuterFace)) {
+      var nextFace = null;
+      for (var i = 0; i < pe.faces.length; i += 1) {
+        var face = pe.faces[i];
+        if (!face || face.length <= 3) {
+          continue;
+        }
+        if (sameCyclicDirection(face, selectedOuterFace)) {
+          continue;
+        }
+        nextFace = face.slice().map(String);
+        break;
       }
-
-      var step = augmentByFaceStellation(nodes, edges, emb, selectedOuterFace, opts);
-      if (!step || !Array.isArray(step.nodeIds) || !Array.isArray(step.edgePairs)) {
-        return {
-          ok: false,
-          reason: 'Augmentation failed: invalid augmentation result'
-        };
-      }
-      if (!(step.dummyCount > 0)) {
+      if (!nextFace) {
         return {
           ok: false,
           reason: 'Augmentation failed to triangulate all non-outer faces'
         };
       }
-
-      nodes = step.nodeIds.map(String);
-      edges = cloneEdgePairs(step.edgePairs);
-      var stepDummyFaceVerticesById = step.dummyFaceVerticesById || {};
-      var dummyIds = Object.keys(stepDummyFaceVerticesById);
-      for (var i = 0; i < dummyIds.length; i += 1) {
-        var dummyId = String(dummyIds[i]);
-        dummyFaceVerticesById[dummyId] = (stepDummyFaceVerticesById[dummyId] || []).map(String);
-      }
-
-      emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
-      if (!emb || !emb.ok) {
-        return {
-          ok: false,
-          reason: 'Augmentation failed: resulting graph is not planar'
-        };
-      }
-      emb.outerFace = selectedOuterFace.slice();
-      round += 1;
+      var dummyId = '@dummy' + dummyCount;
+      dummyCount += 1;
+      dummyFaceVerticesById[dummyId] = nextFace.slice().map(String);
+      pe.addFaceDummy(nextFace, dummyId);
     }
 
-    var simplified = removeDegreeThreeDummyVertices(nodes, edges, dummyFaceVerticesById, selectedOuterFace);
-    nodes = simplified.nodeIds.map(String);
-    edges = cloneEdgePairs(simplified.edgePairs);
-    dummyFaceVerticesById = simplified.dummyFaceVerticesById || {};
-
-    emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
-    if (!emb || !emb.ok) {
-      return {
-        ok: false,
-        reason: 'Augmentation simplification failed: resulting graph is not planar'
-      };
-    }
-    if (!isTriangulatedEmbeddingExceptOuter(emb, selectedOuterFace)) {
-      return {
-        ok: false,
-        reason: 'Augmentation simplification failed to preserve triangulation'
-      };
-    }
-    emb.outerFace = selectedOuterFace.slice();
-
-    if (!opts.triangulateOuterFace) {
-      return {
-        ok: true,
-        nodeIds: nodes,
-        edgePairs: edges,
-        dummyCount: Object.keys(dummyFaceVerticesById).length,
-        dummyFaceVerticesById: dummyFaceVerticesById,
-        embedding: emb
-      };
-    }
-    if (isTriangulatedEmbedding(emb)) {
-      return {
-        ok: true,
-        nodeIds: nodes,
-        edgePairs: edges,
-        dummyCount: Object.keys(dummyFaceVerticesById).length,
-        dummyFaceVerticesById: dummyFaceVerticesById,
-        embedding: emb
-      };
-    }
-    if (selectedOuterFace.length === 3) {
-      return {
-        ok: false,
-        reason: 'Expected a fully triangulated embedding but outer face is still not triangular'
-      };
+    var outerDummyId;
+    if (opts.triangulateOuterFace && selectedOuterFace.length > 3) {
+      outerDummyId = pe._nextDummyId('@outerDummy');
+      dummyFaceVerticesById[outerDummyId] = selectedOuterFace.slice().map(String);
+      pe.addFaceDummy(selectedOuterFace, outerDummyId, {
+        newOuterFace: [outerDummyId, selectedOuterFace[0], selectedOuterFace[1]]
+      });
     }
 
-    var idSet = new Set(nodes);
-    var outerDummyId = '@outerDummy';
-    var suffix = 0;
-    while (idSet.has(outerDummyId)) {
-      suffix += 1;
-      outerDummyId = '@outerDummy' + suffix;
-    }
-    nodes = nodes.slice();
-    edges = cloneEdgePairs(edges);
-    nodes.push(outerDummyId);
-    for (i = 0; i < selectedOuterFace.length; i += 1) {
-      edges.push([outerDummyId, String(selectedOuterFace[i])]);
-    }
-
-    emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodes, edges);
-    if (!emb || !emb.ok) {
-      return {
-        ok: false,
-        reason: 'Full triangulation failed: resulting graph is not planar'
-      };
-    }
-    if (!isTriangulatedEmbedding(emb)) {
-      return {
-        ok: false,
-        reason: 'Full triangulation failed to triangulate all faces'
-      };
-    }
-    emb.outerFace = [outerDummyId, selectedOuterFace[0], selectedOuterFace[1]];
-    var nextDummyFaceVerticesById = {};
-    var dummyIds = Object.keys(dummyFaceVerticesById);
-    for (i = 0; i < dummyIds.length; i += 1) {
-      nextDummyFaceVerticesById[String(dummyIds[i])] = (dummyFaceVerticesById[dummyIds[i]] || []).map(String);
-    }
-    dummyFaceVerticesById = nextDummyFaceVerticesById;
-    dummyFaceVerticesById[outerDummyId] = selectedOuterFace.slice();
-
+    var finalEmbedding = pe.toEmbeddingObject();
+    var finalGraph = pe.toGraph();
     return {
       ok: true,
-      nodeIds: nodes,
-      edgePairs: edges,
+      nodeIds: finalGraph.nodeIds,
+      edgePairs: finalGraph.edgePairs,
       dummyCount: Object.keys(dummyFaceVerticesById).length,
-      outerDummyId: opts.triangulateOuterFace ? outerDummyId : undefined,
+      outerDummyId: outerDummyId,
       dummyFaceVerticesById: dummyFaceVerticesById,
-      embedding: emb
+      embedding: finalEmbedding
     };
   }
 
@@ -1566,6 +1569,8 @@
     augmentByFaceStellation: augmentByFaceStellation,
     triangulateByFaceStellation: triangulateByFaceStellation,
     chooseOuterFace: chooseOuterFace,
+    extractEmbeddingFromPositions: extractEmbeddingFromPositions,
+    chooseOuterFaceFromPositions: chooseOuterFaceFromPositions,
     chooseOuterFaceFromEmbedding: chooseOuterFaceFromEmbedding
   };
 })(window);

@@ -147,7 +147,7 @@
 
     var currentParsed = null;
     var GRAPH_STYLE_COOKIE_DAYS = 365;
-    var DEFAULT_VERTEX_SIZE = 15;
+    var DEFAULT_VERTEX_SIZE = 10;
     var DEFAULT_EDGE_WIDTH = 1;
     var DEFAULT_WORLD_WIDTH = 900;
     var DEFAULT_WORLD_HEIGHT = 620;
@@ -250,7 +250,7 @@
         hideEdgesOnViewport: true,
         hideLabelsOnViewport: true,
         boxSelectionEnabled: false,
-        autoungrabify: true,
+        autoungrabify: false,
         autounselectify: true,
         style: [
           {
@@ -458,6 +458,55 @@
         };
       }
       return byId;
+    }
+
+    function copyPositionMap(posById) {
+      var out = {};
+      var ids = Object.keys(posById || {});
+      for (var i = 0; i < ids.length; i += 1) {
+        var id = ids[i];
+        var p = posById[id];
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          continue;
+        }
+        out[id] = { x: p.x, y: p.y };
+      }
+      return out;
+    }
+
+    function currentPositionMap() {
+      if (cy) {
+        return capturePositionsFromCy();
+      }
+      if (savedPositions && Object.keys(savedPositions).length > 0) {
+        return copyPositionMap(savedPositions);
+      }
+      if (currentParsed && currentParsed.hasExplicitPositions && currentParsed.positionsById) {
+        return copyPositionMap(currentParsed.positionsById);
+      }
+      return assignDeterministicPositionsForParsed(currentParsed);
+    }
+
+    function applyPositionMapToCurrentDrawing(posById) {
+      if (cy) {
+        cy.batch(function () {
+          cy.nodes().forEach(function (node) {
+            if (isDebugOverlayNode(node)) {
+              return;
+            }
+            var id = String(node.id());
+            var p = posById[id];
+            if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+              node.position({ x: p.x, y: p.y });
+            }
+          });
+        });
+        savedPositions = capturePositionsFromCy();
+        saveViewportState(captureViewportFromCy());
+        return;
+      }
+      savedPositions = copyPositionMap(posById);
+      renderStaticSnapshot();
     }
 
     function clearDebugOverlayFromCy() {
@@ -857,11 +906,17 @@
       global.$('#stats-spacing-uniformity').text('--');
     }
 
+    function clearAxisAlignment() {
+      global.$('#stats-axis-alignment').text('--');
+    }
+
     function clearDrawingStats(text) {
       clearFaceAreaPlot(text);
       clearEdgeLengthPlot(text);
       clearAngleResolutionPlot(text);
       clearSpacingUniformity();
+      clearAxisAlignment();
+      setAlignEnabled(false);
     }
 
     function renderFaceAreaPlot(values, idealValues, showLine) {
@@ -1077,6 +1132,7 @@
       if (!currentParsed || !currentParsed.elements) {
         clearFaceAreaPlot('No graph');
         clearAngleResolutionPlot('No graph');
+        setAlignEnabled(false);
         return;
       }
       var edgePairs = edgePairsFromParsed(currentParsed);
@@ -1097,6 +1153,7 @@
       if (!nodeIds.length) {
         clearFaceAreaPlot('No graph');
         clearAngleResolutionPlot('No graph');
+        setAlignEnabled(false);
         return;
       }
 
@@ -1104,10 +1161,12 @@
         clearFaceAreaPlot('Metrics unavailable');
         clearAngleResolutionPlot('Metrics unavailable');
         setPlaneStat(null);
+        setAlignEnabled(false);
         return;
       }
       var hasCrossings = global.GraphUtils.hasPositionCrossings(posById, edgePairs);
       setPlaneStat(!hasCrossings);
+      setAlignEnabled(!hasCrossings);
       updateAngleResolutionScore(nodeIds, edgePairs, posById, hasCrossings);
       if (hasCrossings) {
         clearFaceAreaPlot('Drawing is not plane');
@@ -1117,6 +1176,7 @@
 
       if (!global.PlanarVibeMetrics) {
         clearFaceAreaPlot('Metrics unavailable');
+        setAlignEnabled(false);
         return;
       }
       var result = null;
@@ -1127,6 +1187,7 @@
       }
       if (!result) {
         clearFaceAreaPlot('Metrics unavailable');
+        setAlignEnabled(false);
         return;
       }
       if (!result.ok) {
@@ -1143,6 +1204,8 @@
       if (!currentParsed || !currentParsed.elements) {
         clearEdgeLengthPlot('No graph');
         clearSpacingUniformity();
+        clearAxisAlignment();
+        setAlignEnabled(false);
         return;
       }
       var edgePairs = edgePairsFromParsed(currentParsed);
@@ -1163,17 +1226,23 @@
       if (!nodeIds.length) {
         clearEdgeLengthPlot('No graph');
         clearSpacingUniformity();
+        clearAxisAlignment();
+        setAlignEnabled(false);
         return;
       }
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformEdgeLengthScore) {
         clearEdgeLengthPlot('Metrics unavailable');
         clearSpacingUniformity();
+        clearAxisAlignment();
+        setAlignEnabled(false);
         return;
       }
       var result = global.PlanarVibeMetrics.computeUniformEdgeLengthScore(edgePairs, posById);
       if (!result.ok) {
         clearEdgeLengthPlot(result.reason || 'No data');
         clearSpacingUniformity();
+        clearAxisAlignment();
+        setAlignEnabled(false);
         return;
       }
       renderEdgeLengthPlot(result.values, result.ideal);
@@ -1182,6 +1251,7 @@
       );
       updateEdgeLengthRatio(edgePairs, posById);
       updateSpacingUniformity(nodeIds, posById);
+      updateAxisAlignment(nodeIds, posById);
     }
 
     function updateEdgeLengthRatio(edgePairs, posById) {
@@ -1208,6 +1278,72 @@
         return;
       }
       global.$('#stats-spacing-uniformity').text(result.score.toFixed(3));
+    }
+
+    function updateAxisAlignment(nodeIds, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeAxisAlignmentScore) {
+        clearAxisAlignment();
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score)) {
+        clearAxisAlignment();
+        return;
+      }
+      global.$('#stats-axis-alignment').text(result.score.toFixed(3));
+    }
+
+    function runAxisAlignment() {
+      if (layoutBusyState) {
+        setStatus('Wait for the current layout to finish first', true);
+        return;
+      }
+      if (!currentParsed || !currentParsed.elements) {
+        setStatus('Load a graph first', true);
+        return;
+      }
+      if (!global.PlanarVibeAlignment || typeof global.PlanarVibeAlignment.alignToAxisGreedy !== 'function') {
+        setStatus('Axis-alignment module is missing', true);
+        return;
+      }
+      if (!global.GraphUtils || typeof global.GraphUtils.hasPositionCrossings !== 'function') {
+        setStatus('Planar graph utilities are missing', true);
+        return;
+      }
+
+      var nodeIds = getNodeIdsFromParsed(currentParsed);
+      var edgePairs = edgePairsFromParsed(currentParsed);
+      var posById = currentPositionMap();
+      if (!nodeIds.length) {
+        setStatus('No graph', true);
+        return;
+      }
+      if (global.GraphUtils.hasPositionCrossings(posById, edgePairs)) {
+        setAlignEnabled(false);
+        setStatus('Align requires a plane drawing', true);
+        return;
+      }
+
+      var result = global.PlanarVibeAlignment.alignToAxisGreedy(nodeIds, edgePairs, posById);
+      if (!result || !result.ok) {
+        setStatus((result && result.reason) ? result.reason : 'Align failed', true);
+        return;
+      }
+      if (!result.changed) {
+        setStatus('Align made no changes' + graphSizeSuffix() + smallGraphCoordinatesSuffix(), false);
+        setAlignEnabled(true);
+        return;
+      }
+
+      applyPositionMapToCurrentDrawing(result.pos);
+      updateFaceAreaPlot();
+      updateEdgeLengthPlot();
+
+      var message = 'Aligned axes (x merges ' + result.mergedCountX + ', y merges ' + result.mergedCountY + ')';
+      if (Number.isFinite(result.scoreBefore) && Number.isFinite(result.scoreAfter)) {
+        message += ' | score ' + result.scoreBefore.toFixed(3) + ' -> ' + result.scoreAfter.toFixed(3);
+      }
+      setStatus(message + graphSizeSuffix() + smallGraphCoordinatesSuffix(), false);
     }
 
     function buildVisibleSnapshotData() {
@@ -1362,7 +1498,9 @@
     }
 
     function setModeUi() {
-      global.$('#interactive-toggle').prop('checked', isInteractive);
+      global.$('#interactive-toggle-btn')
+        .attr('aria-pressed', isInteractive ? 'true' : 'false')
+        .toggleClass('is-inactive', !isInteractive);
       global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
       global.$('#cy').toggle(isInteractive);
       global.$('#cy-static-wrap').toggle(!isInteractive);
@@ -1597,6 +1735,10 @@
       setLayoutEnabled('fd-uniform', isEnabled);
     }
 
+    function setAlignEnabled(isEnabled) {
+      global.$('#align-axis-btn').prop('disabled', !isEnabled);
+    }
+
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
       setAirEnabled(false);
@@ -1610,6 +1752,7 @@
       setSchnyderEnabled(false);
       setReweightTutteEnabled(false);
       setFDUniformEnabled(false);
+      setAlignEnabled(false);
     }
 
     function updateStatistics(parsed) {
@@ -1660,6 +1803,7 @@
       setSchnyderEnabled(isPlanar);
       setReweightTutteEnabled(isPlanar);
       setFDUniformEnabled(isPlanar);
+      setAlignEnabled(false);
     }
 
     function drawGraph() {
@@ -2561,8 +2705,12 @@
         setDebugAugmentationVisible(global.$(this).is(':checked'));
       });
 
-      global.$('#interactive-toggle').on('change', function () {
-        setInteractiveMode(global.$(this).is(':checked'));
+      global.$('#interactive-toggle-btn').on('click', function () {
+        setInteractiveMode(!isInteractive);
+      });
+
+      global.$('#align-axis-btn').on('click', function () {
+        runAxisAlignment();
       });
 
       global.$('.drawing-metric-link').on('click', function (event) {

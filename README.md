@@ -29,6 +29,7 @@ Live app: https://spupyrev.github.io/planar-vibe/
   - `Edge Length Score`
   - `Edge-Length Ratio`
   - `Spacing-Uniformity`
+  - `Axis Alignment`
   - clickable metric rows to show/hide each distribution plot
 - Interactive/static mode switch (static mode is lower CPU)
 - Vertex size and edge width sliders (persisted)

@@ -5,12 +5,10 @@
   var Metrics = global.PlanarVibeMetrics;
   var PlaygroundUtils = global.PlaygroundUtils;
   var Tutte = global.PlanarVibeTutteAlgorithm;
-  var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
-  var chooseOuterFaceFromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding;
   var collectMovableVertices = GraphUtils.collectMovableVertices;
   var computeDrawingDiameter = GraphUtils.computeDrawingDiameter;
   var computeDistributionQuality = Metrics && Metrics.computeDistributionQuality;
@@ -26,28 +24,7 @@
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
 
-  function buildOuterFacePositions(nodeIds, outerFace, fixedOuterPos) {
-    var pos = Tutte.placeOuterFaceVertices(
-      nodeIds,
-      outerFace,
-      Tutte.defaultOuterPlacementOptions({
-        useSeedOuter: false
-      })
-    );
-    if (!fixedOuterPos) {
-      return pos;
-    }
-    for (var i = 0; i < outerFace.length; i += 1) {
-      var fv = String(outerFace[i]);
-      if (fixedOuterPos[fv] && Number.isFinite(fixedOuterPos[fv].x) && Number.isFinite(fixedOuterPos[fv].y)) {
-        pos[fv] = { x: fixedOuterPos[fv].x, y: fixedOuterPos[fv].y };
-      }
-    }
-    return alignOuterFaceEdgeHorizontally(pos, outerFace);
-  }
-
   function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, fixedOuterPos) {
-    var outerPos = fixedOuterPos ? alignOuterFaceEdgeHorizontally(fixedOuterPos, outerFace) : null;
     return Tutte.computeBarycentricPositions(nodeIds, [], outerFace, {
       adjacency: adj,
       weights: weights,
@@ -55,44 +32,9 @@
       tolerance: 1e-8,
       initOptions: Tutte.defaultOuterPlacementOptions({
         useSeedOuter: false,
-        fixedOuterPos: outerPos
+        fixedOuterPos: fixedOuterPos || null
       })
     });
-  }
-
-  function fillMissingPositionsByNeighborAverage(nodeIds, adj, posById, maxPasses) {
-    var out = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      if (posById[id] && Number.isFinite(posById[id].x) && Number.isFinite(posById[id].y)) {
-        out[id] = { x: posById[id].x, y: posById[id].y };
-      }
-    }
-    var passes = Math.max(1, Number(maxPasses) || 1);
-    for (var p = 0; p < passes; p += 1) {
-      var changed = false;
-      for (i = 0; i < nodeIds.length; i += 1) {
-        id = String(nodeIds[i]);
-        if (out[id]) continue;
-        var ngh = adj[id] || [];
-        var sx = 0;
-        var sy = 0;
-        var cnt = 0;
-        for (var j = 0; j < ngh.length; j += 1) {
-          var u = String(ngh[j]);
-          if (!out[u]) continue;
-          sx += out[u].x;
-          sy += out[u].y;
-          cnt += 1;
-        }
-        if (cnt > 0) {
-          out[id] = { x: sx / cnt, y: sy / cnt };
-          changed = true;
-        }
-      }
-      if (!changed) break;
-    }
-    return out;
   }
 
   function buildEdgeToFaceMap(faces) {
@@ -276,8 +218,6 @@
       pressureStep: resolveFloatOption(opts.pressureStep, 0.16, 0),
       pressureClamp: resolveFloatOption(opts.pressureClamp, 1.20, 0.05),
       pressureBeta: resolveFloatOption(opts.pressureBeta, 0.18, 0),
-      warmIters: resolveIntOption(opts.warmIters, 2000, 1),
-      warmFillPasses: resolveIntOption(opts.warmFillPasses, 5, 1),
       innerIters: resolveIntOption(opts.innerIters, 3000, 1),
       finalIters: resolveIntOption(opts.finalIters, 3000, 1),
       pressureDeltaClamp: resolveFloatOption(opts.pressureDeltaClamp, 0.75, 0.05),
@@ -298,7 +238,8 @@
     graph = normalizeGraphInput(graph && graph.nodeIds, graph && graph.edgePairs);
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'ReweightTutte',
-      minNodeCount: 3
+      minNodeCount: 3,
+      currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || {
@@ -311,17 +252,12 @@
     var outer = context.outerFace;
     var augmented = context.augmented;
     var embAug = augmented.embedding;
-    var outerFaceForEmbedding = outer;
 
     var faces = embAug.faces || [];
-    var outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
-    if (outerFaceIdx < 0) {
-      outerFaceForEmbedding = chooseOuterFaceFromEmbedding(embAug);
-      outerFaceIdx = findOuterFaceIndex(faces, outerFaceForEmbedding);
-    }
-    if (outerFaceIdx < 0 || !outerFaceForEmbedding || outerFaceForEmbedding.length < 3) {
+    var outerFaceIdx = findOuterFaceIndex(faces, outer);
+    if (outerFaceIdx < 0 || !outer || outer.length < 3) {
       return buildLayoutError({
-        message: 'Could not determine augmented outer face',
+        message: 'Shared initialization produced an invalid augmented outer face',
         graph: g,
         augmented: augmented
       });
@@ -351,13 +287,12 @@
     for (i = 0; i < boundedFaceIdx.length; i += 1) boundedSet[boundedFaceIdx[i]] = true;
     var desired = 1 / boundedFaceIdx.length;
     var fixedOuterPos = {};
-    var initPos = buildOuterFacePositions(augmented.nodeIds, outer, null);
+    var initPos = context.posById;
     for (var oi = 0; oi < outer.length; oi += 1) {
       var ov = String(outer[oi]);
       fixedOuterPos[ov] = { x: initPos[ov].x, y: initPos[ov].y };
     }
-    var warm = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, opts.warmIters, fixedOuterPos);
-    var currentPos = fillMissingPositionsByNeighborAverage(augmented.nodeIds, adj, warm.pos, opts.warmFillPasses);
+    var currentPos = context.posById;
     var movableVertices = collectMovableVertices(augmented.nodeIds, outer);
     var movementScale = computeDrawingDiameter(augmented.nodeIds, currentPos);
     var movementTracker = createMovementConvergenceTracker({
@@ -383,7 +318,7 @@
       desired: desired,
       fixedOuterPos: fixedOuterPos,
       currentPos: currentPos,
-      warmIters: warm.iters,
+      initIters: context.initResult && Number.isFinite(context.initResult.iters) ? context.initResult.iters : 0,
       movableVertices: movableVertices,
       movementTracker: movementTracker
     };
@@ -406,7 +341,7 @@
     var currentPos = prepared.currentPos;
     var movableVertices = prepared.movableVertices;
     var movementTracker = prepared.movementTracker;
-    var totalInnerIters = prepared.warmIters || 0;
+    var totalInnerIters = prepared.initIters || 0;
     var stopReason = 'max-iters';
     var performedOuterIters = 0;
     var finalIterationStats = null;
@@ -511,7 +446,10 @@
     return PlaygroundUtils.runIncrementalLayout(cy, options, {
       compute: computeReweightTuttePositions,
       patchComputeOptions: function (ctx) {
-        return { onIteration: ctx.onProgress };
+        return {
+          onIteration: ctx.onProgress,
+          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
+        };
       },
       getPositions: function (result) {
         return result.pos;
