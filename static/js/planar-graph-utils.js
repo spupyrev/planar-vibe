@@ -522,6 +522,79 @@
     };
   }
 
+  function triangulateByOuterCycle(nodeIds, edgePairs, embedding, outerFace, options) {
+    var emb = embedding;
+    if (!emb || !emb.ok) {
+      return {
+        ok: false,
+        reason: 'triangulateByOuterCycle requires a planar embedding'
+      };
+    }
+    var selectedOuterFace = Array.isArray(outerFace) ? outerFace.slice().map(String) : null;
+    if (!selectedOuterFace || selectedOuterFace.length < 3) {
+      return {
+        ok: false,
+        reason: 'triangulateByOuterCycle requires an outer face'
+      };
+    }
+
+    var nodes = normalizeNodeIds(nodeIds);
+    var edges = normalizeSimpleEdgePairs(edgePairs);
+    var pe = PlanarEmbedding.fromEmbeddingObject(nodes, edges, emb, selectedOuterFace);
+    var dummyFaceVerticesById = {};
+    var outerDummyIds;
+    var dummyCount = 0;
+    var i;
+
+    try {
+      outerDummyIds = pe.addOuterFaceCycle(selectedOuterFace, options || null);
+    } catch (err) {
+      return {
+        ok: false,
+        reason: err && err.message ? err.message : 'Outer-cycle augmentation failed'
+      };
+    }
+
+    for (i = 0; i < outerDummyIds.length; i += 1) {
+      dummyFaceVerticesById[String(outerDummyIds[i])] = selectedOuterFace.slice().map(String);
+    }
+    dummyCount += outerDummyIds.length;
+
+    var faces = pe.faces.slice();
+    for (i = 0; i < faces.length; i += 1) {
+      var face = faces[i];
+      if (!face || face.length <= 3) {
+        continue;
+      }
+      if (sameCyclicDirection(face, pe.outerFace)) {
+        continue;
+      }
+      try {
+        var dummyId = pe._nextDummyId('@dummy');
+        dummyFaceVerticesById[dummyId] = face.slice().map(String);
+        pe.addFaceDummy(face, dummyId);
+        dummyCount += 1;
+      } catch (err) {
+        return {
+          ok: false,
+          reason: err && err.message ? err.message : 'Interior face augmentation failed'
+        };
+      }
+    }
+
+    var finalEmbedding = pe.toEmbeddingObject();
+    var finalGraph = pe.toGraph();
+    return {
+      ok: true,
+      nodeIds: finalGraph.nodeIds,
+      edgePairs: finalGraph.edgePairs,
+      dummyCount: dummyCount,
+      outerDummyIds: outerDummyIds.slice().map(String),
+      dummyFaceVerticesById: dummyFaceVerticesById,
+      embedding: finalEmbedding
+    };
+  }
+
   function PlanarEmbedding(data) {
     var opts = data || {};
     this.nodeIds = normalizeNodeIds(opts.nodeIds || []);
@@ -702,6 +775,57 @@
     return dummy;
   };
 
+  PlanarEmbedding.prototype.addOuterFaceCycle = function (face, options) {
+    var matchedFace = this.getFace(face);
+    if (!matchedFace) {
+      throw new Error('Outer face not found in embedding');
+    }
+    if (matchedFace.length < 3) {
+      throw new Error('Outer-cycle augmentation requires at least 3 boundary vertices');
+    }
+    if (!this.outerFace || !sameCyclicDirection(this.outerFace, matchedFace)) {
+      throw new Error('Outer-cycle augmentation requires the chosen outer face');
+    }
+
+    var opts = options || {};
+    var dummyIds = [];
+    var i;
+    for (i = 0; i < matchedFace.length; i += 1) {
+      var dummy = this._nextDummyId(opts.outerDummyPrefix || '@outerDummy');
+      this.indexById[dummy] = this.nodeIds.length;
+      this.nodeIds.push(dummy);
+      this.rotationById[dummy] = [];
+      dummyIds.push(dummy);
+    }
+
+    for (i = 0; i < matchedFace.length; i += 1) {
+      var v = String(matchedFace[i]);
+      var next = String(matchedFace[(i + 1) % matchedFace.length]);
+      var prev = String(matchedFace[(i - 1 + matchedFace.length) % matchedFace.length]);
+      var dummyCurrent = String(dummyIds[i]);
+      var dummyPrev = String(dummyIds[(i - 1 + dummyIds.length) % dummyIds.length]);
+      var dummyNext = String(dummyIds[(i + 1) % dummyIds.length]);
+
+      this._addEdge(dummyCurrent, v);
+      this._addEdge(dummyCurrent, next);
+      this._addEdge(dummyCurrent, dummyNext);
+
+      insertBefore(this.rotationById[v], prev, dummyCurrent);
+      insertBefore(this.rotationById[v], prev, dummyPrev);
+
+      this.rotationById[dummyCurrent] = [
+        dummyPrev,
+        v,
+        next,
+        dummyNext
+      ];
+    }
+
+    this.recomputeFaces();
+    this.setOuterFace(dummyIds);
+    return dummyIds.slice().map(String);
+  };
+
   PlanarEmbedding.prototype.toEmbeddingObject = function () {
     var rotation = [];
     for (var i = 0; i < this.nodeIds.length; i += 1) {
@@ -736,6 +860,7 @@
     isTriangulatedEmbedding: isTriangulatedEmbedding,
     augmentByFaceStellation: augmentByFaceStellation,
     triangulateByFaceStellation: triangulateByFaceStellation,
+    triangulateByOuterCycle: triangulateByOuterCycle,
     PlanarEmbedding: PlanarEmbedding
   };
 })(window);

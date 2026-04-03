@@ -25,12 +25,27 @@
   var triangleArea2 = global.GraphUtils.triangleArea2;
   var hasPositionCrossings = global.GraphUtils.hasPositionCrossings;
 
-  function buildAirData(augmentedEmbedding, outerFace, posById) {
+  function outerEdgeKey(u, v) {
+    var a = String(u);
+    var b = String(v);
+    return a < b ? a + '::' + b : b + '::' + a;
+  }
+
+  function buildAirData(augmentedEmbedding, outerFace, posById, options) {
     var outerKey = faceKey(outerFace);
+    var opts = options || {};
+    var outerRingFaceWeight = Number.isFinite(opts.outerRingFaceWeight) ? opts.outerRingFaceWeight : 1;
+    var outerEdgeSet = {};
+    var outerVertexSet = new Set((outerFace || []).map(String));
     var i;
+
+    for (i = 0; i < outerFace.length; i += 1) {
+      outerEdgeSet[outerEdgeKey(outerFace[i], outerFace[(i + 1) % outerFace.length])] = true;
+    }
 
     var triangles = [];
     var incident = {};
+    var outerRingTriangleCount = 0;
 
     for (i = 0; i < augmentedEmbedding.idByIndex.length; i += 1) {
       incident[String(augmentedEmbedding.idByIndex[i])] = [];
@@ -50,10 +65,27 @@
         return buildLayoutError({ reason: 'Air requires all non-outer augmented faces to be triangles' });
       }
 
+      var isOuterRing = false;
+      for (var ei = 0; ei < oriented.length; ei += 1) {
+        if (outerVertexSet.has(String(oriented[ei]))) {
+          isOuterRing = true;
+          break;
+        }
+        if (outerEdgeSet[outerEdgeKey(oriented[ei], oriented[(ei + 1) % oriented.length])]) {
+          isOuterRing = true;
+          break;
+        }
+      }
+      if (isOuterRing) {
+        outerRingTriangleCount += 1;
+      }
+
       var triangleIndex = triangles.length;
       triangles.push({
         vertices: oriented,
-        targetArea: 0
+        targetArea: 0,
+        weight: isOuterRing ? outerRingFaceWeight : 1,
+        isOuterRing: isOuterRing
       });
 
       for (var j = 0; j < 3; j += 1) {
@@ -89,7 +121,8 @@
       outerFace: outerFace.slice().map(String),
       triangles: triangles,
       incident: incident,
-      targetTriangleArea: targetTriangleArea
+      targetTriangleArea: targetTriangleArea,
+      outerRingTriangleCount: outerRingTriangleCount
     });
   }
 
@@ -124,11 +157,12 @@
       }
 
       var pressure = tri.targetArea / area;
-      force.x += pressure * r.x;
-      force.y += pressure * r.y;
-      entropy += -tri.targetArea * Math.log(Math.max(pressure, 1e-300));
+      var weight = Number.isFinite(tri.weight) ? tri.weight : 1;
+      force.x += weight * pressure * r.x;
+      force.y += weight * pressure * r.y;
+      entropy += -weight * tri.targetArea * Math.log(Math.max(pressure, 1e-300));
 
-      var coeff = -0.25 * tri.targetArea / (area * area);
+      var coeff = -0.25 * weight * tri.targetArea / (area * area);
       a += coeff * r.x * r.x;
       b += coeff * r.x * r.y;
       c += coeff * r.y * r.y;
@@ -262,6 +296,7 @@
     });
     return {
       interactive: opts.interactive !== false,
+      augmentationMethod: opts.augmentationMethod || null,
       augmentationOptions: opts && typeof opts.augmentationOptions === 'object' && opts.augmentationOptions
         ? Object.assign({}, opts.augmentationOptions)
         : null,
@@ -273,6 +308,7 @@
       tolAreaPositive: resolveFloatOption(opts.tolAreaPositive, 1e-15, 0),
       tolMove: resolveFloatOption(opts.tolMove, 1e-12, 0),
       armijo: resolveFloatOption(opts.armijo, 1e-4, 0),
+      outerRingFaceWeight: resolveFloatOption(opts.outerRingFaceWeight, 0.25, 0),
       minStep: resolvePositiveOption(opts.minStep, Math.pow(2, -40)),
       delayMs: timing.delayMs,
       onIteration: resolveFunctionOption(opts.onIteration, null),
@@ -296,6 +332,7 @@
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'Air layout',
       minNodeCount: 3,
+      augmentationMethod: opts.augmentationMethod,
       augmentationOptions: opts.augmentationOptions,
       currentPositions: opts.currentPositions || null
     });
@@ -305,8 +342,9 @@
 
     var airData = buildAirData(
       context.augmented.embedding,
-      context.outerFace,
-      context.posById
+      context.augmentedOuterFace || context.outerFace,
+      context.posById,
+      opts
     );
     if (!airData.ok) {
       return buildLayoutError({ message: airData.reason || 'Air setup failed' });
@@ -318,7 +356,7 @@
         opts: opts,
         graph: context.graph,
         baseEmbedding: context.baseEmbedding,
-        outerFace: context.outerFace,
+        outerFace: context.augmentedOuterFace || context.outerFace,
         augmented: context.augmented,
         posById: context.posById,
         airData: airData,
@@ -351,7 +389,7 @@
       opts: opts,
       graph: context.graph,
       baseEmbedding: context.baseEmbedding,
-      outerFace: context.outerFace,
+      outerFace: context.augmentedOuterFace || context.outerFace,
       augmented: context.augmented,
       posById: context.posById,
       airData: airData,
@@ -634,6 +672,8 @@
 
   async function applyAirLayout(cy, options) {
     return PlaygroundUtils.runIncrementalLayout(cy, options, {
+      useSharedPreparedSeed: true,
+      sharedSeedFailureLabel: 'Air layout',
       compute: computeAirPositions,
       patchComputeOptions: function (ctx) {
         return {

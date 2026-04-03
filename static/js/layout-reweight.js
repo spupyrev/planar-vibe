@@ -214,6 +214,8 @@
     var scaleMin = resolveFloatOption(opts.scaleMin, 0.25, 0.01);
     var pressureScaleMin = resolveFloatOption(opts.pressureScaleMin, 1.0, 0.01);
     return {
+      augmentationMethod: opts.augmentationMethod || null,
+      currentPositions: opts.currentPositions || null,
       maxOuterIters: resolveIntOption(opts.maxOuterIters, 8, 1),
       pressureStep: resolveFloatOption(opts.pressureStep, 0.16, 0),
       pressureClamp: resolveFloatOption(opts.pressureClamp, 1.20, 0.05),
@@ -239,6 +241,7 @@
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'ReweightTutte',
       minNodeCount: 3,
+      augmentationMethod: opts.augmentationMethod,
       currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
@@ -249,7 +252,7 @@
     }
 
     var g = context.graph;
-    var outer = context.outerFace;
+    var outer = context.augmentedOuterFace || context.outerFace;
     var augmented = context.augmented;
     var embAug = augmented.embedding;
 
@@ -444,6 +447,8 @@
 
   async function applyReweightTutteLayout(cy, options) {
     return PlaygroundUtils.runIncrementalLayout(cy, options, {
+      useSharedPreparedSeed: true,
+      sharedSeedFailureLabel: 'ReweightTutte layout',
       compute: computeReweightTuttePositions,
       patchComputeOptions: function (ctx) {
         return {

@@ -71,6 +71,7 @@ function loadBrowserModules() {
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
+    'static/js/layout-edgebalancer.js',
     'static/js/layout-reweight.js',
     'static/js/layout-fd-uniform.js'
   ];
@@ -367,6 +368,7 @@ async function main() {
   const Air = modules.PlanarVibeAir;
   const PPAG = modules.PlanarVibePPAG;
   const FaceBalancer = modules.PlanarVibeFaceBalancer;
+  const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
   const Reweight = modules.PlanarVibeReweightTutte;
   const FDUniform = modules.PlanarVibeFDUniform;
 
@@ -407,6 +409,13 @@ async function main() {
     {
       name: 'FaceBalancer',
       run: (graph) => FaceBalancer.computeFaceBalancerPositions(graph.nodeIds, graph.edgePairs, {
+        maxIters: 30,
+        delayMs: 0
+      })
+    },
+    {
+      name: 'EdgeBalancer',
+      run: (graph) => EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
         maxIters: 30,
         delayMs: 0
       })

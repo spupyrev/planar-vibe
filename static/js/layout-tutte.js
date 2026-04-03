@@ -214,6 +214,7 @@
     }, {
       failureLabel: 'Tutte layout',
       minNodeCount: 3,
+      augmentationMethod: opts.augmentationMethod || null,
       augmentationOptions: opts.augmentationOptions || null
     });
     if (!prepared || !prepared.ok) {
@@ -245,9 +246,9 @@
     });
   }
 
-  function applyTutteLayout(cy) {
+  function applyTutteLayout(cy, options) {
     var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeTutteLayout(graph.nodeIds, graph.edgePairs);
+    var result = computeTutteLayout(graph.nodeIds, graph.edgePairs, options || {});
     if (!result || !result.ok) {
       return buildLayoutError(result || {
         message: 'Tutte failed',

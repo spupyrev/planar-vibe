@@ -32,6 +32,7 @@ function loadBrowserModules() {
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
+    'static/js/layout-edgebalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -59,6 +60,7 @@ const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
+const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
 const CEG23 = modules.PlanarVibeCEG23Bfs;
 const CEG23XY = modules.PlanarVibeCEG23Xy;
 const ImPrEd = modules.PlanarVibeImPrEd;
@@ -221,6 +223,16 @@ const layoutSpecs = [
     graph: CUBE,
     run(graph) {
       return FaceBalancer.computeFaceBalancerPositions(graph.nodeIds, graph.edgePairs, {
+        delayMs: 0,
+        maxIters: 20
+      });
+    }
+  },
+  {
+    name: 'EdgeBalancer compute',
+    graph: CUBE,
+    run(graph) {
+      return EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
         delayMs: 0,
         maxIters: 20
       });

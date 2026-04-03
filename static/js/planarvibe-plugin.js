@@ -155,12 +155,18 @@
     var PREF_EDGE_WIDTH_KEY = 'planarvibe_edge_width';
     var PREF_INTERACTIVE_KEY = 'planarvibe_interactive_mode';
     var PREF_STATUS_COLLAPSED_KEY = 'planarvibe_status_collapsed';
+    var PREF_OUTER_CYCLE_AUGMENTATION_KEY = 'planarvibe_outer_cycle_augmentation';
 
     function sharedLayoutMethodOptions(layoutName, overrides) {
+      var mergedOverrides = Object.assign(
+        {},
+        useOuterCycleAugmentation ? { augmentationMethod: 'outer-cycle' } : {},
+        overrides || {}
+      );
       if (global.PlaygroundUtils && typeof global.PlaygroundUtils.sharedLayoutMethodOptionsByName === 'function') {
-        return global.PlaygroundUtils.sharedLayoutMethodOptionsByName(layoutName, overrides);
+        return global.PlaygroundUtils.sharedLayoutMethodOptionsByName(layoutName, mergedOverrides);
       }
-      return Object.assign({}, overrides || {});
+      return mergedOverrides;
     }
 
     function writeCookie(name, value, days) {
@@ -220,6 +226,7 @@
     };
     var isInteractive = readStorage(PREF_INTERACTIVE_KEY) !== '0';
     var isStatusCollapsed = readStorage(PREF_STATUS_COLLAPSED_KEY) === '1';
+    var useOuterCycleAugmentation = readStorage(PREF_OUTER_CYCLE_AUGMENTATION_KEY) !== '0';
     var savedPositions = {};
     var savedViewport = null;
     var currentVisualizedInput = null;
@@ -1502,6 +1509,7 @@
         .attr('aria-pressed', isInteractive ? 'true' : 'false')
         .toggleClass('is-inactive', !isInteractive);
       global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
+      global.$('#outer-cycle-augmentation-toggle').prop('checked', useOuterCycleAugmentation);
       global.$('#cy').toggle(isInteractive);
       global.$('#cy-static-wrap').toggle(!isInteractive);
       global.$('.layout-toolbar').show();
@@ -1529,6 +1537,25 @@
         } else {
           setStatus('Hiding augmentation debug overlay', false);
         }
+      }
+    }
+
+    function setOuterCycleAugmentationEnabled(enabled, persistPreference, suppressStatus) {
+      if (persistPreference === undefined) {
+        persistPreference = true;
+      }
+      if (suppressStatus === undefined) {
+        suppressStatus = false;
+      }
+      useOuterCycleAugmentation = !!enabled;
+      global.$('#outer-cycle-augmentation-toggle').prop('checked', useOuterCycleAugmentation);
+      if (persistPreference) {
+        writeStorage(PREF_OUTER_CYCLE_AUGMENTATION_KEY, useOuterCycleAugmentation ? '1' : '0');
+      }
+      if (!suppressStatus) {
+        setStatus(useOuterCycleAugmentation
+          ? 'Outer-cycle augmentation enabled'
+          : 'Outer-cycle augmentation disabled', false);
       }
     }
 
@@ -1703,6 +1730,10 @@
       setLayoutEnabled('facebalancer', isEnabled);
     }
 
+    function setEdgeBalancerEnabled(isEnabled) {
+      setLayoutEnabled('edgebalancer', isEnabled);
+    }
+
     function setImPrEdEnabled(isEnabled) {
       setLayoutEnabled('impred', isEnabled);
     }
@@ -1744,6 +1775,7 @@
       setAirEnabled(false);
       setPPAGEnabled(false);
       setFaceBalancerEnabled(false);
+      setEdgeBalancerEnabled(false);
       setImPrEdEnabled(false);
       setCEG23BfsEnabled(false);
       setCEG23XyEnabled(false);
@@ -1795,6 +1827,7 @@
       setAirEnabled(isPlanar);
       setPPAGEnabled(isPlanar);
       setFaceBalancerEnabled(isPlanar);
+      setEdgeBalancerEnabled(isPlanar);
       setImPrEdEnabled(isPlanar);
       setCEG23BfsEnabled(isPlanar);
       setCEG23XyEnabled(isPlanar);
@@ -2017,6 +2050,9 @@
             return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareGraphAndLayoutData']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'embeddingHasFace', 'analyzeInternallyThreeConnected', 'normalizeNodeIds', 'normalizeEdgePairs', 'normalizeOuterFace', 'edgeKey']) ||
               missingPlanarityUtilities();
+          },
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('tutte');
           }
         }, function () {
           if (temporaryStaticRun) {
@@ -2162,6 +2198,53 @@
         return;
       }
 
+      if (layoutName === 'edgebalancer') {
+        runSpecialLayout({
+          layoutName: 'edgebalancer',
+          disabledMessage: 'EdgeBalancer layout requires a planar graph',
+          missingMessage: 'EdgeBalancer layout module is missing',
+          module: global.PlanarVibeEdgeBalancer,
+          methodName: 'applyEdgeBalancerLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyPositionsToCy', 'createIncrementalRenderer', 'prepareGraphAndLayoutData']) ||
+              missingTutteUtilities(['defaultOuterPlacementOptions']);
+          },
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('edgebalancer', {
+              onIteration: function (progress) {
+                if (!progress) return;
+                var debug = progressDebug(progress);
+                var parts = [];
+                parts.push('EdgeBalancer step ' + progress.iter + '/' + progress.maxIters);
+                if (Number.isFinite(progress.edgeLengthScore)) {
+                  parts.push('edge score ' + progress.edgeLengthScore.toFixed(3));
+                }
+                if (Number.isFinite(progress.edgeLengthRatio)) {
+                  parts.push('min/max ' + progress.edgeLengthRatio.toFixed(3));
+                }
+                if (Number.isFinite(progress.objective)) {
+                  parts.push('obj ' + progress.objective.toFixed(3));
+                }
+                if (Number.isFinite(debug.gradNorm)) {
+                  parts.push('grad ' + debug.gradNorm.toExponential(2));
+                }
+                if (Number.isFinite(progress.maxLogDeviation)) {
+                  parts.push('log spread ' + progress.maxLogDeviation.toFixed(3));
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            });
+          },
+          normalizeOnSuccess: false,
+          disableOtherButtonsWhileRunning: true
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
       if (layoutName === 'ceg23-bfs') {
         runSpecialLayout({
           layoutName: 'ceg23-bfs',
@@ -2173,6 +2256,9 @@
             return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareGraphAndLayoutData']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey']) ||
               missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
+          },
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('ceg23-bfs');
           }
         }, function () {
           if (temporaryStaticRun) {
@@ -2193,6 +2279,9 @@
             return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareGraphAndLayoutData']) ||
               missingGraphUtilities(['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey']) ||
               missingTutteUtilities(['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']);
+          },
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('ceg23-xy');
           }
         }, function () {
           if (temporaryStaticRun) {
@@ -2703,6 +2792,10 @@
 
       global.$('#show-augmentation-toggle').on('change', function () {
         setDebugAugmentationVisible(global.$(this).is(':checked'));
+      });
+
+      global.$('#outer-cycle-augmentation-toggle').on('change', function () {
+        setOuterCycleAugmentationEnabled(global.$(this).is(':checked'));
       });
 
       global.$('#interactive-toggle-btn').on('click', function () {

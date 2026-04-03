@@ -430,6 +430,9 @@
         var dy = y[u] - y[v];
         var len2 = dx * dx + dy * dy;
         var safeLen2 = len2 > edgeTol2 ? len2 : edgeTol2;
+        if (!(safeLen2 < edgeScale2)) {
+          continue;
+        }
         E -= edgeBarrierWeight * Math.log(safeLen2 / edgeScale2);
         var edgeCoeff = -2 * edgeBarrierWeight / safeLen2;
         var iu = data.interiorIndexByAug[u];
@@ -687,6 +690,7 @@
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FaceBalancer layout',
       minNodeCount: 3,
+      augmentationMethod: opts.augmentationMethod || null,
       currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
@@ -694,7 +698,7 @@
     }
 
     var g = context.graph;
-    var outerFace = context.outerFace;
+    var outerFace = context.augmentedOuterFace || context.outerFace;
     var augmented = context.augmented;
     var initPos = context.posById;
     var hasExplicitMinFaceArea = Number.isFinite(opts.minFaceArea) && opts.minFaceArea >= 0;
@@ -769,7 +773,9 @@
       movementTracker: movementTracker,
       onIteration: async function (progress) {
         iterationCount = progress.iter;
-        if (typeof opts.onIteration === 'function') opts.onIteration(progress);
+        if (typeof opts.onIteration === 'function') {
+          await opts.onIteration(progress);
+        }
       }
     });
     if (!result.ok) {
@@ -811,6 +817,8 @@
     var opts = options || {};
     var iterationCount = 0;
     return PlaygroundUtils.runIncrementalLayout(cy, opts, {
+      useSharedPreparedSeed: true,
+      sharedSeedFailureLabel: 'FaceBalancer layout',
       compute: computeFaceBalancerPositions,
       patchComputeOptions: function (ctx) {
         return {

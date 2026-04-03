@@ -419,6 +419,7 @@
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FD-uniform',
       minNodeCount: 3,
+      augmentationMethod: opts.augmentationMethod || null,
       currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
@@ -554,6 +555,8 @@
         renderEvery: renderEvery,
         yieldEvery: yieldEvery
       }), {
+        useSharedPreparedSeed: true,
+        sharedSeedFailureLabel: 'FD-uniform layout',
         compute: computeFDUniformPositions,
         patchComputeOptions: function (ctx) {
           return {

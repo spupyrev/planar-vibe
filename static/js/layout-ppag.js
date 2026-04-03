@@ -253,6 +253,7 @@
     });
     return {
       interactive: opts.interactive !== false,
+      augmentationMethod: opts.augmentationMethod || null,
       maxIters: resolveIntOption(opts.maxIters, 200, 1),
       maxVertexMoveRel: resolvePositiveOption(opts.maxVertexMoveRel, 0.08),
       localDamping: resolvePositiveOption(opts.localDamping, 1e-3),
@@ -272,13 +273,18 @@
     var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
       failureLabel: 'PPAG layout',
       minNodeCount: 3,
+      augmentationMethod: opts.augmentationMethod,
       currentPositions: opts.currentPositions || null
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'PPAG setup failed' });
     }
 
-    var ppagData = buildPPAGData(context.augmented.embedding, context.outerFace, context.posById);
+    var ppagData = buildPPAGData(
+      context.augmented.embedding,
+      context.augmentedOuterFace || context.outerFace,
+      context.posById
+    );
     if (!ppagData.ok) {
       return buildLayoutError({ message: ppagData.reason || 'PPAG setup failed' });
     }
@@ -288,7 +294,7 @@
         ok: true,
         opts: opts,
         graph: context.graph,
-        outerFace: context.outerFace,
+        outerFace: context.augmentedOuterFace || context.outerFace,
         augmented: context.augmented,
         posById: context.posById,
         ppagData: ppagData,
@@ -309,7 +315,7 @@
       ok: true,
       opts: opts,
       graph: context.graph,
-      outerFace: context.outerFace,
+      outerFace: context.augmentedOuterFace || context.outerFace,
       augmented: context.augmented,
       posById: context.posById,
       ppagData: ppagData,
@@ -512,6 +518,8 @@
 
   async function applyPPAGLayout(cy, options) {
     return PlaygroundUtils.runIncrementalLayout(cy, options, {
+      useSharedPreparedSeed: true,
+      sharedSeedFailureLabel: 'PPAG layout',
       compute: computePPAGPositions,
       patchComputeOptions: function (ctx) {
         return {

@@ -155,7 +155,7 @@
     return out;
   }
 
-  function prepareCEG23State(nodeIds, edgePairs, failureLabel) {
+  function prepareCEG23State(nodeIds, edgePairs, failureLabel, options) {
     var graph = normalizeGraphInput(nodeIds, edgePairs);
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
@@ -171,7 +171,8 @@
       edgePairs: pairs
     }, {
       failureLabel: failureLabel,
-      minNodeCount: 3
+      minNodeCount: 3,
+      augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null
     });
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || {
@@ -189,6 +190,7 @@
       prepared: prepared,
       augmented: augmented,
       outerFace: prepared.outerFace,
+      augmentedOuterFace: prepared.augmentedOuterFace || prepared.outerFace,
       augmentedIds: augmented.nodeIds,
       augmentedPairs: augmented.edgePairs,
       adjacency: buildAdjacencyArrays(augmented.nodeIds, augmented.edgePairs)
@@ -199,7 +201,7 @@
     return Tutte.computeBarycentricPositions(
       state.augmentedIds,
       state.augmentedPairs,
-      state.outerFace,
+      state.augmentedOuterFace,
       {
         adjacency: state.adjacency,
         weights: weights,
@@ -248,7 +250,7 @@
 
   function computeCEG23BfsPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-bfs');
+    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-bfs', opts);
     if (!state || !state.ok) {
       return state;
     }
@@ -259,24 +261,24 @@
     var DEPTH_SOURCE = String(opts.depthSource || 'outer-multi');
     var EDGE_DEPTH_MODE = String(opts.edgeDepthMode || 'min');
 
-    var depthById = bfsDepthFromOuter(state.augmentedIds, state.adjacency, state.outerFace, DEPTH_SOURCE);
+    var depthById = bfsDepthFromOuter(state.augmentedIds, state.adjacency, state.augmentedOuterFace, DEPTH_SOURCE);
     var weights = buildDepthWeights(state.augmentedPairs, depthById, A, R, EDGE_DEPTH_MODE);
     var out = solveAugmentedWeightedLayout(state, weights, MAX_ITERS, opts.seedPos || null);
     if (!out.ok) {
       return buildLayoutError({
         message: out.message || 'CEG23-bfs solver failed',
         graph: state.prepared.graph,
-        outerFace: state.outerFace,
+        outerFace: state.augmentedOuterFace,
         augmented: state.augmented
       });
     }
-    out.pos = alignOuterFaceEdgeHorizontally(out.pos, state.outerFace);
+    out.pos = alignOuterFaceEdgeHorizontally(out.pos, state.augmentedOuterFace);
 
     return buildCEG23SuccessResult(
       state,
       out.pos,
       out.iters,
-      'Applied CEG23-bfs (' + state.outerFace.length + '-vertex outer face, depth=' + DEPTH_SOURCE + ', edgeDepth=' + EDGE_DEPTH_MODE + ', r=' + R +
+      'Applied CEG23-bfs (' + state.augmentedOuterFace.length + '-vertex outer face, depth=' + DEPTH_SOURCE + ', edgeDepth=' + EDGE_DEPTH_MODE + ', r=' + R +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
       ', ' + out.iters + ' iters)'
     );
@@ -284,7 +286,7 @@
 
   function computeCEG23XyPositions(nodeIds, edgePairs, options) {
     var opts = options || {};
-    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-xy');
+    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-xy', opts);
     if (!state || !state.ok) {
       return state;
     }
@@ -300,11 +302,11 @@
       return buildLayoutError({
         message: base.message || 'CEG23-xy baseline solve failed',
         graph: state.prepared.graph,
-        outerFace: state.outerFace,
+        outerFace: state.augmentedOuterFace,
         augmented: state.augmented
       });
     }
-    base.pos = alignOuterFaceEdgeHorizontally(base.pos, state.outerFace);
+    base.pos = alignOuterFaceEdgeHorizontally(base.pos, state.augmentedOuterFace);
 
     var xRank = rankByAxis(state.augmentedIds, base.pos, 'x');
     var yRank = rankByAxis(state.augmentedIds, base.pos, 'y');
@@ -316,17 +318,17 @@
       return buildLayoutError({
         message: xySolve.message || 'CEG23-xy solve failed',
         graph: state.prepared.graph,
-        outerFace: state.outerFace,
+        outerFace: state.augmentedOuterFace,
         augmented: state.augmented
       });
     }
-    xySolve.pos = alignOuterFaceEdgeHorizontally(xySolve.pos, state.outerFace);
+    xySolve.pos = alignOuterFaceEdgeHorizontally(xySolve.pos, state.augmentedOuterFace);
 
     return buildCEG23SuccessResult(
       state,
       xySolve.pos,
       base.iters + xySolve.iters,
-      'Applied CEG23-xy (' + state.outerFace.length + '-vertex outer face, alpha=' + alpha + ', beta=' + beta + ', lambdaX=' + Math.max(0, Math.min(1, lambdaX)) +
+      'Applied CEG23-xy (' + state.augmentedOuterFace.length + '-vertex outer face, alpha=' + alpha + ', beta=' + beta + ', lambdaX=' + Math.max(0, Math.min(1, lambdaX)) +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
       ', ' + (base.iters + xySolve.iters) + ' total iters)'
     );

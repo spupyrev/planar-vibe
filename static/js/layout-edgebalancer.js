@@ -1,0 +1,1260 @@
+(function (global) {
+  'use strict';
+
+  var PlaygroundUtils = global.PlaygroundUtils;
+  var Metrics = global.PlanarVibeMetrics;
+  var edgeKey = global.GraphUtils.edgeKey;
+  var faceKey = global.GraphUtils.faceKey;
+  var buildLayoutError = global.GraphUtils.buildLayoutError;
+  var buildLayoutResult = global.GraphUtils.buildLayoutResult;
+  var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
+  var computeMoveStats = global.GraphUtils.computeMoveStats;
+  var hasPositionCrossings = global.GraphUtils.hasPositionCrossings;
+  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
+  var pointOnSegmentInterior = global.GraphUtils.pointOnSegmentInterior;
+  var polygonArea2 = global.GraphUtils.polygonArea2;
+  var orientFaceCCW = global.GraphUtils.orientFaceCCW;
+  var luFactorize = global.GraphUtils.luFactorize;
+  var segmentsIntersectStrict = global.GraphUtils.segmentsIntersectStrict;
+  var solveLUWithTwoRhs = global.GraphUtils.solveLUWithTwoRhs;
+  var solveTransposeLUWithTwoRhs = global.GraphUtils.solveTransposeLUWithTwoRhs;
+  var triangleArea2 = global.GraphUtils.triangleArea2;
+  var resolveFloatOption = global.GraphUtils.resolveFloatOption;
+  var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
+  var resolveIntOption = global.GraphUtils.resolveIntOption;
+  var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
+  var vecAddScaled = global.GraphUtils.vecAddScaled;
+  var vecDot = global.GraphUtils.vecDot;
+  var vecNorm = global.GraphUtils.vecNorm;
+  var vecScale = global.GraphUtils.vecScale;
+  var vecSub = global.GraphUtils.vecSub;
+
+  function softmaxInto(q, start, length, out) {
+    var m = -Infinity;
+    var i;
+    for (i = 0; i < length; i += 1) {
+      var value = q[start + i];
+      if (value > m) m = value;
+    }
+    var Z = 0;
+    for (i = 0; i < length; i += 1) {
+      var w = Math.exp(q[start + i] - m);
+      out[start + i] = w;
+      Z += w;
+    }
+    if (!(Z > 0)) {
+      var uniform = 1 / Math.max(1, length);
+      for (i = 0; i < length; i += 1) out[start + i] = uniform;
+      return;
+    }
+    for (i = 0; i < length; i += 1) out[start + i] /= Z;
+  }
+
+  function normalizeEdgeObjectiveName(name) {
+    var key = String(name || '').trim().toLowerCase();
+    if (!key || key === 'default' || key === 'logvariance' || key === 'log-variance') {
+      return 'log-variance';
+    }
+    if (key === 'normalizedlengthl2' || key === 'normalized-length-l2' || key === 'edge-score-l2') {
+      return 'normalized-length-l2';
+    }
+    if (key === 'smoothlogabs' || key === 'smooth-log-abs' || key === 'log-abs') {
+      return 'smooth-log-abs';
+    }
+    if (key === 'softrange' || key === 'soft-range' || key === 'minmax-surrogate') {
+      return 'soft-range';
+    }
+    return 'log-variance';
+  }
+
+  function buildEdgeBalancerData(input) {
+    var augmentedEdgePairs = input.augmentedEdgePairs;
+    var augmentedEmbedding = input.augmentedEmbedding;
+    var outerFace = input.outerFace;
+    var initPos = input.initPos;
+    var objectiveEdgePairs = input.objectiveEdgePairs;
+    var augmentedEdgeWeight = Number.isFinite(input.augmentedEdgeWeight)
+      ? Math.max(0, input.augmentedEdgeWeight)
+      : 0.25;
+    var augIds = augmentedEmbedding.idByIndex.map(String);
+    var augIndexById = {};
+    var i;
+    for (i = 0; i < augIds.length; i += 1) augIndexById[augIds[i]] = i;
+
+    var originalEdgeSet = {};
+    for (i = 0; i < objectiveEdgePairs.length; i += 1) {
+      originalEdgeSet[edgeKey(objectiveEdgePairs[i][0], objectiveEdgePairs[i][1])] = true;
+    }
+
+    var x0 = new Array(augIds.length);
+    var y0 = new Array(augIds.length);
+    for (i = 0; i < augIds.length; i += 1) {
+      var p = initPos[augIds[i]];
+      x0[i] = p ? p.x : 0;
+      y0[i] = p ? p.y : 0;
+    }
+
+    var edges = [];
+    var edgeScaleSum = 0;
+    var edgeScaleWeight = 0;
+    var initialMinEdgeLength2 = Infinity;
+    for (i = 0; i < augmentedEdgePairs.length; i += 1) {
+      var sourceU = String(augmentedEdgePairs[i][0]);
+      var sourceV = String(augmentedEdgePairs[i][1]);
+      var u = augIndexById[String(augmentedEdgePairs[i][0])];
+      var v = augIndexById[String(augmentedEdgePairs[i][1])];
+      if (u === undefined || v === undefined || u === v) continue;
+      var barrierWeight = originalEdgeSet[edgeKey(sourceU, sourceV)] ? 1 : augmentedEdgeWeight;
+      edges.push([u, v, barrierWeight]);
+      var dx0 = x0[u] - x0[v];
+      var dy0 = y0[u] - y0[v];
+      var len20 = dx0 * dx0 + dy0 * dy0;
+      if (len20 > 1e-12) {
+        edgeScaleSum += barrierWeight * len20;
+        edgeScaleWeight += barrierWeight;
+        if (len20 < initialMinEdgeLength2) initialMinEdgeLength2 = len20;
+      }
+    }
+
+    var objectiveEdges = [];
+    var initialObjectiveMinEdgeLength2 = Infinity;
+    for (i = 0; i < objectiveEdgePairs.length; i += 1) {
+      u = augIndexById[String(objectiveEdgePairs[i][0])];
+      v = augIndexById[String(objectiveEdgePairs[i][1])];
+      if (u === undefined || v === undefined || u === v) continue;
+      objectiveEdges.push([u, v]);
+      dx0 = x0[u] - x0[v];
+      dy0 = y0[u] - y0[v];
+      len20 = dx0 * dx0 + dy0 * dy0;
+      if (len20 > 1e-12 && len20 < initialObjectiveMinEdgeLength2) {
+        initialObjectiveMinEdgeLength2 = len20;
+      }
+    }
+
+    var outerKey = faceKey(outerFace);
+    var boundedFaceKeys = [];
+    var boundedFaces = [];
+    var initialFaceMinArea = Infinity;
+    var initialFaceAreaSum = 0;
+    var initialFaceCount = 0;
+    for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
+      var orientedFace = orientFaceCCW(augmentedEmbedding.faces[i], initPos);
+      var faceK = faceKey(orientedFace);
+      if (faceK === outerKey) continue;
+      if (!orientedFace || orientedFace.length < 3) {
+        return buildLayoutError({ reason: 'EdgeBalancer requires a valid triangulated augmentation' });
+      }
+      if (orientedFace.length !== 3) {
+        return buildLayoutError({ reason: 'EdgeBalancer requires all non-outer augmented faces to be triangles' });
+      }
+      boundedFaceKeys.push(faceK);
+      var boundedFace = orientedFace.map(function (id) { return augIndexById[String(id)]; });
+      boundedFaces.push(boundedFace);
+      var boundedArea = Math.abs(polygonArea2(orientedFace, initPos)) / 2;
+      if (boundedArea > 1e-12) {
+        if (boundedArea < initialFaceMinArea) initialFaceMinArea = boundedArea;
+        initialFaceAreaSum += boundedArea;
+        initialFaceCount += 1;
+      }
+    }
+
+    var triangles = [];
+    for (i = 0; i < boundedFaces.length; i += 1) {
+      var triFace = boundedFaces[i];
+      triangles.push([
+        triFace[0],
+        triFace[1],
+        triFace[2],
+        i
+      ]);
+    }
+
+    var outerMask = new Array(augIds.length);
+    for (i = 0; i < outerMask.length; i += 1) outerMask[i] = false;
+    for (i = 0; i < outerFace.length; i += 1) {
+      var outerIdx = augIndexById[String(outerFace[i])];
+      outerMask[outerIdx] = true;
+    }
+
+    var interiorAugIndices = [];
+    var interiorIndexByAug = new Array(augIds.length);
+    for (i = 0; i < augIds.length; i += 1) {
+      interiorIndexByAug[i] = -1;
+      if (!outerMask[i]) {
+        interiorIndexByAug[i] = interiorAugIndices.length;
+        interiorAugIndices.push(i);
+      }
+    }
+
+    var rowStart = new Array(interiorAugIndices.length);
+    var rowLength = new Array(interiorAugIndices.length);
+    var neighborAugIndices = new Array(interiorAugIndices.length);
+    var neighborInteriorIndices = new Array(interiorAugIndices.length);
+    var qSize = 0;
+    for (i = 0; i < interiorAugIndices.length; i += 1) {
+      var augIdx = interiorAugIndices[i];
+      var rotationRow = augmentedEmbedding.rotation[augIdx] || [];
+      var neighbors = rotationRow.map(function (id) { return augIndexById[String(id)]; });
+      rowStart[i] = qSize;
+      rowLength[i] = neighbors.length;
+      qSize += neighbors.length;
+      neighborAugIndices[i] = neighbors;
+      var mapped = new Array(neighbors.length);
+      for (var k = 0; k < neighbors.length; k += 1) mapped[k] = interiorIndexByAug[neighbors[k]];
+      neighborInteriorIndices[i] = mapped;
+    }
+
+    return buildLayoutResult({
+      ok: true,
+      augIds: augIds,
+      x0: x0,
+      y0: y0,
+      interiorAugIndices: interiorAugIndices,
+      interiorVertexIds: interiorAugIndices.map(function (idx) { return augIds[idx]; }),
+      interiorIndexByAug: interiorIndexByAug,
+      rowStart: rowStart,
+      rowLength: rowLength,
+      neighborAugIndices: neighborAugIndices,
+      neighborInteriorIndices: neighborInteriorIndices,
+      qSize: qSize,
+      triangles: triangles,
+      boundedFaces: boundedFaces,
+      boundedFaceKeys: boundedFaceKeys,
+      edges: edges,
+      objectiveEdges: objectiveEdges,
+      areaTol: Number.isFinite(input.areaTol) ? Math.max(0, input.areaTol) : 0,
+      faceBarrierWeight: Number.isFinite(input.faceBarrierWeight) ? Math.max(0, input.faceBarrierWeight) : 0,
+      edgeBarrierWeight: Number.isFinite(input.edgeBarrierWeight) ? Math.max(0, input.edgeBarrierWeight) : 0,
+      edgeObjective: normalizeEdgeObjectiveName(input.edgeObjective),
+      rangeWeight: Number.isFinite(input.rangeWeight) ? Math.max(0, input.rangeWeight) : 0,
+      rangeBeta: Number.isFinite(input.rangeBeta) ? Math.max(1e-3, input.rangeBeta) : 6,
+      logAbsWeight: Number.isFinite(input.logAbsWeight) ? Math.max(0, input.logAbsWeight) : 0,
+      logAbsEpsilon: Number.isFinite(input.logAbsEpsilon) ? Math.max(1e-6, input.logAbsEpsilon) : 0.25,
+      augmentedEdgeWeight: augmentedEdgeWeight,
+      edgeBarrierScale2: edgeScaleWeight > 0 ? (edgeScaleSum / edgeScaleWeight) : 1,
+      initialMinEdgeLength2: Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0,
+      initialObjectiveMinEdgeLength2: Number.isFinite(initialObjectiveMinEdgeLength2) ? initialObjectiveMinEdgeLength2 : 0,
+      initialAvgFaceArea: initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1,
+      initialMinFaceArea: Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0,
+      minFaceArea: Number.isFinite(input.minFaceArea) ? Math.max(0, input.minFaceArea) : 0,
+      minEdgeLength2: Number.isFinite(input.minEdgeLength2) ? Math.max(0, input.minEdgeLength2) : 0
+    });
+  }
+
+  function createZeroVector(n) {
+    var out = new Array(n);
+    for (var i = 0; i < n; i += 1) out[i] = 0;
+    return out;
+  }
+
+  function meanValueWeights(px, py, polygonX, polygonY) {
+    var n = polygonX.length;
+    if (!(n > 0) || polygonY.length !== n) return null;
+    var dx = new Array(n);
+    var dy = new Array(n);
+    var dist = new Array(n);
+    var i;
+    for (i = 0; i < n; i += 1) {
+      dx[i] = polygonX[i] - px;
+      dy[i] = polygonY[i] - py;
+      dist[i] = Math.hypot(dx[i], dy[i]);
+      if (!(dist[i] > 1e-12)) {
+        var exact = createZeroVector(n);
+        exact[i] = 1;
+        return exact;
+      }
+    }
+
+    var tanHalf = new Array(n);
+    for (i = 0; i < n; i += 1) {
+      var j = (i + 1) % n;
+      var cross = dx[i] * dy[j] - dy[i] * dx[j];
+      var dot = dx[i] * dx[j] + dy[i] * dy[j];
+      var denom = dist[i] * dist[j] + dot;
+      if (!(Math.abs(denom) > 1e-12)) {
+        return null;
+      }
+      tanHalf[i] = cross / denom;
+      if (!Number.isFinite(tanHalf[i])) {
+        return null;
+      }
+    }
+
+    var weights = new Array(n);
+    var sum = 0;
+    for (i = 0; i < n; i += 1) {
+      var prev = (i - 1 + n) % n;
+      var w = (tanHalf[prev] + tanHalf[i]) / dist[i];
+      if (!Number.isFinite(w) || !(w > 0)) {
+        return null;
+      }
+      weights[i] = w;
+      sum += w;
+    }
+    if (!(sum > 0)) {
+      return null;
+    }
+    for (i = 0; i < n; i += 1) {
+      weights[i] = Math.max(1e-12, weights[i] / sum);
+    }
+    return weights;
+  }
+
+  function inverseDistanceWeights(px, py, polygonX, polygonY) {
+    var n = polygonX.length;
+    if (!(n > 0) || polygonY.length !== n) return null;
+    var weights = new Array(n);
+    var sum = 0;
+    for (var i = 0; i < n; i += 1) {
+      var dx = polygonX[i] - px;
+      var dy = polygonY[i] - py;
+      var dist2 = dx * dx + dy * dy;
+      var w = 1 / Math.max(1e-12, dist2);
+      if (!Number.isFinite(w) || !(w > 0)) {
+        return null;
+      }
+      weights[i] = w;
+      sum += w;
+    }
+    if (!(sum > 0)) {
+      return null;
+    }
+    for (var j = 0; j < n; j += 1) {
+      weights[j] = Math.max(1e-12, weights[j] / sum);
+    }
+    return weights;
+  }
+
+  function buildInitialLogitSeed(data, opts) {
+    if (Array.isArray(opts.q0) && opts.q0.length === data.qSize) {
+      return opts.q0.slice();
+    }
+    var q0 = createZeroVector(data.qSize);
+    for (var i = 0; i < data.interiorAugIndices.length; i += 1) {
+      var augIdx = data.interiorAugIndices[i];
+      var rowOffset = data.rowStart[i];
+      var neighbors = data.neighborAugIndices[i];
+      if (!(neighbors && neighbors.length > 0)) {
+        continue;
+      }
+      var px = data.x0[augIdx];
+      var py = data.y0[augIdx];
+      var polygonX = new Array(neighbors.length);
+      var polygonY = new Array(neighbors.length);
+      for (var k = 0; k < neighbors.length; k += 1) {
+        polygonX[k] = data.x0[neighbors[k]];
+        polygonY[k] = data.y0[neighbors[k]];
+      }
+      var weights = meanValueWeights(px, py, polygonX, polygonY) ||
+        inverseDistanceWeights(px, py, polygonX, polygonY);
+      if (!weights) {
+        var uniform = 1 / neighbors.length;
+        for (k = 0; k < neighbors.length; k += 1) {
+          q0[rowOffset + k] = Math.log(uniform);
+        }
+        continue;
+      }
+      for (k = 0; k < neighbors.length; k += 1) {
+        q0[rowOffset + k] = Math.log(Math.max(1e-12, weights[k]));
+      }
+    }
+    return q0;
+  }
+
+  function computeInteriorMoveStats(data, prevX, prevY, nextX, nextY) {
+    return computeMoveStats(data.interiorAugIndices, function (idx) {
+      return Math.hypot(nextX[idx] - prevX[idx], nextY[idx] - prevY[idx]);
+    }, { moveTol: 1e-9 });
+  }
+
+  function addObjectiveEdgeGradient(data, edge, coeff, dx, dy, zX, zY) {
+    var u = edge[0];
+    var v = edge[1];
+    var iu = data.interiorIndexByAug[u];
+    var iv = data.interiorIndexByAug[v];
+    if (iu >= 0) {
+      zX[iu] += coeff * dx;
+      zY[iu] += coeff * dy;
+    }
+    if (iv >= 0) {
+      zX[iv] -= coeff * dx;
+      zY[iv] -= coeff * dy;
+    }
+  }
+
+  function evaluateObjectiveEdgeTerms(data, objectiveEdges, x, y, edgeTol2, zX, zY) {
+    var m = objectiveEdges.length;
+    var len2 = new Array(m);
+    var lengths = new Array(m);
+    var dxArr = new Array(m);
+    var dyArr = new Array(m);
+    var logLen2 = new Array(m);
+    var logMean = 0;
+    var lengthSum = 0;
+    var i;
+
+    for (i = 0; i < m; i += 1) {
+      var edge = objectiveEdges[i];
+      var u = edge[0];
+      var v = edge[1];
+      var dx = x[u] - x[v];
+      var dy = y[u] - y[v];
+      var currentLen2 = dx * dx + dy * dy;
+      if (!(currentLen2 > edgeTol2)) {
+        return buildLayoutError({ reason: 'invalid-edge-step' });
+      }
+      var currentLength = Math.sqrt(currentLen2);
+      len2[i] = currentLen2;
+      lengths[i] = currentLength;
+      dxArr[i] = dx;
+      dyArr[i] = dy;
+      logLen2[i] = Math.log(currentLen2);
+      logMean += logLen2[i];
+      lengthSum += currentLength;
+    }
+    logMean /= m;
+
+    var edgeStats = summarizeObjectiveEdges(data, objectiveEdges, x, y, edgeTol2, logLen2, logMean);
+    var maxLogDeviation = edgeStats.maxLogDeviation;
+
+    var centeredLogLen2 = new Array(m);
+    var edgeVarianceTerm = 0;
+    for (i = 0; i < m; i += 1) {
+      centeredLogLen2[i] = logLen2[i] - logMean;
+      edgeVarianceTerm += centeredLogLen2[i] * centeredLogLen2[i] / m;
+    }
+
+    var edgeNormalizedLengthTerm = 0;
+    var normalizedLengthResidual = null;
+    var normalizedLengthDot = 0;
+    if (lengthSum > 0) {
+      normalizedLengthResidual = new Array(m);
+      var uniformTarget = 1 / m;
+      for (i = 0; i < m; i += 1) {
+        var normalizedLength = lengths[i] / lengthSum;
+        var residual = normalizedLength - uniformTarget;
+        normalizedLengthResidual[i] = residual;
+        edgeNormalizedLengthTerm += residual * residual / m;
+        normalizedLengthDot += residual * normalizedLength;
+      }
+    }
+
+    var logAbsEpsilon = data.logAbsEpsilon > 0 ? data.logAbsEpsilon : 0.25;
+    var edgeSmoothLogAbsTerm = 0;
+    var logAbsGrad = new Array(m);
+    var logAbsGradMean = 0;
+    for (i = 0; i < m; i += 1) {
+      var smooth = Math.sqrt(centeredLogLen2[i] * centeredLogLen2[i] + logAbsEpsilon * logAbsEpsilon);
+      edgeSmoothLogAbsTerm += (smooth - logAbsEpsilon) / m;
+      logAbsGrad[i] = centeredLogLen2[i] / smooth;
+      logAbsGradMean += logAbsGrad[i];
+    }
+    logAbsGradMean /= m;
+
+    var edgeSoftRangeTerm = 0;
+    var rangePosWeights = null;
+    var rangeNegWeights = null;
+    var rangeBeta = data.rangeBeta > 0 ? data.rangeBeta : 6;
+    if (m > 0) {
+      var maxScaled = -Infinity;
+      var maxNegScaled = -Infinity;
+      for (i = 0; i < m; i += 1) {
+        var scaled = rangeBeta * logLen2[i];
+        var negScaled = -scaled;
+        if (scaled > maxScaled) maxScaled = scaled;
+        if (negScaled > maxNegScaled) maxNegScaled = negScaled;
+      }
+      rangePosWeights = new Array(m);
+      rangeNegWeights = new Array(m);
+      var posSum = 0;
+      var negSum = 0;
+      for (i = 0; i < m; i += 1) {
+        var posWeight = Math.exp(rangeBeta * logLen2[i] - maxScaled);
+        var negWeight = Math.exp(-rangeBeta * logLen2[i] - maxNegScaled);
+        rangePosWeights[i] = posWeight;
+        rangeNegWeights[i] = negWeight;
+        posSum += posWeight;
+        negSum += negWeight;
+      }
+      edgeSoftRangeTerm = (Math.log(posSum) + maxScaled) / rangeBeta -
+        (Math.log(negSum) + maxNegScaled) / rangeBeta;
+      for (i = 0; i < m; i += 1) {
+        rangePosWeights[i] /= posSum;
+        rangeNegWeights[i] /= negSum;
+      }
+    }
+
+    var edgeObjectiveTerm = 0;
+    if (data.edgeObjective === 'normalized-length-l2') {
+      edgeObjectiveTerm += edgeNormalizedLengthTerm;
+      for (i = 0; i < m; i += 1) {
+        var normalizedCoeff = (2 / (m * lengthSum * lengths[i])) * (normalizedLengthResidual[i] - normalizedLengthDot);
+        addObjectiveEdgeGradient(data, objectiveEdges[i], normalizedCoeff, dxArr[i], dyArr[i], zX, zY);
+      }
+    } else if (data.edgeObjective === 'smooth-log-abs') {
+      edgeObjectiveTerm += edgeSmoothLogAbsTerm;
+      for (i = 0; i < m; i += 1) {
+        var logAbsCoeff = (2 / (m * len2[i])) * (logAbsGrad[i] - logAbsGradMean);
+        addObjectiveEdgeGradient(data, objectiveEdges[i], logAbsCoeff, dxArr[i], dyArr[i], zX, zY);
+      }
+    } else if (data.edgeObjective === 'soft-range') {
+      edgeObjectiveTerm += edgeSoftRangeTerm;
+      for (i = 0; i < m; i += 1) {
+        var rangeCoeff = (2 / len2[i]) * (rangePosWeights[i] - rangeNegWeights[i]);
+        addObjectiveEdgeGradient(data, objectiveEdges[i], rangeCoeff, dxArr[i], dyArr[i], zX, zY);
+      }
+    } else {
+      edgeObjectiveTerm += edgeVarianceTerm;
+      for (i = 0; i < m; i += 1) {
+        var varianceCoeff = (4 / m) * centeredLogLen2[i] / len2[i];
+        addObjectiveEdgeGradient(data, objectiveEdges[i], varianceCoeff, dxArr[i], dyArr[i], zX, zY);
+      }
+    }
+
+    if (data.rangeWeight > 0 && data.edgeObjective !== 'soft-range') {
+      edgeObjectiveTerm += data.rangeWeight * edgeSoftRangeTerm;
+      for (i = 0; i < m; i += 1) {
+        var extraRangeCoeff = data.rangeWeight * (2 / len2[i]) * (rangePosWeights[i] - rangeNegWeights[i]);
+        addObjectiveEdgeGradient(data, objectiveEdges[i], extraRangeCoeff, dxArr[i], dyArr[i], zX, zY);
+      }
+    }
+
+    if (data.logAbsWeight > 0 && data.edgeObjective !== 'smooth-log-abs') {
+      edgeObjectiveTerm += data.logAbsWeight * edgeSmoothLogAbsTerm;
+      for (i = 0; i < m; i += 1) {
+        var extraLogAbsCoeff = data.logAbsWeight * (2 / (m * len2[i])) * (logAbsGrad[i] - logAbsGradMean);
+        addObjectiveEdgeGradient(data, objectiveEdges[i], extraLogAbsCoeff, dxArr[i], dyArr[i], zX, zY);
+      }
+    }
+
+    return buildLayoutResult({
+      ok: true,
+      edgeObjectiveTerm: edgeObjectiveTerm,
+      edgeVarianceTerm: edgeVarianceTerm,
+      edgeNormalizedLengthTerm: edgeNormalizedLengthTerm,
+      edgeSmoothLogAbsTerm: edgeSmoothLogAbsTerm,
+      edgeSoftRangeTerm: edgeSoftRangeTerm,
+      logLen2: logLen2,
+      logMean: logMean,
+      edgeStats: edgeStats,
+      maxLogDeviation: maxLogDeviation
+    });
+  }
+
+  function summarizeObjectiveEdges(data, objectiveEdges, x, y, edgeTol2, logLen2, logMean) {
+    var minLength = Infinity;
+    var maxLength = 0;
+    var totalLength = 0;
+    var validCount = 0;
+    var maxLogDeviation = 0;
+    var worstEdge = null;
+    for (var i = 0; i < objectiveEdges.length; i += 1) {
+      var edge = objectiveEdges[i];
+      var u = edge[0];
+      var v = edge[1];
+      var dx = x[u] - x[v];
+      var dy = y[u] - y[v];
+      var len2 = dx * dx + dy * dy;
+      if (!(len2 > edgeTol2)) {
+        continue;
+      }
+      var length = Math.sqrt(len2);
+      if (length < minLength) minLength = length;
+      if (length > maxLength) maxLength = length;
+      totalLength += length;
+      validCount += 1;
+      var centered = logLen2[i] - logMean;
+      var deviation = Math.abs(centered);
+      if (deviation > maxLogDeviation) {
+        maxLogDeviation = deviation;
+        worstEdge = {
+          u: data.augIds[u],
+          v: data.augIds[v],
+          length: length,
+          logDeviation: centered
+        };
+      }
+    }
+    return {
+      minLength: Number.isFinite(minLength) ? minLength : null,
+      maxLength: maxLength > 0 ? maxLength : null,
+      meanLength: validCount > 0 ? (totalLength / validCount) : null,
+      ratio: (Number.isFinite(minLength) && maxLength > 0) ? (minLength / maxLength) : null,
+      maxLogDeviation: maxLogDeviation,
+      worstEdge: worstEdge
+    };
+  }
+
+  function buildPositionMap(data, x, y) {
+    var pos = {};
+    for (var i = 0; i < data.augIds.length; i += 1) {
+      pos[data.augIds[i]] = { x: x[i], y: y[i] };
+    }
+    return pos;
+  }
+
+  function polygonArea2FromArrays(faceIndices, x, y) {
+    if (!faceIndices || faceIndices.length < 3) return 0;
+    var sum = 0;
+    for (var i = 0; i < faceIndices.length; i += 1) {
+      var a = faceIndices[i];
+      var b = faceIndices[(i + 1) % faceIndices.length];
+      sum += x[a] * y[b] - x[b] * y[a];
+    }
+    return sum;
+  }
+
+  function polygonHasSelfIntersection(faceIndices, x, y, eps) {
+    if (!faceIndices || faceIndices.length < 4) return false;
+    var n = faceIndices.length;
+    for (var i = 0; i < n; i += 1) {
+      var a0 = faceIndices[i];
+      var a1 = faceIndices[(i + 1) % n];
+      for (var j = i + 1; j < n; j += 1) {
+        var nextI = (i + 1) % n;
+        var nextJ = (j + 1) % n;
+        if (i === j || i === nextJ || nextI === j) continue;
+        if (i === 0 && nextJ === 0) continue;
+        var b0 = faceIndices[j];
+        var b1 = faceIndices[nextJ];
+        if (segmentsIntersectStrict(
+          { x: x[a0], y: y[a0] },
+          { x: x[a1], y: y[a1] },
+          { x: x[b0], y: y[b0] },
+          { x: x[b1], y: y[b1] },
+          eps
+        )) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function graphHasEdgeCrossings(edgePairs, x, y, eps) {
+    if (!edgePairs || edgePairs.length < 2) return false;
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var e1 = edgePairs[i];
+      var a = e1[0];
+      var b = e1[1];
+      for (var j = i + 1; j < edgePairs.length; j += 1) {
+        var e2 = edgePairs[j];
+        var c = e2[0];
+        var d = e2[1];
+        if (a === c || a === d || b === c || b === d) continue;
+        var pa = { x: x[a], y: y[a] };
+        var pb = { x: x[b], y: y[b] };
+        var pc = { x: x[c], y: y[c] };
+        var pd = { x: x[d], y: y[d] };
+        if (segmentsIntersectStrict(
+          pa,
+          pb,
+          pc,
+          pd,
+          eps
+        )) {
+          return true;
+        }
+        var tol = Number.isFinite(eps) ? Math.max(0, eps) : 1e-9;
+        if (Math.abs(triangleArea2(pa, pb, pc)) <= tol &&
+            pointOnSegmentInterior(pa, pb, pc, tol)) {
+          return true;
+        }
+        if (Math.abs(triangleArea2(pa, pb, pd)) <= tol &&
+            pointOnSegmentInterior(pa, pb, pd, tol)) {
+          return true;
+        }
+        if (Math.abs(triangleArea2(pc, pd, pa)) <= tol &&
+            pointOnSegmentInterior(pc, pd, pa, tol)) {
+          return true;
+        }
+        if (Math.abs(triangleArea2(pc, pd, pb)) <= tol &&
+            pointOnSegmentInterior(pc, pd, pb, tol)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function evaluateObjectiveAndGradient(q, data) {
+    var triangleSlack = Math.max(data.areaTol, 1e-12);
+    var nI = data.interiorAugIndices.length;
+    var lambda = createZeroVector(data.qSize);
+    var L = new Array(nI);
+    var bx = createZeroVector(nI);
+    var by = createZeroVector(nI);
+    var i;
+    for (i = 0; i < nI; i += 1) {
+      L[i] = createZeroVector(nI);
+      L[i][i] = 1;
+      softmaxInto(q, data.rowStart[i], data.rowLength[i], lambda);
+      var neighbors = data.neighborAugIndices[i];
+      var interiorNeighbors = data.neighborInteriorIndices[i];
+      for (var k = 0; k < neighbors.length; k += 1) {
+        var w = lambda[data.rowStart[i] + k];
+        var augIdx = neighbors[k];
+        var interiorIdx = interiorNeighbors[k];
+        if (interiorIdx >= 0) {
+          L[i][interiorIdx] -= w;
+        } else {
+          bx[i] += w * data.x0[augIdx];
+          by[i] += w * data.y0[augIdx];
+        }
+      }
+    }
+
+    var factor = luFactorize(L);
+    if (!factor) return buildLayoutError({ reason: 'EdgeBalancer linear solve failed' });
+    var primal = solveLUWithTwoRhs(factor, bx, by);
+    if (!primal) return buildLayoutError({ reason: 'EdgeBalancer linear solve failed' });
+
+    var x = data.x0.slice();
+    var y = data.y0.slice();
+    for (i = 0; i < nI; i += 1) {
+      var aug = data.interiorAugIndices[i];
+      x[aug] = primal.x1[i];
+      y[aug] = primal.x2[i];
+    }
+
+    var faceAreas = createZeroVector(data.boundedFaceKeys.length);
+    for (i = 0; i < data.triangles.length; i += 1) {
+      var tri = data.triangles[i];
+      var a = tri[0];
+      var b = tri[1];
+      var c = tri[2];
+      var area = 0.5 * ((x[b] - x[a]) * (y[c] - y[a]) - (x[c] - x[a]) * (y[b] - y[a]));
+      if (!(area > -triangleSlack)) {
+        return buildLayoutError({ reason: 'invalid-triangulation-step' });
+      }
+      faceAreas[tri[3]] += area > triangleSlack ? area : triangleSlack;
+    }
+    for (i = 0; i < faceAreas.length; i += 1) {
+      if (!(faceAreas[i] > data.minFaceArea)) {
+        return buildLayoutError({ reason: 'invalid-face-step' });
+      }
+    }
+    for (i = 0; i < data.boundedFaces.length; i += 1) {
+      var boundary = data.boundedFaces[i];
+      if (polygonHasSelfIntersection(boundary, x, y, 1e-9)) {
+        return buildLayoutError({ reason: 'invalid-face-step' });
+      }
+      if (!(polygonArea2FromArrays(boundary, x, y) > 2 * data.areaTol)) {
+        return buildLayoutError({ reason: 'invalid-face-step' });
+      }
+    }
+
+    var objectiveEdges = data.objectiveEdges;
+    if (!(objectiveEdges.length > 0)) {
+      return buildLayoutError({ reason: 'EdgeBalancer requires at least one valid objective edge' });
+    }
+
+    var zX = createZeroVector(nI);
+    var zY = createZeroVector(nI);
+    var E = 0;
+    var edgeTol2 = Math.max(1e-24, data.areaTol);
+    var u;
+    var v;
+    var dx;
+    var dy;
+    var len2;
+    var iu;
+    var iv;
+    var objectiveEval = evaluateObjectiveEdgeTerms(data, objectiveEdges, x, y, edgeTol2, zX, zY);
+    if (!objectiveEval.ok) {
+      return objectiveEval;
+    }
+    var edgeVarianceTerm = objectiveEval.edgeVarianceTerm;
+    var edgeNormalizedLengthTerm = objectiveEval.edgeNormalizedLengthTerm;
+    var edgeSmoothLogAbsTerm = objectiveEval.edgeSmoothLogAbsTerm;
+    var edgeSoftRangeTerm = objectiveEval.edgeSoftRangeTerm;
+    var edgeObjectiveTerm = objectiveEval.edgeObjectiveTerm;
+    var edgeStats = objectiveEval.edgeStats;
+    var maxLogDeviation = objectiveEval.maxLogDeviation;
+    E += edgeObjectiveTerm;
+
+    var faceBarrierTerm = 0;
+    if (data.faceBarrierWeight > 0) {
+      var faceScale = data.initialAvgFaceArea > 1e-12 ? data.initialAvgFaceArea : 1;
+      for (i = 0; i < faceAreas.length; i += 1) {
+        faceBarrierTerm -= data.faceBarrierWeight * Math.log(faceAreas[i] / faceScale);
+      }
+      E += faceBarrierTerm;
+      for (i = 0; i < data.triangles.length; i += 1) {
+        tri = data.triangles[i];
+        a = tri[0];
+        b = tri[1];
+        c = tri[2];
+        var faceIdx = tri[3];
+        var coeff = -data.faceBarrierWeight / faceAreas[faceIdx];
+        var dAxA = 0.5 * (y[b] - y[c]);
+        var dAxB = 0.5 * (y[c] - y[a]);
+        var dAxC = 0.5 * (y[a] - y[b]);
+        var dAyA = 0.5 * (x[c] - x[b]);
+        var dAyB = 0.5 * (x[a] - x[c]);
+        var dAyC = 0.5 * (x[b] - x[a]);
+        iu = data.interiorIndexByAug[a];
+        var ib = data.interiorIndexByAug[b];
+        var ic = data.interiorIndexByAug[c];
+        if (iu >= 0) {
+          zX[iu] += coeff * dAxA;
+          zY[iu] += coeff * dAyA;
+        }
+        if (ib >= 0) {
+          zX[ib] += coeff * dAxB;
+          zY[ib] += coeff * dAyB;
+        }
+        if (ic >= 0) {
+          zX[ic] += coeff * dAxC;
+          zY[ic] += coeff * dAyC;
+        }
+      }
+    }
+
+    var edgeBarrierTerm = 0;
+    if (data.edgeBarrierWeight > 0) {
+      var edgeScale2 = data.edgeBarrierScale2 > 1e-12 ? data.edgeBarrierScale2 : 1;
+      for (i = 0; i < data.edges.length; i += 1) {
+        var edge = data.edges[i];
+        u = edge[0];
+        v = edge[1];
+        var edgeWeight = Number.isFinite(edge[2]) ? Math.max(0, edge[2]) : 1;
+        if (!(edgeWeight > 0)) {
+          continue;
+        }
+        dx = x[u] - x[v];
+        dy = y[u] - y[v];
+        len2 = dx * dx + dy * dy;
+        var safeLen2 = len2 > edgeTol2 ? len2 : edgeTol2;
+        if (!(safeLen2 < edgeScale2)) {
+          continue;
+        }
+        var weightedBarrier = data.edgeBarrierWeight * edgeWeight;
+        edgeBarrierTerm -= weightedBarrier * Math.log(safeLen2 / edgeScale2);
+        var edgeCoeff = -2 * weightedBarrier / safeLen2;
+        iu = data.interiorIndexByAug[u];
+        iv = data.interiorIndexByAug[v];
+        if (iu >= 0) {
+          zX[iu] += edgeCoeff * dx;
+          zY[iu] += edgeCoeff * dy;
+        }
+        if (iv >= 0) {
+          zX[iv] -= edgeCoeff * dx;
+          zY[iv] -= edgeCoeff * dy;
+        }
+      }
+      E += edgeBarrierTerm;
+    }
+
+    if (data.minEdgeLength2 > 0) {
+      for (i = 0; i < data.edges.length; i += 1) {
+        var boundedEdge = data.edges[i];
+        var ox = x[boundedEdge[0]] - x[boundedEdge[1]];
+        var oy = y[boundedEdge[0]] - y[boundedEdge[1]];
+        if (!(ox * ox + oy * oy > data.minEdgeLength2)) {
+          return buildLayoutError({ reason: 'invalid-edge-step' });
+        }
+      }
+    }
+    if (graphHasEdgeCrossings(data.edges, x, y, 1e-9)) {
+      return buildLayoutError({ reason: 'invalid-face-step' });
+    }
+
+    var adjoint = solveTransposeLUWithTwoRhs(factor, zX, zY);
+    if (!adjoint) return buildLayoutError({ reason: 'EdgeBalancer adjoint solve failed' });
+
+    var gradVec = createZeroVector(data.qSize);
+    for (i = 0; i < nI; i += 1) {
+      var rowOffset = data.rowStart[i];
+      var meanx = 0;
+      var meany = 0;
+      neighbors = data.neighborAugIndices[i];
+      for (k = 0; k < neighbors.length; k += 1) {
+        w = lambda[rowOffset + k];
+        augIdx = neighbors[k];
+        meanx += w * x[augIdx];
+        meany += w * y[augIdx];
+      }
+      for (k = 0; k < neighbors.length; k += 1) {
+        augIdx = neighbors[k];
+        w = lambda[rowOffset + k];
+        gradVec[rowOffset + k] = w * (
+          adjoint.x1[i] * (x[augIdx] - meanx) +
+          adjoint.x2[i] * (y[augIdx] - meany)
+        );
+      }
+    }
+
+    return buildLayoutResult({
+      ok: true,
+      E: E,
+      gradVec: gradVec,
+      gradNorm: vecNorm(gradVec),
+      x: x,
+      y: y,
+      maxLogDeviation: maxLogDeviation,
+      objectiveTerms: {
+        edgeObjective: edgeObjectiveTerm,
+        edgeVariance: edgeVarianceTerm,
+        edgeNormalizedLength: edgeNormalizedLengthTerm,
+        edgeSmoothLogAbs: edgeSmoothLogAbsTerm,
+        edgeSoftRange: edgeSoftRangeTerm,
+        faceBarrier: faceBarrierTerm,
+        edgeBarrier: edgeBarrierTerm
+      },
+      edgeStats: edgeStats
+    });
+  }
+
+  function lbfgsDirection(g, S, Y, Rho) {
+    var m = S.length;
+    var alpha = new Array(m);
+    var q = g.slice();
+    for (var i = m - 1; i >= 0; i -= 1) {
+      alpha[i] = Rho[i] * vecDot(S[i], q);
+      q = vecSub(q, vecScale(Y[i], alpha[i]));
+    }
+    var gamma = 1;
+    if (m > 0) {
+      var denom = vecDot(Y[m - 1], Y[m - 1]);
+      if (denom > 1e-14) gamma = vecDot(S[m - 1], Y[m - 1]) / denom;
+    }
+    var r = vecScale(q, gamma);
+    for (i = 0; i < m; i += 1) {
+      var beta = Rho[i] * vecDot(Y[i], r);
+      r = vecAddScaled(r, S[i], alpha[i] - beta);
+    }
+    return vecScale(r, -1);
+  }
+
+  async function runEdgeBalancerOptimization(q0, data, opts) {
+    var maxIters = resolveIntOption(opts.maxIters, 80, 1);
+    var gradTol = resolveFloatOption(opts.gradTol, 1e-5, 0);
+    var stepTol = resolveFloatOption(opts.stepTol, 1e-10, 0);
+    var memory = resolveIntOption(opts.lbfgsMemory, 10, 1);
+    var maxStepNorm = resolveFloatOption(opts.maxStepNorm, 2.0, 1e-6);
+    var maxPositionStep = resolveFloatOption(opts.maxPositionStep, Infinity, 1e-9);
+    var lineSearchC1 = resolveFloatOption(opts.lineSearchC1, 1e-4, 0);
+    var lineSearchTau = resolveFloatOption(opts.lineSearchTau, 0.5, 0.1, 0.9);
+    var q = q0.slice();
+    var current = evaluateObjectiveAndGradient(q, data);
+    if (!current.ok) return current;
+
+    var best = current;
+    var bestQ = q.slice();
+    var S = [];
+    var Y = [];
+    var Rho = [];
+    var onIteration = resolveFunctionOption(opts.onIteration, null);
+    var movementTracker = opts.movementTracker || null;
+    var movementStatus = { stableIterations: 0, stableIterLimit: 0, converged: false };
+    var stopReason = 'max-iters';
+    var moveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
+
+    for (var iter = 1; iter <= maxIters; iter += 1) {
+      if (current.gradNorm <= gradTol) {
+        stopReason = 'grad-converged';
+        break;
+      }
+
+      var prevX = current.x;
+      var prevY = current.y;
+      var d = lbfgsDirection(current.gradVec, S, Y, Rho);
+      if (!(vecDot(current.gradVec, d) < 0)) d = vecScale(current.gradVec, -1);
+      var directionNorm = vecNorm(d);
+      if (directionNorm > maxStepNorm) {
+        d = vecScale(d, maxStepNorm / directionNorm);
+      }
+
+      var gtd = vecDot(current.gradVec, d);
+      var accepted = null;
+      var lineSearchAttempt;
+      for (lineSearchAttempt = 0; lineSearchAttempt < 2 && !accepted; lineSearchAttempt += 1) {
+        var searchDir = d;
+        if (lineSearchAttempt === 1) {
+          searchDir = vecScale(current.gradVec, -1);
+          directionNorm = vecNorm(searchDir);
+          if (directionNorm > maxStepNorm) {
+            searchDir = vecScale(searchDir, maxStepNorm / directionNorm);
+          }
+          gtd = vecDot(current.gradVec, searchDir);
+          if (!(gtd < 0)) {
+            break;
+          }
+          if (S.length > 0) {
+            S = [];
+            Y = [];
+            Rho = [];
+          }
+        }
+        var alpha = 1.0;
+        while (alpha >= 1e-12) {
+          var qTrial = vecAddScaled(q, searchDir, alpha);
+          var trial = evaluateObjectiveAndGradient(qTrial, data);
+          if (trial.ok) {
+            var trialMoveStats = computeInteriorMoveStats(data, current.x, current.y, trial.x, trial.y);
+            if (trialMoveStats.maxMove > maxPositionStep) {
+              alpha *= lineSearchTau;
+              continue;
+            }
+          }
+          if (trial.ok && trial.E <= current.E + lineSearchC1 * alpha * gtd) {
+            accepted = { q: qTrial, eval: trial };
+            break;
+          }
+          alpha *= lineSearchTau;
+        }
+      }
+      if (!accepted) {
+        stopReason = 'line-search-failed';
+        break;
+      }
+
+      var s = vecSub(accepted.q, q);
+      var y = vecSub(accepted.eval.gradVec, current.gradVec);
+      var stepNorm = vecNorm(s);
+      q = accepted.q;
+      current = accepted.eval;
+      if (current.E < best.E) {
+        best = current;
+        bestQ = q.slice();
+      }
+
+      if (movementTracker) {
+        moveStats = computeInteriorMoveStats(data, prevX, prevY, current.x, current.y);
+        movementStatus = movementTracker.update(moveStats, iter);
+      }
+
+      if (onIteration) {
+        await onIteration({
+          iter: iter,
+          maxIters: maxIters,
+          objective: current.E,
+          maxLogDeviation: current.maxLogDeviation,
+          edgeLengthRatio: current.edgeStats ? current.edgeStats.ratio : null,
+          minEdgeLength: current.edgeStats ? current.edgeStats.minLength : null,
+          maxEdgeLength: current.edgeStats ? current.edgeStats.maxLength : null,
+          meanEdgeLength: current.edgeStats ? current.edgeStats.meanLength : null,
+          positions: buildPositionMap(data, current.x, current.y),
+          movedVertices: moveStats.movedVertices,
+          maxMove: moveStats.maxMove,
+          avgMove: moveStats.avgMove,
+          debug: {
+            gradNorm: current.gradNorm,
+            stableIterCount: movementStatus.stableIterations,
+            stableIterLimit: movementStatus.stableIterLimit,
+            stepNorm: stepNorm,
+            objectiveTerms: current.objectiveTerms || null,
+            worstEdge: current.edgeStats ? current.edgeStats.worstEdge : null
+          }
+        });
+      }
+
+      if (movementStatus.converged) {
+        stopReason = movementStatus.reason || 'movement-converged';
+        break;
+      }
+      if (stepNorm < stepTol) {
+        stopReason = 'step-converged';
+        break;
+      }
+
+      var ys = vecDot(y, s);
+      if (ys > 1e-14) {
+        if (S.length === memory) {
+          S.shift();
+          Y.shift();
+          Rho.shift();
+        }
+        S.push(s);
+        Y.push(y);
+        Rho.push(1 / ys);
+      }
+    }
+
+    return buildLayoutResult({
+      ok: true,
+      q: bestQ,
+      pos: buildPositionMap(data, best.x, best.y),
+      E: best.E,
+      gradNorm: best.gradNorm,
+      maxLogDeviation: best.maxLogDeviation,
+      objectiveTerms: best.objectiveTerms || null,
+      edgeStats: best.edgeStats || null,
+      stopReason: stopReason
+    });
+  }
+
+  async function computeEdgeBalancerPositions(nodeIds, edgePairs, options) {
+    var opts = options || {};
+    var maxIters = resolveIntOption(opts.maxIters, 80, 1);
+    var graph = normalizeGraphInput(nodeIds, edgePairs);
+
+    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'EdgeBalancer layout',
+      minNodeCount: 3,
+      augmentationMethod: opts.augmentationMethod || null,
+      currentPositions: opts.currentPositions || null
+    });
+    if (!context || !context.ok) {
+      return buildLayoutError(context || { message: 'EdgeBalancer setup failed' });
+    }
+
+    var g = context.graph;
+    var outerFace = context.augmentedOuterFace || context.outerFace;
+    var augmented = context.augmented;
+    var initPos = context.posById;
+    var hasExplicitMinFaceArea = Number.isFinite(opts.minFaceArea) && opts.minFaceArea >= 0;
+    var hasExplicitMinEdgeLength2 = Number.isFinite(opts.minEdgeLength2) && opts.minEdgeLength2 >= 0;
+    var areaTol = resolveNonNegativeOption(opts.areaTol, 1e-15);
+    var data = buildEdgeBalancerData({
+      augmentedEdgePairs: augmented.edgePairs,
+      augmentedEmbedding: augmented.embedding,
+      objectiveEdgePairs: g.edgePairs,
+      augmentedEdgeWeight: resolveFloatOption(opts.augmentedEdgeWeight, 0.25, 0),
+      edgeObjective: opts.edgeObjective,
+      rangeWeight: resolveFloatOption(opts.rangeWeight, 0.05, 0),
+      rangeBeta: resolveFloatOption(opts.rangeBeta, 6, 1e-3),
+      logAbsWeight: resolveFloatOption(opts.logAbsWeight, 0.5, 0),
+      logAbsEpsilon: resolveFloatOption(opts.logAbsEpsilon, 0.25, 1e-6),
+      outerFace: outerFace,
+      initPos: initPos,
+      areaTol: areaTol,
+      faceBarrierWeight: resolveFloatOption(opts.faceBarrierWeight, 0.02, 0),
+      edgeBarrierWeight: resolveFloatOption(opts.edgeBarrierWeight, 0, 0),
+      minFaceArea: resolveNonNegativeOption(opts.minFaceArea, 0),
+      minEdgeLength2: resolveNonNegativeOption(opts.minEdgeLength2, 0)
+    });
+    if (!data.ok) {
+      return buildLayoutError({
+        message: data.reason || 'EdgeBalancer setup failed',
+        graph: g,
+        outerFace: outerFace,
+        augmented: augmented
+      });
+    }
+    if (!hasExplicitMinFaceArea) {
+      data.minFaceArea = Math.max(0, 0.2 * data.initialMinFaceArea);
+    }
+    if (!hasExplicitMinEdgeLength2) {
+      data.minEdgeLength2 = data.initialObjectiveMinEdgeLength2 > 0
+        ? 0.05 * data.initialObjectiveMinEdgeLength2
+        : 0;
+    }
+
+    var movementScale = global.GraphUtils.computeDrawingDiameter(augmented.nodeIds, initPos);
+    var q0 = buildInitialLogitSeed(data, opts);
+    var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
+      minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),
+      stableIterLimit: resolveIntOption(opts.stableIterLimit, 8, 1),
+      maxMoveTol: resolveNonNegativeOption(opts.movementStopTol, 1e-6 * movementScale),
+      avgMoveTol: resolveNonNegativeOption(opts.avgMovementStopTol, 2e-7 * movementScale)
+    });
+
+    var iterationCount = 0;
+    var result = await runEdgeBalancerOptimization(q0, data, {
+      maxIters: maxIters,
+      gradTol: resolveFloatOption(opts.gradTol, 1e-5, 0),
+      stepTol: resolveFloatOption(opts.stepTol, 1e-6, 0),
+      lbfgsMemory: resolveIntOption(opts.lbfgsMemory, 10, 1),
+      maxPositionStep: resolveFloatOption(opts.maxPositionStep, 0.1 * movementScale, 1e-9),
+      movementTracker: movementTracker,
+      onIteration: async function (progress) {
+        iterationCount = progress.iter;
+        if (typeof opts.onIteration === 'function') {
+          var progressEdgeScore = Metrics.computeUniformEdgeLengthScore(g.edgePairs, progress.positions);
+          await opts.onIteration(Object.assign({}, progress, {
+            edgeLengthScore: progressEdgeScore && progressEdgeScore.ok ? progressEdgeScore.quality : null
+          }));
+        }
+      }
+    });
+    if (!result.ok) {
+      return buildLayoutError({
+        message: result.reason || 'EdgeBalancer optimization failed',
+        graph: g,
+        outerFace: outerFace,
+        augmented: augmented
+      });
+    }
+    var hasCrossings = hasPositionCrossings(result.pos, g.edgePairs);
+    if (hasCrossings) {
+      return buildLayoutError({
+        stopReason: result.stopReason,
+        graph: g,
+        outerFace: outerFace,
+        augmented: augmented,
+        message: 'EdgeBalancer produced a non-plane drawing'
+      });
+    }
+    var edgeScore = Metrics.computeUniformEdgeLengthScore(g.edgePairs, result.pos);
+    return buildLayoutResult({
+      ok: true,
+      nodeIds: g.nodeIds,
+      edgePairs: g.edgePairs,
+      outerFace: outerFace,
+      graph: g,
+      augmented: augmented,
+      pos: result.pos,
+      stopReason: result.stopReason,
+      iters: iterationCount,
+      objective: result.E,
+      maxLogDeviation: result.maxLogDeviation,
+      objectiveTerms: result.objectiveTerms || null,
+      edgeStats: result.edgeStats || null,
+      edgeLengthScore: edgeScore && edgeScore.ok ? edgeScore.quality : null
+    });
+  }
+
+  async function applyEdgeBalancerLayout(cy, options) {
+    var opts = options || {};
+    var iterationCount = 0;
+    return PlaygroundUtils.runIncrementalLayout(cy, opts, {
+      useSharedPreparedSeed: true,
+      sharedSeedFailureLabel: 'EdgeBalancer layout',
+      compute: computeEdgeBalancerPositions,
+      patchComputeOptions: function (ctx) {
+        return {
+          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy),
+          onIteration: async function (progress) {
+            iterationCount = progress.iter;
+            await ctx.onProgress(progress);
+          }
+        };
+      },
+      getPositions: function (result) {
+        return result.pos;
+      },
+      buildResult: function (ctx) {
+        var result = ctx.result;
+        var message = buildLayoutStatusMessage('EdgeBalancer', {
+          dummyCount: result.augmented.dummyCount,
+          iters: iterationCount,
+          stopReason: result.stopReason,
+          extraParts: [
+            Number.isFinite(result.edgeLengthScore) ? 'edge score ' + result.edgeLengthScore.toFixed(3) : null,
+            Number.isFinite(result.objective) ? 'obj ' + result.objective.toFixed(3) : null
+          ]
+        });
+        return {
+          ok: true,
+          stopReason: result.stopReason,
+          edgeLengthScore: result.edgeLengthScore,
+          message: message,
+          debugState: PlaygroundUtils.createAugmentationDebugState(
+            result.graph,
+            result.outerFace,
+            result.augmented,
+            result.pos
+          )
+        };
+      },
+      failureMessage: 'EdgeBalancer failed'
+    });
+  }
+
+  global.PlanarVibeEdgeBalancer = {
+    computeEdgeBalancerPositions: computeEdgeBalancerPositions,
+    applyEdgeBalancerLayout: applyEdgeBalancerLayout
+  };
+})(window);

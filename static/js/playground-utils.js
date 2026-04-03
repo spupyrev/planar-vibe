@@ -58,6 +58,7 @@
     if (key === 'air' ||
         key === 'ppag' ||
         key === 'facebalancer' ||
+        key === 'edgebalancer' ||
         key === 'reweighttutte' ||
         key === 'fd-uniform' ||
         key === 'impred') {
@@ -72,14 +73,26 @@
     return Object.assign({}, base, overrides || {});
   }
 
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
-    if (!embedding || !embedding.ok) {
-      return { ok: false, reason: 'prepareAugmentedTriangulation requires a planar embedding' };
+  function normalizeAugmentationMethodName(methodName) {
+    var key = String(methodName || '').trim().toLowerCase();
+    if (!key || key === 'default') {
+      return 'triangulateByFaceStellation';
     }
-    if (!Array.isArray(outerFace) || outerFace.length < 3) {
-      return { ok: false, reason: 'prepareAugmentedTriangulation requires an outer face' };
+    if (key === 'triangulatebyfacestellation' ||
+        key === 'triangulate-by-face-stellation' ||
+        key === 'face-stellation') {
+      return 'triangulateByFaceStellation';
     }
-    var augmented = GraphUtils.triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
+    if (key === 'triangulatebyoutercycle' ||
+        key === 'triangulate-by-outer-cycle' ||
+        key === 'outercycle' ||
+        key === 'outer-cycle') {
+      return 'triangulateByOuterCycle';
+    }
+    return null;
+  }
+
+  function normalizePreparedAugmentationResult(augmented, failureLabel) {
     var label = failureLabel || 'layout';
     if (!augmented || !augmented.ok) {
       return { ok: false, reason: (augmented && augmented.reason) || (label + ' augmentation failed') };
@@ -97,8 +110,57 @@
       dummyCount: augmented.dummyCount || 0,
       dummyFaceVerticesById: dummyFaceVerticesById,
       dummyFaceKeyById: dummyFaceKeyById,
-      embedding: augmented.embedding
+      embedding: augmented.embedding,
+      outerFace: augmented.embedding && Array.isArray(augmented.embedding.outerFace)
+        ? augmented.embedding.outerFace.slice().map(String)
+        : null
     };
+  }
+
+  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
+    if (!embedding || !embedding.ok) {
+      return { ok: false, reason: 'prepareAugmentedTriangulation requires a planar embedding' };
+    }
+    if (!Array.isArray(outerFace) || outerFace.length < 3) {
+      return { ok: false, reason: 'prepareAugmentedTriangulation requires an outer face' };
+    }
+    var augmented = GraphUtils.triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
+    return normalizePreparedAugmentationResult(augmented, failureLabel);
+  }
+
+  function prepareOuterCycleTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
+    if (!embedding || !embedding.ok) {
+      return { ok: false, reason: 'prepareOuterCycleTriangulation requires a planar embedding' };
+    }
+    if (!Array.isArray(outerFace) || outerFace.length < 3) {
+      return { ok: false, reason: 'prepareOuterCycleTriangulation requires an outer face' };
+    }
+    var augmented = GraphUtils.triangulateByOuterCycle(nodeIds, edgePairs, embedding, outerFace, options);
+    return normalizePreparedAugmentationResult(augmented, failureLabel);
+  }
+
+  function chooseLongestFaceFromEmbedding(embedding) {
+    if (!embedding) {
+      return null;
+    }
+    var faces = Array.isArray(embedding.faces) ? embedding.faces : [];
+    var best = null;
+    for (var i = 0; i < faces.length; i += 1) {
+      var face = faces[i];
+      if (!Array.isArray(face) || face.length < 3) {
+        continue;
+      }
+      var mapped = face.slice().map(String);
+      if (!best || mapped.length > best.length) {
+        best = mapped;
+      }
+    }
+    if (best) {
+      return best;
+    }
+    return Array.isArray(embedding.outerFace) && embedding.outerFace.length >= 3
+      ? embedding.outerFace.slice().map(String)
+      : null;
   }
 
   function prepareGraphData(graph, config) {
@@ -114,6 +176,11 @@
       return { ok: false, message: label + ' requires at least ' + minNodeCount + ' vertices' };
     }
 
+    var augmentationMethod = normalizeAugmentationMethodName(cfg.augmentationMethod);
+    if (!augmentationMethod) {
+      return { ok: false, message: 'Unknown augmentation method: ' + String(cfg.augmentationMethod) };
+    }
+
     var drawingEmbedding = GraphUtils.extractEmbeddingFromPositions(
       normalizedGraph.nodeIds,
       normalizedGraph.edgePairs,
@@ -125,32 +192,58 @@
       return { ok: false, message: label + ' requires a planar graph' };
     }
 
-    var outerFace = Array.isArray(baseEmbedding.outerFace) && baseEmbedding.outerFace.length >= 3
-      ? baseEmbedding.outerFace.slice().map(String)
-      : null;
-    if (!outerFace || outerFace.length < 3) {
+    var selectedOuterFace = null;
+    if (augmentationMethod === 'triangulateByOuterCycle') {
+      selectedOuterFace = drawingEmbedding && drawingEmbedding.ok
+        ? drawingEmbedding.outerFace.slice().map(String)
+        : chooseLongestFaceFromEmbedding(baseEmbedding);
+    } else {
+      selectedOuterFace = Array.isArray(baseEmbedding.outerFace) && baseEmbedding.outerFace.length >= 3
+        ? baseEmbedding.outerFace.slice().map(String)
+        : null;
+    }
+    if (!selectedOuterFace || selectedOuterFace.length < 3) {
       return { ok: false, message: 'Could not determine outer boundary for ' + label };
     }
 
-    var augmented = prepareAugmentedTriangulation(
-      normalizedGraph.nodeIds,
-      normalizedGraph.edgePairs,
-      baseEmbedding,
-      outerFace,
-      label,
-      cfg.augmentationOptions || null
-    );
+    var augmented;
+    if (augmentationMethod === 'triangulateByFaceStellation') {
+      augmented = prepareAugmentedTriangulation(
+        normalizedGraph.nodeIds,
+        normalizedGraph.edgePairs,
+        baseEmbedding,
+        selectedOuterFace,
+        label,
+        cfg.augmentationOptions || null
+      );
+    } else if (augmentationMethod === 'triangulateByOuterCycle') {
+      augmented = prepareOuterCycleTriangulation(
+        normalizedGraph.nodeIds,
+        normalizedGraph.edgePairs,
+        baseEmbedding,
+        selectedOuterFace,
+        label,
+        cfg.augmentationOptions || null
+      );
+    }
     if (!augmented.ok) {
       return { ok: false, message: augmented.reason || (label + ' augmentation failed') };
     }
+    augmented.method = augmentationMethod;
+    var augmentedOuterFace = Array.isArray(augmented.outerFace) && augmented.outerFace.length >= 3
+      ? augmented.outerFace.slice().map(String)
+      : selectedOuterFace.slice().map(String);
 
     return {
       ok: true,
       graph: normalizedGraph,
       baseEmbedding: baseEmbedding,
-      outerFace: outerFace,
+      baseOuterFace: selectedOuterFace,
+      outerFace: selectedOuterFace.slice().map(String),
+      augmentedOuterFace: augmentedOuterFace,
       augmented: augmented,
       embedding: augmented.embedding,
+      augmentationMethod: augmentationMethod,
       augmentedNodeIds: augmented.nodeIds,
       augmentedEdgePairs: augmented.edgePairs,
       augmentedDummyCount: augmented.dummyCount || 0
@@ -235,9 +328,44 @@
     }
   }
 
-  function applyAndFit(cy, posById, fitPadding) {
+  function computePositionBounds(posById, nodeIds) {
+    var ids = Array.isArray(nodeIds) ? nodeIds.map(String) : [];
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (var i = 0; i < ids.length; i += 1) {
+      var p = posById ? posById[ids[i]] : null;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return null;
+    }
+    return { x1: minX, y1: minY, x2: maxX, y2: maxY };
+  }
+
+  function fitCy(cy, fitPadding, bounds) {
+    if (!cy || typeof cy.fit !== 'function') {
+      return;
+    }
+    var padding = Number.isFinite(fitPadding) ? fitPadding : 24;
+    if (bounds && Number.isFinite(bounds.x1) && Number.isFinite(bounds.y1) &&
+        Number.isFinite(bounds.x2) && Number.isFinite(bounds.y2)) {
+      cy.fit(bounds, padding);
+      return;
+    }
+    cy.fit(undefined, padding);
+  }
+
+  function applyAndFit(cy, posById, fitPadding, fitBounds) {
     applyPositionsToCy(cy, posById);
-    cy.fit(undefined, Number.isFinite(fitPadding) ? fitPadding : 24);
+    fitCy(cy, fitPadding, fitBounds || null);
   }
 
   function waitForNextFrame(delayMs) {
@@ -323,7 +451,7 @@
     var renderEvery = timing.renderEvery;
     var yieldEvery = timing.yieldEvery;
     var fitPadding = Number.isFinite(config.fitPadding) ? Math.max(0, config.fitPadding) : 24;
-    var didFit = false;
+    var didFit = !!config.initialDidFit;
 
     function renderCurrent() {
       applyPositionsToCy(cy, getPositions());
@@ -394,6 +522,25 @@
     var renderEvery = timing.renderEvery;
     var yieldEvery = timing.yieldEvery;
     var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
+    var didInitialFit = false;
+
+    if (interactive && cfg.useSharedPreparedSeed) {
+      var initialPrepared = prepareGraphAndLayoutData(graph, {
+        failureLabel: String(cfg.sharedSeedFailureLabel || cfg.failureMessage || 'Layout'),
+        currentPositions: currentPositionsFromCy(cy),
+        augmentationMethod: opts.augmentationMethod
+      });
+      if (initialPrepared && initialPrepared.ok && initialPrepared.posById) {
+        livePositions = initialPrepared.posById;
+        applyAndFit(
+          cy,
+          livePositions,
+          fitPadding,
+          computePositionBounds(livePositions, initialPrepared.augmentedOuterFace || initialPrepared.outerFace)
+        );
+        didInitialFit = true;
+      }
+    }
 
     var renderer = createIncrementalRenderer({
       cy: cy,
@@ -403,7 +550,8 @@
       delayMs: delayMs,
       renderEvery: renderEvery,
       yieldEvery: yieldEvery,
-      fitPadding: fitPadding
+      fitPadding: fitPadding,
+      initialDidFit: didInitialFit
     });
     await renderer.begin();
 
@@ -614,13 +762,15 @@
     var normalizedGraph = prepared.graph;
     var baseEmbedding = prepared.baseEmbedding;
     var outerFace = prepared.outerFace;
+    var augmentedOuterFace = prepared.augmentedOuterFace || prepared.outerFace;
     var augmented = prepared.augmented;
 
-    var init = computeSharedBarycentricSeed(augmented.nodeIds, augmented.edgePairs, outerFace, {
+    var init = computeSharedBarycentricSeed(augmented.nodeIds, augmented.edgePairs, augmentedOuterFace, {
       graph: normalizedGraph,
       baseEmbedding: baseEmbedding,
       augmented: augmented,
       outerFace: outerFace,
+      augmentedOuterFace: augmentedOuterFace,
       config: cfg
     });
     if (!init || !init.ok || !init.pos) {
@@ -628,7 +778,7 @@
     }
     var verification = verifyEmbeddingWithPositions(augmented.embedding, init.pos, {
       edgePairs: augmented.edgePairs,
-      outerFace: outerFace
+      outerFace: augmentedOuterFace
     });
     if (!verification.ok) {
       return { ok: false, message: verification.message || (label + ' initialization failed') };
@@ -639,9 +789,11 @@
       graph: normalizedGraph,
       baseEmbedding: baseEmbedding,
       outerFace: outerFace,
+      augmentedOuterFace: augmentedOuterFace,
       augmented: augmented,
-      posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.pos, outerFace),
-      movableVertices: GraphUtils.collectMovableVertices(augmented.nodeIds, outerFace),
+      augmentationMethod: prepared.augmentationMethod,
+      posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.pos, augmentedOuterFace),
+      movableVertices: GraphUtils.collectMovableVertices(augmented.nodeIds, augmentedOuterFace),
       initResult: init
     };
   }

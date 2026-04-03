@@ -94,6 +94,7 @@ function loadBrowserModules() {
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
+    'static/js/layout-edgebalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -122,6 +123,7 @@ const Tutte = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
+const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
 const CEG23 = modules.PlanarVibeCEG23Bfs;
 const CEG23XY = modules.PlanarVibeCEG23Xy;
 const ImPrEd = modules.PlanarVibeImPrEd;
@@ -178,6 +180,8 @@ function buildMockCy(nodeIds, edgePairs) {
     _nodeObjs: nodeObjs,
     _edgeObjs: edgeObjs,
     _fitCalls: 0,
+    _fitArg: null,
+    _fitPadding: null,
     nodes() {
       const arr = this._nodeObjs;
       arr.toArray = function toArray() {
@@ -188,8 +192,10 @@ function buildMockCy(nodeIds, edgePairs) {
     edges() {
       return this._edgeObjs;
     },
-    fit() {
+    fit(arg, padding) {
       this._fitCalls += 1;
+      this._fitArg = arg === undefined ? null : arg;
+      this._fitPadding = padding;
     }
   };
 }
@@ -676,6 +682,147 @@ test('raw shared barycentric seed on grid2x20 returns coordinates that fail embe
 
   assert.equal(verify.ok, false);
   assert.match(String(verify.message || ''), /crossings|degenerate/i);
+});
+
+test('prepareGraphData defaults to face-stellation triangulation', () => {
+  const prepared = PlaygroundUtils.prepareGraphData({
+    nodeIds: ['1', '2', '3', '4'],
+    edgePairs: [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
+  }, {
+    failureLabel: 'Augmentation method test'
+  });
+
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
+  assert.equal(prepared.augmentationMethod, 'triangulateByFaceStellation');
+  assert.equal(prepared.augmented && prepared.augmented.method, 'triangulateByFaceStellation');
+});
+
+test('prepareGraphData can use the outer-cycle augmentation on a drawing with repeated outer-face vertices', () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c', 'd', 'e'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
+  };
+  const pos = {
+    a: { x: 0, y: 0 },
+    b: { x: 1, y: 1 },
+    c: { x: 0, y: 2 },
+    d: { x: 3, y: 2 },
+    e: { x: 3, y: 0 }
+  };
+
+  const prepared = PlaygroundUtils.prepareGraphData(graph, {
+    failureLabel: 'Outer cycle test',
+    augmentationMethod: 'outer-cycle',
+    currentPositions: pos
+  });
+
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
+  assert.equal(prepared.augmentationMethod, 'triangulateByOuterCycle');
+  assert.equal(prepared.augmented && prepared.augmented.method, 'triangulateByOuterCycle');
+  assert.equal((prepared.outerFace || []).filter((id) => id === 'b').length, 2);
+  assert.equal(prepared.augmentedDummyCount, prepared.outerFace.length);
+  assert.deepEqual(prepared.augmentedOuterFace, prepared.embedding.outerFace);
+  assert.equal(new Set(prepared.augmentedOuterFace).size, prepared.augmentedOuterFace.length, 'outer dummy cycle should use distinct dummy vertices');
+});
+
+test('prepareGraphData rejects unknown augmentation methods', () => {
+  const prepared = PlaygroundUtils.prepareGraphData({
+    nodeIds: ['1', '2', '3'],
+    edgePairs: [['1', '2'], ['2', '3'], ['3', '1']]
+  }, {
+    failureLabel: 'Augmentation method test',
+    augmentationMethod: 'futureMagic'
+  });
+
+  assert.equal(prepared && prepared.ok, false);
+  assert.match(String(prepared && prepared.message || ''), /unknown augmentation method/i);
+});
+
+test('shared incremental runner fits once from the prepared seed before progress updates', async () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c', 'd', 'e'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
+  };
+  const pos = {
+    a: { x: 0, y: 0 },
+    b: { x: 1, y: 1 },
+    c: { x: 0, y: 2 },
+    d: { x: 3, y: 2 },
+    e: { x: 3, y: 0 }
+  };
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  for (const node of cy.nodes()) {
+    const p = pos[String(node.id())];
+    if (p) {
+      node.position(p);
+    }
+  }
+
+  const finalPos = {};
+  for (const id of graph.nodeIds) {
+    const p = pos[String(id)];
+    finalPos[String(id)] = { x: p.x + 50, y: p.y - 30 };
+  }
+  const preparedSeed = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    failureLabel: 'PPAG layout',
+    currentPositions: pos,
+    augmentationMethod: 'outer-cycle'
+  });
+  assert.equal(preparedSeed && preparedSeed.ok, true, preparedSeed && preparedSeed.message ? preparedSeed.message : 'shared seed prep failed');
+  const outerSeedPositions = (preparedSeed.augmentedOuterFace || []).map((id) => preparedSeed.posById[String(id)]);
+  const expectedFitBounds = {
+    x1: Math.min(...outerSeedPositions.map((p) => p.x)),
+    y1: Math.min(...outerSeedPositions.map((p) => p.y)),
+    x2: Math.max(...outerSeedPositions.map((p) => p.x)),
+    y2: Math.max(...outerSeedPositions.map((p) => p.y))
+  };
+
+  let fitCountAtComputeStart = -1;
+  const result = await PlaygroundUtils.runIncrementalLayout(cy, {
+    delayMs: 0,
+    yieldEvery: 50,
+    augmentationMethod: 'outer-cycle'
+  }, {
+    useSharedPreparedSeed: true,
+    sharedSeedFailureLabel: 'PPAG layout',
+    patchComputeOptions: function (ctx) {
+      return {
+        onIteration: ctx.onProgress
+      };
+    },
+    compute: async function (_nodeIds, _edgePairs, options) {
+      fitCountAtComputeStart = cy._fitCalls;
+      await options.onIteration({
+        iter: 1,
+        maxIters: 2,
+        positions: finalPos
+      });
+      await options.onIteration({
+        iter: 2,
+        maxIters: 2,
+        positions: finalPos
+      });
+      return {
+        ok: true,
+        pos: finalPos
+      };
+    },
+    getPositions: function (runResult) {
+      return runResult.pos;
+    },
+    failureMessage: 'incremental seed test failed'
+  });
+
+  assert.equal(result && result.ok, true, result && result.message ? result.message : 'runIncrementalLayout failed');
+  assert.equal(fitCountAtComputeStart, 1);
+  assert.equal(cy._fitCalls, 1);
+  assert.equal(cy._fitArg && cy._fitArg.x1, expectedFitBounds.x1);
+  assert.equal(cy._fitArg && cy._fitArg.y1, expectedFitBounds.y1);
+  assert.equal(cy._fitArg && cy._fitArg.x2, expectedFitBounds.x2);
+  assert.equal(cy._fitArg && cy._fitArg.y2, expectedFitBounds.y2);
+  for (const node of cy.nodes()) {
+    assert.deepEqual(node.position(), finalPos[String(node.id())]);
+  }
 });
 
 test('shared movement convergence helper stops after enough stable iterations', () => {
@@ -1185,6 +1332,42 @@ test('Air layout stays plane on 5 random planar graphs', async () => {
   }
 });
 
+test('Air outer-ring face weight changes the outer-cycle solve without changing target areas', async () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c', 'd', 'e'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
+  };
+  const pos = {
+    a: { x: 0, y: 0 },
+    b: { x: 1, y: 1 },
+    c: { x: 0, y: 2 },
+    d: { x: 3, y: 2 },
+    e: { x: 3, y: 0 }
+  };
+
+  const baseline = await Air.computeAirPositions(graph.nodeIds, graph.edgePairs, {
+    augmentationMethod: 'outer-cycle',
+    currentPositions: pos,
+    maxSweeps: 3,
+    outerRingFaceWeight: 1
+  });
+  const reduced = await Air.computeAirPositions(graph.nodeIds, graph.edgePairs, {
+    augmentationMethod: 'outer-cycle',
+    currentPositions: pos,
+    maxSweeps: 3,
+    outerRingFaceWeight: 0
+  });
+
+  assert.equal(baseline && baseline.ok, true, baseline && baseline.message ? baseline.message : 'baseline Air solve failed');
+  assert.equal(reduced && reduced.ok, true, reduced && reduced.message ? reduced.message : 'reweighted Air solve failed');
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(baseline.pos, graph.nodeIds)), false);
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(reduced.pos, graph.nodeIds)), false);
+  assert.notEqual(
+    JSON.stringify(GraphUtils.filterPositions(baseline.pos, graph.nodeIds)),
+    JSON.stringify(GraphUtils.filterPositions(reduced.pos, graph.nodeIds))
+  );
+});
+
 test('PPAG layout applies on planar sample and improves bounded face balance', async () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
@@ -1364,6 +1547,193 @@ test('FaceBalancer avoids severe edge and face collapse on planar3tree30', async
   assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'FaceBalancer introduced crossings on planar3tree30');
   assert.ok((edgeLengthRatio(graph.edgePairs, positionsById) || 0) > 1e-6, 'FaceBalancer still collapses an original edge on planar3tree30');
   assert.ok((minBoundedFaceArea(graph, positionsById) || 0) > 1e-4, 'FaceBalancer still collapses a bounded face on planar3tree30');
+});
+
+test('FaceBalancer awaits async iteration callbacks sequentially', async () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c', 'd'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'a'], ['a', 'c']]
+  };
+  let activeCallbacks = 0;
+  let maxActiveCallbacks = 0;
+  let callbackCount = 0;
+
+  const result = await FaceBalancer.computeFaceBalancerPositions(graph.nodeIds, graph.edgePairs, {
+    maxIters: 5,
+    onIteration: async function () {
+      activeCallbacks += 1;
+      callbackCount += 1;
+      if (activeCallbacks > maxActiveCallbacks) {
+        maxActiveCallbacks = activeCallbacks;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      activeCallbacks -= 1;
+    }
+  });
+
+  assert.equal(result && result.ok, true, result && result.message ? result.message : 'FaceBalancer failed');
+  assert.ok(callbackCount > 0, 'expected FaceBalancer to emit progress callbacks');
+  assert.equal(maxActiveCallbacks, 1, 'FaceBalancer progress callbacks should not overlap');
+});
+
+test('EdgeBalancer layout applies on planar sample and improves edge uniformity', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const baseline = Tutte.applyTutteLayout(cy);
+  assert.equal(baseline.ok, true, baseline.message || 'Tutte baseline failed');
+
+  const beforePos = {};
+  for (const node of cy.nodes()) {
+    beforePos[node.id()] = node._pos;
+  }
+  const before = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, beforePos);
+  assert.equal(before.ok, true, before.reason || 'Baseline edge score failed');
+
+  const result = await EdgeBalancer.applyEdgeBalancerLayout(cy, { delayMs: 0, maxIters: 25 });
+  assert.equal(result.ok, true, result.message || 'EdgeBalancer failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  const afterPos = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing EdgeBalancer position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+    afterPos[node.id()] = node._pos;
+  }
+  const after = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, afterPos);
+  assert.equal(after.ok, true, after.reason || 'EdgeBalancer edge score failed');
+  assert.ok(Number.isFinite(after.quality), 'EdgeBalancer edge quality is not finite');
+  assert.ok(after.quality + 1e-6 >= before.quality, `EdgeBalancer worsened edge balance: before=${before.quality}, after=${after.quality}`);
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, afterPos), false, 'EdgeBalancer introduced crossings on sample1');
+});
+
+test('EdgeBalancer layout rejects non-planar graphs', async () => {
+  const text = Generator.getSample('nonplanar1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await EdgeBalancer.applyEdgeBalancerLayout(cy, { delayMs: 0 });
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /planar graph/i);
+});
+
+test('EdgeBalancer preserves a plane drawing on planar3tree30', async () => {
+  const text = Generator.getSample('planar3tree30');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = await EdgeBalancer.applyEdgeBalancerLayout(cy, { delayMs: 0, maxIters: 40 });
+  assert.equal(result.ok, true, result.message || 'EdgeBalancer failed on planar3tree30');
+
+  const positionsById = {};
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing EdgeBalancer position for node ${node.id()}`);
+    positionsById[node.id()] = node._pos;
+  }
+
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, positionsById), false, 'EdgeBalancer introduced crossings on planar3tree30');
+  assert.ok((edgeLengthRatio(graph.edgePairs, positionsById) || 0) > 1e-6, 'EdgeBalancer still collapses an original edge on planar3tree30');
+  assert.ok((minBoundedFaceArea(graph, positionsById) || 0) > 1e-4, 'EdgeBalancer still collapses a bounded face on planar3tree30');
+});
+
+test('EdgeBalancer on grid2x20 with Aug+ improves edge metrics and exposes diagnostics', async () => {
+  const text = Generator.getSample('grid2x20');
+  const graph = parseEdgeListText(text);
+
+  const baseline = await Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs, {
+    augmentationMethod: 'outer-cycle'
+  });
+  assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on grid2x20'));
+
+  const before = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, baseline.pos);
+  const beforeRatio = Metrics.computeEdgeLengthRatio(graph.edgePairs, baseline.pos);
+  assert.equal(before.ok, true, before.reason || 'baseline edge quality failed');
+  assert.equal(beforeRatio.ok, true, beforeRatio.reason || 'baseline edge ratio failed');
+
+  var lastProgress = null;
+  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+    augmentationMethod: 'outer-cycle',
+    currentPositions: baseline.pos,
+    maxIters: 80,
+    onIteration: async function (progress) {
+      lastProgress = progress;
+    }
+  });
+  assert.equal(result && result.ok, true, result && (result.message || result.reason || 'EdgeBalancer failed on grid2x20'));
+
+  const after = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, result.pos);
+  const afterRatio = Metrics.computeEdgeLengthRatio(graph.edgePairs, result.pos);
+  assert.equal(after.ok, true, after.reason || 'EdgeBalancer edge quality failed on grid2x20');
+  assert.equal(afterRatio.ok, true, afterRatio.reason || 'EdgeBalancer edge ratio failed on grid2x20');
+  assert.ok(after.quality >= before.quality + 0.06, `expected strong edge-score improvement on grid2x20: before=${before.quality}, after=${after.quality}`);
+  assert.ok(afterRatio.ratio >= beforeRatio.ratio + 0.2, `expected strong edge-ratio improvement on grid2x20: before=${beforeRatio.ratio}, after=${afterRatio.ratio}`);
+  assert.notEqual(result.stopReason, 'line-search-failed', 'EdgeBalancer should no longer fail line search on grid2x20');
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, result.pos), false, 'EdgeBalancer introduced crossings on grid2x20');
+
+  assert.ok(result.objectiveTerms && Number.isFinite(result.objectiveTerms.edgeVariance), 'missing EdgeBalancer objective-term diagnostics');
+  assert.equal(result.objectiveTerms.edgeBarrier, 0, 'EdgeBalancer should not apply an edge barrier by default on grid2x20');
+  assert.ok(result.objectiveTerms.edgeSmoothLogAbs > 0, 'EdgeBalancer should apply the log-abs term by default on grid2x20');
+  assert.ok(result.objectiveTerms.edgeSoftRange > 0, 'EdgeBalancer should apply the soft-range term by default on grid2x20');
+  assert.ok(result.edgeStats && Number.isFinite(result.edgeStats.ratio), 'missing EdgeBalancer edge diagnostics');
+  assert.ok(lastProgress && lastProgress.debug && lastProgress.debug.objectiveTerms, 'missing EdgeBalancer progress diagnostics');
+});
+
+test('EdgeBalancer respects the maxPositionStep cap during optimization', async () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const baseline = await Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs, {
+    augmentationMethod: 'outer-cycle'
+  });
+  assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on sample1'));
+
+  const stepCap = 5;
+  let callbackCount = 0;
+  let observedMaxMove = 0;
+  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+    augmentationMethod: 'outer-cycle',
+    currentPositions: baseline.pos,
+    maxIters: 12,
+    maxPositionStep: stepCap,
+    onIteration: async function (progress) {
+      callbackCount += 1;
+      if (Number.isFinite(progress.maxMove) && progress.maxMove > observedMaxMove) {
+        observedMaxMove = progress.maxMove;
+      }
+    }
+  });
+
+  assert.equal(result && result.ok, true, result && (result.message || result.reason || 'EdgeBalancer failed with step cap'));
+  assert.ok(callbackCount > 0, 'expected EdgeBalancer to emit progress with a step cap');
+  assert.ok(observedMaxMove <= stepCap + 1e-6, `EdgeBalancer exceeded maxPositionStep: cap=${stepCap}, observed=${observedMaxMove}`);
+});
+
+test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c', 'd'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'd'], ['d', 'a'], ['a', 'c']]
+  };
+  let activeCallbacks = 0;
+  let maxActiveCallbacks = 0;
+  let callbackCount = 0;
+
+  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+    maxIters: 5,
+    onIteration: async function () {
+      activeCallbacks += 1;
+      callbackCount += 1;
+      if (activeCallbacks > maxActiveCallbacks) {
+        maxActiveCallbacks = activeCallbacks;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      activeCallbacks -= 1;
+    }
+  });
+
+  assert.equal(result && result.ok, true, result && result.message ? result.message : 'EdgeBalancer failed');
+  assert.ok(callbackCount > 0, 'expected EdgeBalancer to emit progress callbacks');
+  assert.equal(maxActiveCallbacks, 1, 'EdgeBalancer progress callbacks should not overlap');
 });
 
 test('CEG23-bfs layout applies on planar sample and assigns finite positions', () => {

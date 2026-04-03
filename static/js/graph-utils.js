@@ -664,6 +664,7 @@
   }
 
   var augmentByFaceStellation = PlanarGraphUtils.augmentByFaceStellation;
+  var triangulateByOuterCycle = PlanarGraphUtils.triangulateByOuterCycle;
 
   function removeDegreeThreeDummyVertices(nodeIds, edgePairs, dummyFaceVerticesById, outerFace) {
     var nodes = (nodeIds || []).map(String);
@@ -791,6 +792,7 @@
     isInternallyThreeConnected: isInternallyThreeConnected,
     isTriangulatedEmbedding: isTriangulatedEmbedding,
     augmentByFaceStellation: augmentByFaceStellation,
+    triangulateByOuterCycle: triangulateByOuterCycle,
     triangulateByFaceStellation: triangulateByFaceStellation,
     chooseOuterFace: chooseOuterFace,
     extractEmbeddingFromPositions: extractEmbeddingFromPositions,

@@ -197,6 +197,35 @@ test('PlanarEmbedding.addFaceDummy can split the chosen outer face when a replac
   assert.equal(faceCanonicalKey(embedding.outerFace || []), faceCanonicalKey(['@outerDummy', outer[0], outer[1]]));
 });
 
+test('PlanarEmbedding.addOuterFaceCycle handles an outer face with repeated vertices', () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c', 'd', 'e'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
+  };
+  const pos = {
+    a: { x: 0, y: 0 },
+    b: { x: 1, y: 1 },
+    c: { x: 0, y: 2 },
+    d: { x: 3, y: 2 },
+    e: { x: 3, y: 0 }
+  };
+  const embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(graph.nodeIds, graph.edgePairs, pos);
+  const outer = embedding.outerFace.slice();
+
+  assert.equal(outer.filter((id) => id === 'b').length, 2, 'expected repeated articulation vertex on the outer face');
+
+  const dummyIds = embedding.addOuterFaceCycle(outer);
+
+  assert.equal(dummyIds.length, outer.length);
+  assert.deepEqual(embedding.outerFace, dummyIds);
+  for (const face of embedding.faces) {
+    if (faceCanonicalKey(face) === faceCanonicalKey(dummyIds)) {
+      continue;
+    }
+    assert.equal(face.length, 3, `expected triangulated non-outer face, got ${face.join(',')}`);
+  }
+});
+
 test('triangulateByFaceStellation preserves the literal drawing outer face on sample5', () => {
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);

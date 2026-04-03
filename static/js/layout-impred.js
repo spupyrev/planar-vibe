@@ -406,6 +406,7 @@
     } else {
       seed = PlaygroundUtils.prepareGraphAndLayoutData(g, {
         failureLabel: 'ImPrEd layout',
+        augmentationMethod: opts.augmentationMethod || null,
         currentPositions: currentCount === g.nodeIds.length ? currentPositions : null
       });
       if (!seed || !seed.ok) {
