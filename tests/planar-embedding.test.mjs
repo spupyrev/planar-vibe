@@ -68,6 +68,8 @@ function loadBrowserModules() {
     'static/js/graph-generator.js',
     'static/js/planarity-test.js',
     'static/js/metrics.js',
+    'static/js/linear-algebra.js',
+    'static/js/geometry-utils.js',
     'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',

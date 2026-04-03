@@ -1,7 +1,21 @@
 (function (global) {
   'use strict';
 
+  // Graph-specific helpers plus compatibility re-exports from geometry and linear algebra modules.
+
   var PlanarGraphUtils = global.PlanarGraphUtils;
+  var GraphGeometryUtils = global.GraphGeometryUtils;
+  var LinearAlgebraUtils = global.LinearAlgebraUtils;
+
+  if (!PlanarGraphUtils) {
+    throw new Error('PlanarGraphUtils must be loaded before GraphUtils');
+  }
+  if (!GraphGeometryUtils) {
+    throw new Error('GraphGeometryUtils must be loaded before GraphUtils');
+  }
+  if (!LinearAlgebraUtils) {
+    throw new Error('LinearAlgebraUtils must be loaded before GraphUtils');
+  }
 
   function normalizeNodeIds(nodeIds) {
     return (nodeIds || []).map(String);
@@ -44,9 +58,7 @@
     return Array.isArray(outerFace) ? outerFace.slice().map(String) : [];
   }
 
-  function edgeKey(u, v) {
-    return u < v ? u + '::' + v : v + '::' + u;
-  }
+  var edgeKey = PlanarGraphUtils.edgeKey;
 
   function hashString(value, seed) {
     var hash = seed >>> 0;
@@ -123,138 +135,10 @@
     return typeof value === 'function' ? value : fallback;
   }
 
-  function cloneMatrix(A) {
-    var out = new Array(A.length);
-    for (var i = 0; i < A.length; i += 1) {
-      out[i] = A[i].slice();
-    }
-    return out;
-  }
-
-  function luFactorize(A) {
-    var n = A.length;
-    var LU = cloneMatrix(A);
-    var piv = new Array(n);
-    var i;
-    var j;
-
-    for (i = 0; i < n; i += 1) {
-      piv[i] = i;
-    }
-    for (var k = 0; k < n; k += 1) {
-      var pivotRow = k;
-      var pivotValue = Math.abs(LU[k][k]);
-      for (i = k + 1; i < n; i += 1) {
-        var cand = Math.abs(LU[i][k]);
-        if (cand > pivotValue) {
-          pivotValue = cand;
-          pivotRow = i;
-        }
-      }
-      if (!(pivotValue > 1e-12)) {
-        return null;
-      }
-      if (pivotRow !== k) {
-        var tmpRow = LU[k];
-        LU[k] = LU[pivotRow];
-        LU[pivotRow] = tmpRow;
-        var tmpPivot = piv[k];
-        piv[k] = piv[pivotRow];
-        piv[pivotRow] = tmpPivot;
-      }
-      for (i = k + 1; i < n; i += 1) {
-        LU[i][k] /= LU[k][k];
-        var factor = LU[i][k];
-        for (j = k + 1; j < n; j += 1) {
-          LU[i][j] -= factor * LU[k][j];
-        }
-      }
-    }
-    return { LU: LU, piv: piv };
-  }
-
-  function solveLUWithTwoRhs(factor, b1, b2) {
-    var n = b1.length;
-    if (n === 0) return { x1: [], x2: [] };
-    var LU = factor.LU;
-    var piv = factor.piv;
-    var y1 = new Array(n);
-    var y2 = new Array(n);
-    var i;
-    var j;
-
-    for (i = 0; i < n; i += 1) {
-      y1[i] = b1[piv[i]];
-      y2[i] = b2[piv[i]];
-    }
-    for (i = 0; i < n; i += 1) {
-      for (j = 0; j < i; j += 1) {
-        y1[i] -= LU[i][j] * y1[j];
-        y2[i] -= LU[i][j] * y2[j];
-      }
-    }
-
-    var x1 = new Array(n);
-    var x2 = new Array(n);
-    for (i = n - 1; i >= 0; i -= 1) {
-      var sum1 = y1[i];
-      var sum2 = y2[i];
-      for (j = i + 1; j < n; j += 1) {
-        sum1 -= LU[i][j] * x1[j];
-        sum2 -= LU[i][j] * x2[j];
-      }
-      var diag = LU[i][i];
-      if (!(Math.abs(diag) > 1e-12)) return null;
-      x1[i] = sum1 / diag;
-      x2[i] = sum2 / diag;
-    }
-    return { x1: x1, x2: x2 };
-  }
-
-  function solveTransposeLUWithTwoRhs(factor, b1, b2) {
-    var n = b1.length;
-    if (n === 0) return { x1: [], x2: [] };
-    var LU = factor.LU;
-    var piv = factor.piv;
-    var z1 = new Array(n);
-    var z2 = new Array(n);
-    var i;
-    var j;
-
-    for (i = 0; i < n; i += 1) {
-      var sum1 = b1[i];
-      var sum2 = b2[i];
-      for (j = 0; j < i; j += 1) {
-        sum1 -= LU[j][i] * z1[j];
-        sum2 -= LU[j][i] * z2[j];
-      }
-      var diag = LU[i][i];
-      if (!(Math.abs(diag) > 1e-12)) return null;
-      z1[i] = sum1 / diag;
-      z2[i] = sum2 / diag;
-    }
-
-    var w1 = new Array(n);
-    var w2 = new Array(n);
-    for (i = n - 1; i >= 0; i -= 1) {
-      var acc1 = z1[i];
-      var acc2 = z2[i];
-      for (j = i + 1; j < n; j += 1) {
-        acc1 -= LU[j][i] * w1[j];
-        acc2 -= LU[j][i] * w2[j];
-      }
-      w1[i] = acc1;
-      w2[i] = acc2;
-    }
-
-    var x1 = new Array(n);
-    var x2 = new Array(n);
-    for (i = 0; i < n; i += 1) {
-      x1[piv[i]] = w1[i];
-      x2[piv[i]] = w2[i];
-    }
-    return { x1: x1, x2: x2 };
-  }
+  var cloneMatrix = LinearAlgebraUtils.cloneMatrix;
+  var luFactorize = LinearAlgebraUtils.luFactorize;
+  var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
+  var solveTransposeLUWithTwoRhs = LinearAlgebraUtils.solveTransposeLUWithTwoRhs;
 
   function faceKey(face) {
     if (!face || face.length === 0) return '';
@@ -274,166 +158,27 @@
     return best || '';
   }
 
-  function polygonArea2(face, posById) {
-    if (!face || face.length < 3) return 0;
-    var sum = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      var b = posById[String(face[(i + 1) % face.length])];
-      if (!a || !b) return 0;
-      sum += a.x * b.y - b.x * a.y;
-    }
-    return sum;
-  }
-
-  function polygonAreaAbs(face, posById) {
-    return Math.abs(polygonArea2(face, posById)) / 2;
-  }
-
-  function pointAdd(p, q) {
-    return { x: p.x + q.x, y: p.y + q.y };
-  }
-
-  function pointSub(p, q) {
-    return { x: p.x - q.x, y: p.y - q.y };
-  }
-
-  function pointScale(s, p) {
-    return { x: s * p.x, y: s * p.y };
-  }
-
-  function pointDot(p, q) {
-    return p.x * q.x + p.y * q.y;
-  }
-
-  function pointRot90(p) {
-    return { x: -p.y, y: p.x };
-  }
-
-  function pointNorm(p) {
-    return Math.sqrt(pointDot(p, p));
-  }
-
-  function vecDot(a, b) {
-    var s = 0;
-    for (var i = 0; i < a.length; i += 1) {
-      s += a[i] * b[i];
-    }
-    return s;
-  }
-
-  function vecNorm(a) {
-    return Math.sqrt(vecDot(a, a));
-  }
-
-  function vecAddScaled(a, b, alpha) {
-    var out = new Array(a.length);
-    for (var i = 0; i < a.length; i += 1) {
-      out[i] = a[i] + alpha * b[i];
-    }
-    return out;
-  }
-
-  function vecSub(a, b) {
-    var out = new Array(a.length);
-    for (var i = 0; i < a.length; i += 1) {
-      out[i] = a[i] - b[i];
-    }
-    return out;
-  }
-
-  function vecScale(a, alpha) {
-    var out = new Array(a.length);
-    for (var i = 0; i < a.length; i += 1) {
-      out[i] = alpha * a[i];
-    }
-    return out;
-  }
-
-  function orientFaceCCW(face, posById) {
-    var out = face.slice().map(String);
-    if (polygonArea2(out, posById) < 0) {
-      out.reverse();
-    }
-    return out;
-  }
-
-  function outerFaceDiameter(posById, outerFace) {
-    var face = Array.isArray(outerFace) ? outerFace : [];
-    var diameter = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      if (!a || !Number.isFinite(a.x) || !Number.isFinite(a.y)) continue;
-      for (var j = i + 1; j < face.length; j += 1) {
-        var b = posById[String(face[j])];
-        if (!b || !Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
-        var dist = Math.hypot(a.x - b.x, a.y - b.y);
-        if (dist > diameter) {
-          diameter = dist;
-        }
-      }
-    }
-    return diameter > 1e-12 ? diameter : 1;
-  }
-
-  function triangleArea2(a, b, c) {
-    return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-  }
-
-  function pointEquals(a, b, eps) {
-    return Math.abs(a.x - b.x) <= eps && Math.abs(a.y - b.y) <= eps;
-  }
-
-  function pointOnSegment(a, b, p, eps) {
-    return (
-      Math.min(a.x, b.x) - eps <= p.x && p.x <= Math.max(a.x, b.x) + eps &&
-      Math.min(a.y, b.y) - eps <= p.y && p.y <= Math.max(a.y, b.y) + eps
-    );
-  }
-
-  function pointOnSegmentInterior(a, b, p, eps) {
-    if (!pointOnSegment(a, b, p, eps)) {
-      return false;
-    }
-    if (Math.abs(triangleArea2(a, b, p)) > eps) {
-      return false;
-    }
-    if (Math.abs(p.x - a.x) <= eps && Math.abs(p.y - a.y) <= eps) {
-      return false;
-    }
-    if (Math.abs(p.x - b.x) <= eps && Math.abs(p.y - b.y) <= eps) {
-      return false;
-    }
-    return true;
-  }
-
-  function segmentsIntersectOrTouch(a, b, c, d, eps) {
-    var o1 = triangleArea2(a, b, c);
-    var o2 = triangleArea2(a, b, d);
-    var o3 = triangleArea2(c, d, a);
-    var o4 = triangleArea2(c, d, b);
-
-    if (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
-        ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps))) {
-      return true;
-    }
-
-    if (Math.abs(o1) <= eps && pointOnSegment(a, b, c, eps)) return true;
-    if (Math.abs(o2) <= eps && pointOnSegment(a, b, d, eps)) return true;
-    if (Math.abs(o3) <= eps && pointOnSegment(c, d, a, eps)) return true;
-    if (Math.abs(o4) <= eps && pointOnSegment(c, d, b, eps)) return true;
-    return false;
-  }
-
-  function segmentsIntersectStrict(a, b, c, d, eps) {
-    var o1 = triangleArea2(a, b, c);
-    var o2 = triangleArea2(a, b, d);
-    var o3 = triangleArea2(c, d, a);
-    var o4 = triangleArea2(c, d, b);
-
-    return (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
-      ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps)));
-  }
+  var polygonArea2 = GraphGeometryUtils.polygonArea2;
+  var polygonAreaAbs = GraphGeometryUtils.polygonAreaAbs;
+  var pointAdd = GraphGeometryUtils.pointAdd;
+  var pointSub = GraphGeometryUtils.pointSub;
+  var pointScale = GraphGeometryUtils.pointScale;
+  var pointDot = GraphGeometryUtils.pointDot;
+  var pointRot90 = GraphGeometryUtils.pointRot90;
+  var pointNorm = GraphGeometryUtils.pointNorm;
+  var pointEquals = GraphGeometryUtils.pointEquals;
+  var pointOnSegment = GraphGeometryUtils.pointOnSegment;
+  var pointOnSegmentInterior = GraphGeometryUtils.pointOnSegmentInterior;
+  var vecDot = GraphGeometryUtils.vecDot;
+  var vecNorm = GraphGeometryUtils.vecNorm;
+  var vecAddScaled = GraphGeometryUtils.vecAddScaled;
+  var vecSub = GraphGeometryUtils.vecSub;
+  var vecScale = GraphGeometryUtils.vecScale;
+  var orientFaceCCW = GraphGeometryUtils.orientFaceCCW;
+  var outerFaceDiameter = GraphGeometryUtils.outerFaceDiameter;
+  var triangleArea2 = GraphGeometryUtils.triangleArea2;
+  var segmentsIntersectStrict = GraphGeometryUtils.segmentsIntersectStrict;
+  var segmentsIntersectOrTouch = GraphGeometryUtils.segmentsIntersectOrTouch;
 
   function createEmptyAdjacency(nodeIds) {
     var adj = {};
@@ -652,32 +397,8 @@
     return analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace).ok;
   }
 
-  function sameCyclicDirection(a, b) {
-    if (!a || !b || a.length !== b.length || a.length === 0) return false;
-    var arrA = a.map(String);
-    var arrB = b.map(String);
-    var n = arrA.length;
-    var start = -1;
-    for (var i = 0; i < n; i += 1) {
-      if (arrB[i] === arrA[0]) {
-        start = i;
-        break;
-      }
-    }
-    if (start < 0) return false;
-    for (i = 0; i < n; i += 1) {
-      if (arrA[i] !== arrB[(start + i) % n]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function sameCyclicEitherDirection(a, b) {
-    if (sameCyclicDirection(a, b)) return true;
-    if (!a || !b || a.length !== b.length) return false;
-    return sameCyclicDirection(a, b.slice().reverse());
-  }
+  var sameCyclicDirection = PlanarGraphUtils.sameCyclicDirection;
+  var sameCyclicEitherDirection = PlanarGraphUtils.sameCyclicEitherDirection;
 
   function findOuterFaceIndex(faces, outerFace) {
     if (!Array.isArray(faces) || !Array.isArray(outerFace) || outerFace.length === 0) {
@@ -696,41 +417,7 @@
     return -1;
   }
 
-  function embeddingHasFace(embedding, face) {
-    var faces = embedding && Array.isArray(embedding.faces) ? embedding.faces : [];
-    for (var i = 0; i < faces.length; i += 1) {
-      if (sameCyclicEitherDirection(face, faces[i])) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  function buildOuterFaceEdgeSet(edgePairs) {
-    var out = {};
-    if (!Array.isArray(edgePairs)) return out;
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var e = edgePairs[i];
-      if (!e || e.length < 2) continue;
-      out[edgeKey(e[0], e[1])] = true;
-    }
-    return out;
-  }
-
-  function faceChordCount(face, edgeSet) {
-    if (!Array.isArray(face) || face.length < 4) return 0;
-    var count = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      for (var j = i + 1; j < face.length; j += 1) {
-        var isBoundaryEdge = (j === i + 1) || (i === 0 && j === face.length - 1);
-        if (isBoundaryEdge) continue;
-        if (edgeSet[edgeKey(face[i], face[j])]) {
-          count += 1;
-        }
-      }
-    }
-    return count;
-  }
+  var embeddingHasFace = PlanarGraphUtils.embeddingHasFace;
 
   function chooseOuterFace(nodeIds, adjacency) {
       var edgePairs = [];
@@ -767,199 +454,10 @@
     return null;
   }
 
-  function hasCompleteFinitePositions(nodeIds, posById) {
-    if (!Array.isArray(nodeIds) || !posById) {
-      return false;
-    }
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var p = posById[String(nodeIds[i])];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function buildRotationFromPositions(nodeIds, adjacency, posById) {
-    var rotation = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var u = String(nodeIds[i]);
-      var pu = posById[u];
-      if (!pu || !Number.isFinite(pu.x) || !Number.isFinite(pu.y)) {
-        return null;
-      }
-      var neighbors = (adjacency[u] || []).slice().map(String);
-      neighbors.sort(function (a, b) {
-        var pa = posById[a];
-        var pb = posById[b];
-        var angleA = pa ? Math.atan2(pa.y - pu.y, pa.x - pu.x) : 0;
-        var angleB = pb ? Math.atan2(pb.y - pu.y, pb.x - pu.x) : 0;
-        if (Math.abs(angleA - angleB) > 1e-12) {
-          return angleA - angleB;
-        }
-        var distA = pa ? ((pa.x - pu.x) * (pa.x - pu.x) + (pa.y - pu.y) * (pa.y - pu.y)) : 0;
-        var distB = pb ? ((pb.x - pu.x) * (pb.x - pu.x) + (pb.y - pu.y) * (pb.y - pu.y)) : 0;
-        if (Math.abs(distA - distB) > 1e-12) {
-          return distA - distB;
-        }
-        return a < b ? -1 : (a > b ? 1 : 0);
-      });
-      rotation[u] = neighbors;
-    }
-    return rotation;
-  }
-
-  function extractFacesFromRotationMap(rotation) {
-    var seenHalfEdges = new Set();
-    var faces = [];
-
-    function halfEdgeKey(u, v) {
-      return String(u) + '|' + String(v);
-    }
-
-    var vertices = Object.keys(rotation || {});
-    for (var i = 0; i < vertices.length; i += 1) {
-      var u = String(vertices[i]);
-      var row = rotation[u] || [];
-      for (var j = 0; j < row.length; j += 1) {
-        var v = String(row[j]);
-        var startKey = halfEdgeKey(u, v);
-        if (seenHalfEdges.has(startKey)) {
-          continue;
-        }
-
-        var startU = u;
-        var startV = v;
-        var curU = startU;
-        var curV = startV;
-        var face = [];
-
-        while (true) {
-          var curKey = halfEdgeKey(curU, curV);
-          if (seenHalfEdges.has(curKey)) {
-            break;
-          }
-          seenHalfEdges.add(curKey);
-          face.push(curU);
-
-          var adj = rotation[curV];
-          if (!adj || adj.length === 0) {
-            face = [];
-            break;
-          }
-
-          var idx = adj.indexOf(curU);
-          if (idx < 0) {
-            face = [];
-            break;
-          }
-
-          var prevIdx = (idx - 1 + adj.length) % adj.length;
-          var nextV = String(adj[prevIdx]);
-          curU = curV;
-          curV = nextV;
-
-          if (curU === startU && curV === startV) {
-            break;
-          }
-        }
-
-        if (face.length >= 3) {
-          faces.push(face);
-        }
-      }
-    }
-
-    return faces;
-  }
-
-  function extractEmbeddingFromPositions(nodeIds, edgePairs, posById) {
-    if (!PlanarGraphUtils || !PlanarGraphUtils.PlanarEmbedding) {
-      return null;
-    }
-    if (!Array.isArray(nodeIds) || !Array.isArray(edgePairs) || !posById) {
-      return null;
-    }
-    if (!hasCompleteFinitePositions(nodeIds, posById)) {
-      return null;
-    }
-    if (hasPositionCrossings(posById, edgePairs)) {
-      return null;
-    }
-
-    var embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(nodeIds, edgePairs, posById);
-    return embedding ? embedding.toEmbeddingObject() : null;
-  }
-
-  function chooseOuterFaceFromPositions(nodeIds, edgePairs, posById) {
-    var embedding = extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
-    return embedding && embedding.ok && embedding.outerFace ? embedding.outerFace.slice().map(String) : null;
-  }
-
-  function chooseOuterFaceFromEmbedding(embedding) {
-    if (!embedding) {
-      return null;
-    }
-    var explicit = Array.isArray(embedding.outerFace) && embedding.outerFace.length >= 3
-      ? embedding.outerFace.slice().map(String)
-      : null;
-    var edgeSet = buildOuterFaceEdgeSet(embedding.edges);
-    if (explicit && (!Array.isArray(embedding.edges) || faceChordCount(explicit, edgeSet) === 0)) {
-      return explicit;
-    }
-    if (Array.isArray(embedding.faces) && embedding.faces.length > 0) {
-      var best = null;
-      for (var i = 0; i < embedding.faces.length; i += 1) {
-        var face = embedding.faces[i];
-        if (!Array.isArray(face) || face.length < 3) continue;
-        var mapped = face.slice().map(String);
-        if (faceChordCount(mapped, edgeSet) !== 0) continue;
-        if (!best || mapped.length > best.length) best = mapped;
-      }
-      return best;
-    }
-    return null;
-  }
-
-  function isTriangulatedEmbedding(embedding) {
-    if (!embedding || !embedding.ok) {
-      return false;
-    }
-    var n = embedding.idByIndex.length;
-    var m = embedding.edges.length;
-    if (n < 3) {
-      return false;
-    }
-    if (m !== 3 * n - 6) {
-      return false;
-    }
-    for (var i = 0; i < embedding.faces.length; i += 1) {
-      if (embedding.faces[i].length !== 3) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function isTriangulatedEmbeddingExceptOuter(embedding, outerFace) {
-    if (!embedding || !embedding.ok) {
-      return false;
-    }
-    var outerIndex = findOuterFaceIndex(embedding.faces, outerFace);
-    for (var i = 0; i < embedding.faces.length; i += 1) {
-      var face = embedding.faces[i];
-      if (!face || face.length < 3) {
-        return false;
-      }
-      if (i === outerIndex) {
-        continue;
-      }
-      if (face.length !== 3) {
-        return false;
-      }
-    }
-    return true;
-  }
+  var extractEmbeddingFromPositions = PlanarGraphUtils.extractEmbeddingFromPositions;
+  var chooseOuterFaceFromPositions = PlanarGraphUtils.chooseOuterFaceFromPositions;
+  var chooseOuterFaceFromEmbedding = PlanarGraphUtils.chooseOuterFaceFromEmbedding;
+  var isTriangulatedEmbedding = PlanarGraphUtils.isTriangulatedEmbedding;
 
   function cloneEdgePairs(edgePairs) {
     return edgePairs.map(function (e) {
@@ -967,44 +465,8 @@
     });
   }
 
-  function computeDrawingDiameter(nodeIds, posById) {
-    var minX = Infinity;
-    var minY = Infinity;
-    var maxX = -Infinity;
-    var maxY = -Infinity;
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      var p = posById ? posById[id] : null;
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-      return 1;
-    }
-    var dx = maxX - minX;
-    var dy = maxY - minY;
-    var d = Math.sqrt(dx * dx + dy * dy);
-    return d > 1e-9 ? d : 1;
-  }
-
-  function copyPositionMap(posById) {
-    var out = {};
-    var keys = Object.keys(posById || {});
-    for (var i = 0; i < keys.length; i += 1) {
-      var id = keys[i];
-      var p = posById[id];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      out[id] = { x: p.x, y: p.y };
-    }
-    return out;
-  }
+  var computeDrawingDiameter = GraphGeometryUtils.computeDrawingDiameter;
+  var copyPositionMap = GraphGeometryUtils.copyPositionMap;
 
   function filterPositionMap(posById, nodeIds) {
     var ids = normalizeNodeIds(nodeIds);
@@ -1032,76 +494,9 @@
     return movable;
   }
 
-  function computeFaceCentroid(posById, face) {
-    var ids = Array.isArray(face) ? face : [];
-    var sx = 0;
-    var sy = 0;
-    var count = 0;
-    for (var i = 0; i < ids.length; i += 1) {
-      var p = posById[String(ids[i])];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      sx += p.x;
-      sy += p.y;
-      count += 1;
-    }
-    if (count < 1) {
-      return { x: 0, y: 0 };
-    }
-    return { x: sx / count, y: sy / count };
-  }
-
-  function rotatePositionMap(posById, center, angle) {
-    var out = {};
-    var c = Math.cos(angle);
-    var s = Math.sin(angle);
-    var keys = Object.keys(posById || {});
-    for (var i = 0; i < keys.length; i += 1) {
-      var id = keys[i];
-      var p = posById[id];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      var dx = p.x - center.x;
-      var dy = p.y - center.y;
-      out[id] = {
-        x: center.x + c * dx - s * dy,
-        y: center.y + s * dx + c * dy
-      };
-    }
-    return out;
-  }
-
-  function alignOuterFaceEdgeHorizontally(posById, outerFace) {
-    var face = Array.isArray(outerFace) ? outerFace.map(String) : [];
-    if (face.length < 2) {
-      return copyPositionMap(posById);
-    }
-    var bestIndex = -1;
-    var bestLength2 = -1;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById ? posById[face[i]] : null;
-      var b = posById ? posById[face[(i + 1) % face.length]] : null;
-      if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) {
-        continue;
-      }
-      var dx = b.x - a.x;
-      var dy = b.y - a.y;
-      var len2 = dx * dx + dy * dy;
-      if (len2 > bestLength2) {
-        bestLength2 = len2;
-        bestIndex = i;
-      }
-    }
-    if (!(bestIndex >= 0) || !(bestLength2 > 1e-18)) {
-      return copyPositionMap(posById);
-    }
-    var start = posById[face[bestIndex]];
-    var end = posById[face[(bestIndex + 1) % face.length]];
-    var angle = Math.atan2(end.y - start.y, end.x - start.x);
-    return rotatePositionMap(posById, computeFaceCentroid(posById, face), -angle);
-  }
+  var computeFaceCentroid = GraphGeometryUtils.computeFaceCentroid;
+  var rotatePositionMap = GraphGeometryUtils.rotatePositionMap;
+  var alignOuterFaceEdgeHorizontally = GraphGeometryUtils.alignOuterFaceEdgeHorizontally;
 
   function computeMoveStats(items, distanceFn, options) {
     var opts = options || {};
@@ -1238,65 +633,7 @@
     }, options);
   }
 
-  function hasPositionCrossings(posById, edgePairs) {
-    var EPS = 1e-9;
-    var i;
-    var j;
-
-    for (i = 0; i < edgePairs.length; i += 1) {
-      var s1 = String(edgePairs[i][0]);
-      var t1 = String(edgePairs[i][1]);
-      var p1 = posById[s1];
-      var q1 = posById[t1];
-      if (!p1 || !q1) {
-        continue;
-      }
-
-      for (j = i + 1; j < edgePairs.length; j += 1) {
-        var s2 = String(edgePairs[j][0]);
-        var t2 = String(edgePairs[j][1]);
-        if (s1 === s2 || s1 === t2 || t1 === s2 || t1 === t2) {
-          continue;
-        }
-        var p2 = posById[s2];
-        var q2 = posById[t2];
-        if (!p2 || !q2) {
-          continue;
-        }
-
-        if (segmentsIntersectOrTouch(p1, q1, p2, q2, EPS)) {
-          return true;
-        }
-      }
-    }
-
-    var nodeIds = Object.keys(posById || {});
-    for (i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      var p = posById[id];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      for (j = 0; j < edgePairs.length; j += 1) {
-        var u = String(edgePairs[j][0]);
-        var v = String(edgePairs[j][1]);
-        if (id === u || id === v) {
-          continue;
-        }
-        var a = posById[u];
-        var b = posById[v];
-        if (!a || !b) {
-          continue;
-        }
-        var area2 = triangleArea2(a, b, p);
-        if (Math.abs(area2) <= EPS && pointOnSegmentInterior(a, b, p, EPS)) {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
+  var hasPositionCrossings = GraphGeometryUtils.hasPositionCrossings;
 
   function createMovementConvergenceTracker(options) {
     var opts = options || {};
@@ -1326,47 +663,7 @@
     };
   }
 
-  function augmentByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
-    if (!PlanarGraphUtils || !PlanarGraphUtils.PlanarEmbedding) {
-      return {
-        nodeIds: normalizeNodeIds(nodeIds),
-        edgePairs: cloneEdgePairs(edgePairs),
-        dummyCount: 0,
-        dummyFaceVerticesById: {},
-        reason: 'PlanarEmbedding support is unavailable'
-      };
-    }
-    var nodes = normalizeNodeIds(nodeIds);
-    var edges = cloneEdgePairs(edgePairs);
-    var fixedOuter = Array.isArray(outerFace) && outerFace.length >= 3 ? outerFace.slice().map(String) : null;
-    var pe = PlanarGraphUtils.PlanarEmbedding.fromEmbeddingObject(nodes, edges, embedding, fixedOuter);
-    var dummyFaceVerticesById = {};
-    var dummyCount = 0;
-    var faces = pe.faces.slice();
-
-    for (var i = 0; i < faces.length; i += 1) {
-      var face = faces[i];
-      if (!face || face.length <= 3) {
-        continue;
-      }
-      if (fixedOuter && sameCyclicEitherDirection(face, fixedOuter)) {
-        continue;
-      }
-      var dummyId = '@dummy' + dummyCount;
-      dummyCount += 1;
-      dummyFaceVerticesById[dummyId] = face.slice().map(String);
-      pe.addFaceDummy(face, dummyId);
-    }
-
-    var graph = pe.toGraph();
-    return {
-      nodeIds: graph.nodeIds,
-      edgePairs: graph.edgePairs,
-      dummyCount: Object.keys(dummyFaceVerticesById).length,
-      dummyFaceVerticesById: dummyFaceVerticesById,
-      embedding: pe.toEmbeddingObject()
-    };
-  }
+  var augmentByFaceStellation = PlanarGraphUtils.augmentByFaceStellation;
 
   function removeDegreeThreeDummyVertices(nodeIds, edgePairs, dummyFaceVerticesById, outerFace) {
     var nodes = (nodeIds || []).map(String);
@@ -1425,100 +722,7 @@
     };
   }
 
-  function triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
-    function faceHasSimpleBoundary(face) {
-      var seen = new Set();
-      for (var j = 0; j < (face || []).length; j += 1) {
-        var v = String(face[j]);
-        if (seen.has(v)) {
-          return false;
-        }
-        seen.add(v);
-      }
-      return true;
-    }
-
-    if (!PlanarGraphUtils || !PlanarGraphUtils.PlanarEmbedding) {
-      return {
-        ok: false,
-        reason: 'PlanarEmbedding support is unavailable'
-      };
-    }
-    var emb = embedding;
-    if (!emb || !emb.ok) {
-      return {
-        ok: false,
-        reason: 'triangulateByFaceStellation requires a planar embedding'
-      };
-    }
-    var selectedOuterFace = Array.isArray(outerFace) ? outerFace.slice().map(String) : null;
-    if (!selectedOuterFace || selectedOuterFace.length < 3) {
-      return {
-        ok: false,
-        reason: 'triangulateByFaceStellation requires an outer face'
-      };
-    }
-    for (var f = 0; f < (emb.faces || []).length; f += 1) {
-      if (!faceHasSimpleBoundary(emb.faces[f])) {
-        return {
-          ok: false,
-          reason: 'triangulateByFaceStellation requires simple face boundaries'
-        };
-      }
-    }
-    var nodes = normalizeNodeIds(nodeIds);
-    var edges = normalizeSimpleEdgePairs(edgePairs);
-    var opts = options || {};
-    var pe = PlanarGraphUtils.PlanarEmbedding.fromEmbeddingObject(nodes, edges, emb, selectedOuterFace);
-    var dummyFaceVerticesById = {};
-    var dummyCount = 0;
-
-    while (!isTriangulatedEmbeddingExceptOuter(pe.toEmbeddingObject(), selectedOuterFace)) {
-      var nextFace = null;
-      for (var i = 0; i < pe.faces.length; i += 1) {
-        var face = pe.faces[i];
-        if (!face || face.length <= 3) {
-          continue;
-        }
-        if (sameCyclicDirection(face, selectedOuterFace)) {
-          continue;
-        }
-        nextFace = face.slice().map(String);
-        break;
-      }
-      if (!nextFace) {
-        return {
-          ok: false,
-          reason: 'Augmentation failed to triangulate all non-outer faces'
-        };
-      }
-      var dummyId = '@dummy' + dummyCount;
-      dummyCount += 1;
-      dummyFaceVerticesById[dummyId] = nextFace.slice().map(String);
-      pe.addFaceDummy(nextFace, dummyId);
-    }
-
-    var outerDummyId;
-    if (opts.triangulateOuterFace && selectedOuterFace.length > 3) {
-      outerDummyId = pe._nextDummyId('@outerDummy');
-      dummyFaceVerticesById[outerDummyId] = selectedOuterFace.slice().map(String);
-      pe.addFaceDummy(selectedOuterFace, outerDummyId, {
-        newOuterFace: [outerDummyId, selectedOuterFace[0], selectedOuterFace[1]]
-      });
-    }
-
-    var finalEmbedding = pe.toEmbeddingObject();
-    var finalGraph = pe.toGraph();
-    return {
-      ok: true,
-      nodeIds: finalGraph.nodeIds,
-      edgePairs: finalGraph.edgePairs,
-      dummyCount: Object.keys(dummyFaceVerticesById).length,
-      outerDummyId: outerDummyId,
-      dummyFaceVerticesById: dummyFaceVerticesById,
-      embedding: finalEmbedding
-    };
-  }
+  var triangulateByFaceStellation = PlanarGraphUtils.triangulateByFaceStellation;
 
   global.GraphUtils = {
     faceKey: faceKey,
