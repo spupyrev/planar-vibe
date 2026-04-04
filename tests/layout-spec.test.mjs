@@ -29,6 +29,7 @@ function loadBrowserModules() {
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
+    'static/js/layout-tutte-adaptive.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
@@ -56,6 +57,7 @@ const GraphUtils = modules.GraphUtils;
 const Metrics = modules.PlanarVibeMetrics;
 const PlaygroundUtils = modules.PlaygroundUtils;
 const Tutte = modules.PlanarVibeTutte;
+const TutteAdaptive = modules.PlanarVibeTutteAdaptive;
 const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
@@ -197,6 +199,16 @@ const layoutSpecs = [
     }
   },
   {
+    name: 'TutteAdaptive compute',
+    graph: CUBE,
+    run(graph) {
+      return TutteAdaptive.computeTutteAdaptiveLayout(graph.nodeIds, graph.edgePairs, {
+        maxIters: 8,
+        tolerance: 1e-4
+      });
+    }
+  },
+  {
     name: 'Air compute',
     graph: CUBE,
     run(graph) {
@@ -334,6 +346,10 @@ test('normalized failure shape is preserved for exported compute functions', asy
     {
       name: 'Tutte compute',
       run: () => Tutte.computeTutteLayout(['1', '2'], [['1', '2']])
+    },
+    {
+      name: 'TutteAdaptive compute',
+      run: () => TutteAdaptive.computeTutteAdaptiveLayout(['1', '2'], [['1', '2']])
     },
     {
       name: 'CEG23-bfs compute',

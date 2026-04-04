@@ -1718,6 +1718,10 @@
       setLayoutEnabled('tutte', isEnabled);
     }
 
+    function setTutteAdaptiveEnabled(isEnabled) {
+      setLayoutEnabled('tutteadaptive', isEnabled);
+    }
+
     function setAirEnabled(isEnabled) {
       setLayoutEnabled('air', isEnabled);
     }
@@ -1772,6 +1776,7 @@
 
     function setPlanarButtonsDisabled() {
       setTutteEnabled(false);
+      setTutteAdaptiveEnabled(false);
       setAirEnabled(false);
       setPPAGEnabled(false);
       setFaceBalancerEnabled(false);
@@ -1824,6 +1829,7 @@
         isPlanar3Tree: isPlanar3Tree
       });
       setTutteEnabled(isPlanar);
+      setTutteAdaptiveEnabled(isPlanar);
       setAirEnabled(isPlanar);
       setPPAGEnabled(isPlanar);
       setFaceBalancerEnabled(isPlanar);
@@ -2053,6 +2059,30 @@
           },
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('tutte');
+          }
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'tutteadaptive') {
+        runSpecialLayout({
+          layoutName: 'tutteadaptive',
+          disabledMessage: 'TutteAdaptive layout requires a planar graph',
+          missingMessage: 'TutteAdaptive layout module is missing',
+          module: global.PlanarVibeTutteAdaptive,
+          methodName: 'applyTutteAdaptiveLayout',
+          checkDependencies: function () {
+            return missingPlaygroundUtilities(['graphFromCy', 'applyAndFit', 'prepareGraphAndLayoutData']) ||
+              missingGraphUtilities(['buildAdjacencyArrays', 'buildLayoutError', 'buildLayoutResult', 'buildLayoutStatusMessage', 'collectMovableVertices', 'computePositionMoveStats', 'copyPositions', 'filterPositions', 'hasPositionCrossings', 'luFactorize', 'normalizeGraphInput', 'normalizeOuterFace', 'resolveFloatOption', 'resolveFunctionOption', 'resolveIntOption', 'solveLUWithTwoRhs']) ||
+              missingTutteUtilities(['defaultOuterPlacementOptions']) ||
+              firstMissingFunction(global.PlanarVibeTutteAdaptive, ['applyTutteAdaptiveLayout'], 'TutteAdaptive layout is missing');
+          },
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('tutteadaptive');
           }
         }, function () {
           if (temporaryStaticRun) {

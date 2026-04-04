@@ -68,6 +68,7 @@ function loadBrowserModules() {
     'static/js/graph-generator.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
+    'static/js/layout-tutte-adaptive.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',

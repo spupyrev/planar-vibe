@@ -163,6 +163,31 @@
       : null;
   }
 
+  function sanitizeEmbeddingSnapshot(embedding) {
+    if (!embedding || !embedding.ok) {
+      return embedding;
+    }
+    return {
+      ok: true,
+      idByIndex: Array.isArray(embedding.idByIndex) ? embedding.idByIndex.slice().map(String) : [],
+      indexById: Object.assign({}, embedding.indexById || {}),
+      edges: Array.isArray(embedding.edges)
+        ? embedding.edges.map(function (edge) { return [String(edge[0]), String(edge[1])]; })
+        : [],
+      rotation: Array.isArray(embedding.rotation)
+        ? embedding.rotation.map(function (row) {
+          return Array.isArray(row) ? row.slice().map(String) : [];
+        })
+        : [],
+      faces: Array.isArray(embedding.faces)
+        ? embedding.faces.map(function (face) {
+          return Array.isArray(face) ? face.slice().map(String) : [];
+        })
+        : [],
+      outerFace: Array.isArray(embedding.outerFace) ? embedding.outerFace.slice().map(String) : null
+    };
+  }
+
   function prepareGraphData(graph, config) {
     var cfg = config || {};
     var label = String(cfg.failureLabel || 'Layout');
@@ -186,7 +211,10 @@
       normalizedGraph.edgePairs,
       cfg.currentPositions || null
     );
-    var baseEmbedding = drawingEmbedding ||
+    var extractedEmbedding = sanitizeEmbeddingSnapshot(drawingEmbedding);
+    drawingEmbedding = null;
+    cfg = Object.assign({}, cfg, { currentPositions: null });
+    var baseEmbedding = extractedEmbedding ||
       global.PlanarVibePlanarityTest.computePlanarEmbedding(normalizedGraph.nodeIds, normalizedGraph.edgePairs);
     if (!baseEmbedding || !baseEmbedding.ok) {
       return { ok: false, message: label + ' requires a planar graph' };
@@ -194,8 +222,8 @@
 
     var selectedOuterFace = null;
     if (augmentationMethod === 'triangulateByOuterCycle') {
-      selectedOuterFace = drawingEmbedding && drawingEmbedding.ok
-        ? drawingEmbedding.outerFace.slice().map(String)
+      selectedOuterFace = extractedEmbedding && extractedEmbedding.ok
+        ? extractedEmbedding.outerFace.slice().map(String)
         : chooseLongestFaceFromEmbedding(baseEmbedding);
     } else {
       selectedOuterFace = Array.isArray(baseEmbedding.outerFace) && baseEmbedding.outerFace.length >= 3

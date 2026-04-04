@@ -91,6 +91,7 @@ function loadBrowserModules() {
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
+    'static/js/layout-tutte-adaptive.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
@@ -120,6 +121,7 @@ const Planarity = modules.PlanarVibePlanarityTest;
 const GraphUtils = modules.GraphUtils;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
+const TutteAdaptive = modules.PlanarVibeTutteAdaptive;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
@@ -1275,6 +1277,40 @@ test('Tutte layout applies on planar sample and assigns finite positions', () =>
   }
 });
 
+test('TutteAdaptive strongly improves sample1 face balance over default Tutte', () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+
+  const baseline = Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs);
+  assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on sample1'));
+  const before = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, baseline.pos);
+  assert.equal(before.ok, true, before.reason || 'Tutte face score failed on sample1');
+
+  const improved = TutteAdaptive.computeTutteAdaptiveLayout(graph.nodeIds, graph.edgePairs);
+  assert.equal(improved && improved.ok, true, improved && (improved.message || improved.reason || 'TutteAdaptive failed on sample1'));
+  const after = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, improved.pos);
+  assert.equal(after.ok, true, after.reason || 'TutteAdaptive face score failed on sample1');
+
+  assert.ok(after.quality >= before.quality + 0.1, `expected substantial TutteAdaptive face-score gain on sample1: before=${before.quality}, after=${after.quality}`);
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, improved.pos), false, 'TutteAdaptive introduced crossings on sample1');
+});
+
+test('TutteAdaptive layout applies on planar sample and assigns finite positions', () => {
+  const text = Generator.getSample('sample1');
+  const graph = parseEdgeListText(text);
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+
+  const result = TutteAdaptive.applyTutteAdaptiveLayout(cy, { maxIters: 8, tolerance: 1e-4 });
+  assert.equal(result.ok, true, result.message || 'TutteAdaptive failed');
+  assert.equal(cy._fitCalls > 0, true);
+
+  for (const node of cy.nodes()) {
+    assert.equal(node._pos !== null, true, `missing TutteAdaptive position for node ${node.id()}`);
+    assert.equal(Number.isFinite(node._pos.x), true);
+    assert.equal(Number.isFinite(node._pos.y), true);
+  }
+});
+
 test('Air layout applies on planar sample and improves bounded face balance', async () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
@@ -2047,6 +2083,17 @@ test('Tutte rejects graphs with fewer than 3 vertices', () => {
   };
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
   const result = Tutte.applyTutteLayout(cy);
+  assert.equal(result.ok, false);
+  assert.match(String(result.message || ''), /at least 3 vertices/i);
+});
+
+test('TutteAdaptive rejects graphs with fewer than 3 vertices', () => {
+  const graph = {
+    nodeIds: ['a', 'b'],
+    edgePairs: [['a', 'b']]
+  };
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const result = TutteAdaptive.applyTutteAdaptiveLayout(cy);
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /at least 3 vertices/i);
 });
