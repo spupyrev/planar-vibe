@@ -92,6 +92,7 @@ function loadBrowserModules() {
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
     'static/js/layout-tutte-adaptive.js',
+    'static/js/layout-tutte-explore.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
@@ -122,6 +123,7 @@ const GraphUtils = modules.GraphUtils;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
 const TutteAdaptive = modules.PlanarVibeTutteAdaptive;
+const TutteAdaptiveFaceExpand = modules.PlanarVibeTutteAdaptiveFaceExpand;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
@@ -1293,6 +1295,26 @@ test('TutteAdaptive strongly improves sample1 face balance over default Tutte', 
 
   assert.ok(after.quality >= before.quality + 0.1, `expected substantial TutteAdaptive face-score gain on sample1: before=${before.quality}, after=${after.quality}`);
   assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, improved.pos), false, 'TutteAdaptive introduced crossings on sample1');
+});
+
+test('TutteAdaptiveFaceExpand preserves or improves TutteAdaptive face balance on sample1 and sample2', () => {
+  for (const sampleName of ['sample1', 'sample2']) {
+    const text = Generator.getSample(sampleName);
+    const graph = parseEdgeListText(text);
+
+    const baseline = TutteAdaptive.computeTutteAdaptiveLayout(graph.nodeIds, graph.edgePairs);
+    assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || `TutteAdaptive failed on ${sampleName}`));
+    const before = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, baseline.pos);
+    assert.equal(before.ok, true, before.reason || `TutteAdaptive face score failed on ${sampleName}`);
+
+    const improved = TutteAdaptiveFaceExpand.computeTutteAdaptiveFaceExpandPositions(graph.nodeIds, graph.edgePairs);
+    assert.equal(improved && improved.ok, true, improved && (improved.message || improved.reason || `TutteAdaptiveFaceExpand failed on ${sampleName}`));
+    const after = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, improved.pos);
+    assert.equal(after.ok, true, after.reason || `TutteAdaptiveFaceExpand face score failed on ${sampleName}`);
+
+    assert.ok(after.quality + 1e-9 >= before.quality, `expected TutteAdaptiveFaceExpand to preserve or improve face score on ${sampleName}: before=${before.quality}, after=${after.quality}`);
+    assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, improved.pos), false, `TutteAdaptiveFaceExpand introduced crossings on ${sampleName}`);
+  }
 });
 
 test('TutteAdaptive layout applies on planar sample and assigns finite positions', () => {

@@ -30,6 +30,7 @@ function loadBrowserModules() {
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
     'static/js/layout-tutte-adaptive.js',
+    'static/js/layout-tutte-explore.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
@@ -58,6 +59,11 @@ const Metrics = modules.PlanarVibeMetrics;
 const PlaygroundUtils = modules.PlaygroundUtils;
 const Tutte = modules.PlanarVibeTutte;
 const TutteAdaptive = modules.PlanarVibeTutteAdaptive;
+const TutteAdaptiveFaceExpand = modules.PlanarVibeTutteAdaptiveFaceExpand;
+const DistanceReweightedTutte = modules.PlanarVibeDistanceReweightedTutte;
+const TutteAntiSmooth = modules.PlanarVibeTutteAntiSmooth;
+const TutteFaceExpand = modules.PlanarVibeTutteFaceExpand;
+const DistanceReweightedTuttePlus = modules.PlanarVibeDistanceReweightedTuttePlus;
 const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
@@ -209,6 +215,41 @@ const layoutSpecs = [
     }
   },
   {
+    name: 'DistanceReweightedTutte compute',
+    graph: CUBE,
+    run(graph) {
+      return DistanceReweightedTutte.computeDistanceReweightedTuttePositions(graph.nodeIds, graph.edgePairs);
+    }
+  },
+  {
+    name: 'TutteAdaptiveFaceExpand compute',
+    graph: CUBE,
+    run(graph) {
+      return TutteAdaptiveFaceExpand.computeTutteAdaptiveFaceExpandPositions(graph.nodeIds, graph.edgePairs);
+    }
+  },
+  {
+    name: 'TutteAntiSmooth compute',
+    graph: CUBE,
+    run(graph) {
+      return TutteAntiSmooth.computeTutteAntiSmoothPositions(graph.nodeIds, graph.edgePairs);
+    }
+  },
+  {
+    name: 'TutteFaceExpand compute',
+    graph: CUBE,
+    run(graph) {
+      return TutteFaceExpand.computeTutteFaceExpandPositions(graph.nodeIds, graph.edgePairs);
+    }
+  },
+  {
+    name: 'DistanceReweightedTuttePlus compute',
+    graph: CUBE,
+    run(graph) {
+      return DistanceReweightedTuttePlus.computeDistanceReweightedTuttePlusPositions(graph.nodeIds, graph.edgePairs);
+    }
+  },
+  {
     name: 'Air compute',
     graph: CUBE,
     run(graph) {
@@ -350,6 +391,26 @@ test('normalized failure shape is preserved for exported compute functions', asy
     {
       name: 'TutteAdaptive compute',
       run: () => TutteAdaptive.computeTutteAdaptiveLayout(['1', '2'], [['1', '2']])
+    },
+    {
+      name: 'DistanceReweightedTutte compute',
+      run: () => DistanceReweightedTutte.computeDistanceReweightedTuttePositions(['1', '2'], [['1', '2']])
+    },
+    {
+      name: 'TutteAdaptiveFaceExpand compute',
+      run: () => TutteAdaptiveFaceExpand.computeTutteAdaptiveFaceExpandPositions(['1', '2'], [['1', '2']])
+    },
+    {
+      name: 'TutteAntiSmooth compute',
+      run: () => TutteAntiSmooth.computeTutteAntiSmoothPositions(['1', '2'], [['1', '2']])
+    },
+    {
+      name: 'TutteFaceExpand compute',
+      run: () => TutteFaceExpand.computeTutteFaceExpandPositions(['1', '2'], [['1', '2']])
+    },
+    {
+      name: 'DistanceReweightedTuttePlus compute',
+      run: () => DistanceReweightedTuttePlus.computeDistanceReweightedTuttePlusPositions(['1', '2'], [['1', '2']])
     },
     {
       name: 'CEG23-bfs compute',
