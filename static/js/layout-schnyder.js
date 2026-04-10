@@ -6,13 +6,11 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var PlaygroundUtils = global.PlaygroundUtils;
-  var applyAndFit = PlaygroundUtils.applyAndFit;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var copyPositions = GraphUtils.copyPositions;
   var hasPositionCrossings = GraphUtils.hasPositionCrossings;
   var normalizeGraphInput = GraphUtils.normalizeGraphInput;
   var prepareGraphData = PlaygroundUtils.prepareGraphData;
-  var graphFromCy = PlaygroundUtils.graphFromCy;
 
   function buildRotationById(embedding) {
     var byId = {};
@@ -558,22 +556,21 @@
     });
   }
 
-  function applySchnyderLayout(cy) {
-    var graph = graphFromCy(cy);
-    var result = computeSchnyderPositions(graph.nodeIds, graph.edgePairs);
-    if (!result || !result.ok) {
-      return buildLayoutError(result || {
-        message: 'Schnyder failed',
-        graph: graph
-      });
-    }
-    applyAndFit(cy, result.pos);
-    return {
-      ok: true,
-      message: buildLayoutStatusMessage('Schnyder layout', {
-        vertexCount: graph.nodeIds.length
-      })
-    };
+  function applySchnyderLayout(cy, options) {
+    return PlaygroundUtils.runLayout(cy, options || {}, {
+      failureMessage: 'Schnyder failed',
+      compute: function (nodeIds, edgePairs) {
+        return computeSchnyderPositions(nodeIds, edgePairs);
+      },
+      buildResult: function (context) {
+        return {
+          ok: true,
+          message: buildLayoutStatusMessage('Schnyder layout', {
+            vertexCount: context.graph.nodeIds.length
+          })
+        };
+      }
+    });
   }
 
   global.PlanarVibeSchnyder = {

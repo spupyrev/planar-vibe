@@ -620,7 +620,7 @@
   }
 
   async function applyImPrEdLayout(cy, options) {
-    return PlaygroundUtils.runIncrementalLayout(cy, options, {
+    return PlaygroundUtils.runLayout(cy, options, {
       compute: computeImPrEdPositions,
       patchComputeOptions: function (ctx) {
         return {

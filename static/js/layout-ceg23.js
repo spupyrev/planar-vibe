@@ -197,7 +197,7 @@
     });
   }
 
-  function solveAugmentedWeightedLayout(state, weights, maxIters, seedPos) {
+  function solveAugmentedWeightedLayout(state, weights, maxIters) {
     return Tutte.computeBarycentricPositions(
       state.augmentedIds,
       state.augmentedPairs,
@@ -207,10 +207,7 @@
         weights: weights,
         maxIters: maxIters,
         tolerance: 1e-8,
-        initOptions: Tutte.defaultOuterPlacementOptions({
-          useSeedOuter: false,
-          seedPos: seedPos || null
-        })
+        initOptions: Tutte.defaultOuterPlacementOptions()
       }
     );
   }
@@ -263,7 +260,7 @@
 
     var depthById = bfsDepthFromOuter(state.augmentedIds, state.adjacency, state.augmentedOuterFace, DEPTH_SOURCE);
     var weights = buildDepthWeights(state.augmentedPairs, depthById, A, R, EDGE_DEPTH_MODE);
-    var out = solveAugmentedWeightedLayout(state, weights, MAX_ITERS, opts.seedPos || null);
+    var out = solveAugmentedWeightedLayout(state, weights, MAX_ITERS);
     if (!out.ok) {
       return buildLayoutError({
         message: out.message || 'CEG23-bfs solver failed',
@@ -297,7 +294,7 @@
     var lambdaX = resolveFiniteOption(opts.lambdaX, 0.5);
 
     var uniformWeights = Tutte.buildUniformWeights(state.augmentedPairs, 1);
-    var base = solveAugmentedWeightedLayout(state, uniformWeights, maxIters, opts.seedPos || null);
+    var base = solveAugmentedWeightedLayout(state, uniformWeights, maxIters);
     if (!base.ok) {
       return buildLayoutError({
         message: base.message || 'CEG23-xy baseline solve failed',
@@ -335,19 +332,18 @@
   }
 
   function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeLayout(graph.nodeIds, graph.edgePairs, options || {});
-    if (!result || !result.ok) {
-      return buildLayoutError(result || {
-        message: failureMessage,
-        graph: graph
-      });
-    }
-    PlaygroundUtils.applyAndFit(cy, result.pos);
-    return {
-      ok: true,
-      message: result.message
-    };
+    return PlaygroundUtils.runLayout(cy, options, {
+      failureMessage: failureMessage,
+      compute: function (nodeIds, edgePairs, computeOptions) {
+        return computeLayout(nodeIds, edgePairs, computeOptions || {});
+      },
+      buildResult: function (context) {
+        return {
+          ok: true,
+          message: context.result.message
+        };
+      }
+    });
   }
 
   function applyCEG23BfsLayout(cy, options) {

@@ -816,7 +816,7 @@
   async function applyFaceBalancerLayout(cy, options) {
     var opts = options || {};
     var iterationCount = 0;
-    return PlaygroundUtils.runIncrementalLayout(cy, opts, {
+    return PlaygroundUtils.runLayout(cy, opts, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'FaceBalancer layout',
       compute: computeFaceBalancerPositions,

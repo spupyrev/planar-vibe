@@ -113,23 +113,21 @@
     });
   }
 
-  function applyP3TLayout(cy) {
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeP3TPositions(graph.nodeIds, graph.edgePairs);
-    if (!result || !result.ok) {
-      return buildLayoutError(result || {
-        message: 'P3T failed',
-        graph: graph
-      });
-    }
-
-    PlaygroundUtils.applyAndFit(cy, result.pos);
-    return {
-      ok: true,
-      message: buildLayoutStatusMessage('P3T equal-face-area layout', {
-        vertexCount: result.nodeIds.length
-      })
-    };
+  function applyP3TLayout(cy, options) {
+    return PlaygroundUtils.runLayout(cy, options || {}, {
+      failureMessage: 'P3T failed',
+      compute: function (nodeIds, edgePairs) {
+        return computeP3TPositions(nodeIds, edgePairs);
+      },
+      buildResult: function (context) {
+        return {
+          ok: true,
+          message: buildLayoutStatusMessage('P3T equal-face-area layout', {
+            vertexCount: context.result.nodeIds.length
+          })
+        };
+      }
+    });
   }
 
   global.PlanarVibeP3T = {

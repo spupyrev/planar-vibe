@@ -91,8 +91,6 @@ function loadBrowserModules() {
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
-    'static/js/layout-tutte-adaptive.js',
-    'static/js/layout-tutte-explore.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
@@ -122,8 +120,6 @@ const Planarity = modules.PlanarVibePlanarityTest;
 const GraphUtils = modules.GraphUtils;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
-const TutteAdaptive = modules.PlanarVibeTutteAdaptive;
-const TutteAdaptiveFaceExpand = modules.PlanarVibeTutteAdaptiveFaceExpand;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
@@ -688,7 +684,7 @@ test('raw shared barycentric seed on grid2x20 returns coordinates that fail embe
   assert.match(String(verify.message || ''), /crossings|degenerate/i);
 });
 
-test('prepareGraphData defaults to face-stellation triangulation', () => {
+test('prepareGraphData defaults to outer-cycle triangulation', () => {
   const prepared = PlaygroundUtils.prepareGraphData({
     nodeIds: ['1', '2', '3', '4'],
     edgePairs: [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
@@ -697,8 +693,8 @@ test('prepareGraphData defaults to face-stellation triangulation', () => {
   });
 
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
-  assert.equal(prepared.augmentationMethod, 'triangulateByFaceStellation');
-  assert.equal(prepared.augmented && prepared.augmented.method, 'triangulateByFaceStellation');
+  assert.equal(prepared.augmentationMethod, 'triangulateByOuterCycle');
+  assert.equal(prepared.augmented && prepared.augmented.method, 'triangulateByOuterCycle');
 });
 
 test('prepareGraphData can use the outer-cycle augmentation on a drawing with repeated outer-face vertices', () => {
@@ -742,7 +738,7 @@ test('prepareGraphData rejects unknown augmentation methods', () => {
   assert.match(String(prepared && prepared.message || ''), /unknown augmentation method/i);
 });
 
-test('shared incremental runner fits once from the prepared seed before progress updates', async () => {
+test('shared layout runner fits once from the prepared seed before progress updates', async () => {
   const graph = {
     nodeIds: ['a', 'b', 'c', 'd', 'e'],
     edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
@@ -782,7 +778,7 @@ test('shared incremental runner fits once from the prepared seed before progress
   };
 
   let fitCountAtComputeStart = -1;
-  const result = await PlaygroundUtils.runIncrementalLayout(cy, {
+  const result = await PlaygroundUtils.runLayout(cy, {
     delayMs: 0,
     yieldEvery: 50,
     augmentationMethod: 'outer-cycle'
@@ -814,16 +810,54 @@ test('shared incremental runner fits once from the prepared seed before progress
     getPositions: function (runResult) {
       return runResult.pos;
     },
-    failureMessage: 'incremental seed test failed'
+    failureMessage: 'layout seed test failed'
   });
 
-  assert.equal(result && result.ok, true, result && result.message ? result.message : 'runIncrementalLayout failed');
+  assert.equal(result && result.ok, true, result && result.message ? result.message : 'runLayout failed');
   assert.equal(fitCountAtComputeStart, 1);
   assert.equal(cy._fitCalls, 1);
   assert.equal(cy._fitArg && cy._fitArg.x1, expectedFitBounds.x1);
   assert.equal(cy._fitArg && cy._fitArg.y1, expectedFitBounds.y1);
   assert.equal(cy._fitArg && cy._fitArg.x2, expectedFitBounds.x2);
   assert.equal(cy._fitArg && cy._fitArg.y2, expectedFitBounds.y2);
+  for (const node of cy.nodes()) {
+    assert.deepEqual(node.position(), finalPos[String(node.id())]);
+  }
+});
+
+test('shared layout runner emits one final progress step synchronously for one-shot layouts without live progress', () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c'],
+    edgePairs: [['a', 'b'], ['b', 'c']]
+  };
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const finalPos = {
+    a: { x: 10, y: 20 },
+    b: { x: 30, y: 40 },
+    c: { x: 50, y: 60 }
+  };
+  const events = [];
+
+  const result = PlaygroundUtils.runLayout(cy, {
+    onIteration: function (progress) {
+      events.push(progress);
+    }
+  }, {
+    compute: function () {
+      return {
+        ok: true,
+        pos: finalPos
+      };
+    },
+    failureMessage: 'one-shot layout failed'
+  });
+
+  assert.equal(typeof (result && result.then), 'undefined');
+  assert.equal(result && result.ok, true, result && result.message ? result.message : 'runLayout failed');
+  assert.equal(events.length, 1);
+  assert.equal(events[0] && events[0].iter, 1);
+  assert.equal(events[0] && events[0].maxIters, 1);
+  assert.deepEqual(events[0] && events[0].positions, finalPos);
   for (const node of cy.nodes()) {
     assert.deepEqual(node.position(), finalPos[String(node.id())]);
   }
@@ -857,17 +891,15 @@ test('shared movement convergence helper stops after enough stable iterations', 
   assert.equal(s3.reason, 'movement-converged');
 });
 
-test('shared outer-face positioning ignores seed positions when useSeedOuter is false', () => {
+test('shared outer-face positioning ignores seed positions', () => {
   const nodeIds = ['1', '2', '3', '4'];
   const outerFace = ['1', '2', '3', '4'];
   const baseline = modules.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(nodeIds, outerFace, {
-    useSeedOuter: false,
     defaultCenterX: 2000,
     defaultCenterY: 2000,
     defaultRadius: 1000
   });
   const withSeed = modules.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(nodeIds, outerFace, {
-    useSeedOuter: false,
     seedPos: {
       '1': { x: 0, y: 0 },
       '2': { x: 10, y: 0 },
@@ -1274,60 +1306,6 @@ test('Tutte layout applies on planar sample and assigns finite positions', () =>
 
   for (const node of cy.nodes()) {
     assert.equal(node._pos !== null, true, `missing Tutte position for node ${node.id()}`);
-    assert.equal(Number.isFinite(node._pos.x), true);
-    assert.equal(Number.isFinite(node._pos.y), true);
-  }
-});
-
-test('TutteAdaptive strongly improves sample1 face balance over default Tutte', () => {
-  const text = Generator.getSample('sample1');
-  const graph = parseEdgeListText(text);
-
-  const baseline = Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs);
-  assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on sample1'));
-  const before = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, baseline.pos);
-  assert.equal(before.ok, true, before.reason || 'Tutte face score failed on sample1');
-
-  const improved = TutteAdaptive.computeTutteAdaptiveLayout(graph.nodeIds, graph.edgePairs);
-  assert.equal(improved && improved.ok, true, improved && (improved.message || improved.reason || 'TutteAdaptive failed on sample1'));
-  const after = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, improved.pos);
-  assert.equal(after.ok, true, after.reason || 'TutteAdaptive face score failed on sample1');
-
-  assert.ok(after.quality >= before.quality + 0.1, `expected substantial TutteAdaptive face-score gain on sample1: before=${before.quality}, after=${after.quality}`);
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, improved.pos), false, 'TutteAdaptive introduced crossings on sample1');
-});
-
-test('TutteAdaptiveFaceExpand preserves or improves TutteAdaptive face balance on sample1 and sample2', () => {
-  for (const sampleName of ['sample1', 'sample2']) {
-    const text = Generator.getSample(sampleName);
-    const graph = parseEdgeListText(text);
-
-    const baseline = TutteAdaptive.computeTutteAdaptiveLayout(graph.nodeIds, graph.edgePairs);
-    assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || `TutteAdaptive failed on ${sampleName}`));
-    const before = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, baseline.pos);
-    assert.equal(before.ok, true, before.reason || `TutteAdaptive face score failed on ${sampleName}`);
-
-    const improved = TutteAdaptiveFaceExpand.computeTutteAdaptiveFaceExpandPositions(graph.nodeIds, graph.edgePairs);
-    assert.equal(improved && improved.ok, true, improved && (improved.message || improved.reason || `TutteAdaptiveFaceExpand failed on ${sampleName}`));
-    const after = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, improved.pos);
-    assert.equal(after.ok, true, after.reason || `TutteAdaptiveFaceExpand face score failed on ${sampleName}`);
-
-    assert.ok(after.quality + 1e-9 >= before.quality, `expected TutteAdaptiveFaceExpand to preserve or improve face score on ${sampleName}: before=${before.quality}, after=${after.quality}`);
-    assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, improved.pos), false, `TutteAdaptiveFaceExpand introduced crossings on ${sampleName}`);
-  }
-});
-
-test('TutteAdaptive layout applies on planar sample and assigns finite positions', () => {
-  const text = Generator.getSample('sample1');
-  const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-
-  const result = TutteAdaptive.applyTutteAdaptiveLayout(cy, { maxIters: 8, tolerance: 1e-4 });
-  assert.equal(result.ok, true, result.message || 'TutteAdaptive failed');
-  assert.equal(cy._fitCalls > 0, true);
-
-  for (const node of cy.nodes()) {
-    assert.equal(node._pos !== null, true, `missing TutteAdaptive position for node ${node.id()}`);
     assert.equal(Number.isFinite(node._pos.x), true);
     assert.equal(Number.isFinite(node._pos.y), true);
   }
@@ -2105,17 +2083,6 @@ test('Tutte rejects graphs with fewer than 3 vertices', () => {
   };
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
   const result = Tutte.applyTutteLayout(cy);
-  assert.equal(result.ok, false);
-  assert.match(String(result.message || ''), /at least 3 vertices/i);
-});
-
-test('TutteAdaptive rejects graphs with fewer than 3 vertices', () => {
-  const graph = {
-    nodeIds: ['a', 'b'],
-    edgePairs: [['a', 'b']]
-  };
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-  const result = TutteAdaptive.applyTutteAdaptiveLayout(cy);
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /at least 3 vertices/i);
 });

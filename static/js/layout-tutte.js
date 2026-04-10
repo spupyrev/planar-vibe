@@ -107,40 +107,6 @@
     var cx = opts.defaultCenterX;
     var cy = opts.defaultCenterY;
     var R = opts.defaultRadius;
-    var useSeed = !!opts.useSeedOuter;
-
-    if (useSeed) {
-      var seedPos = opts.seedPos || {};
-      var minX = Infinity;
-      var minY = Infinity;
-      var maxX = -Infinity;
-      var maxY = -Infinity;
-      var haveSeed = false;
-
-      for (i = 0; i < ids.length; i += 1) {
-        var nid = ids[i];
-        var sp = seedPos[nid];
-        if (!sp || !Number.isFinite(sp.x) || !Number.isFinite(sp.y)) {
-          continue;
-        }
-        haveSeed = true;
-        if (sp.x < minX) minX = sp.x;
-        if (sp.y < minY) minY = sp.y;
-        if (sp.x > maxX) maxX = sp.x;
-        if (sp.y > maxY) maxY = sp.y;
-      }
-
-      if (haveSeed) {
-        cx = (minX + maxX) / 2;
-        cy = (minY + maxY) / 2;
-        var spanX = maxX - minX;
-        var spanY = maxY - minY;
-        var spanMin = Math.max(1, Math.min(spanX, spanY));
-        R = Math.max(80, spanMin * 0.42);
-      } else {
-        R = Math.max(80, R);
-      }
-    }
 
     var gamma = 2 * Math.PI / face.length;
     for (i = 0; i < face.length; i += 1) {
@@ -171,7 +137,7 @@
     var adjacency = opts.adjacency || buildAdjacencyArrays(ids, pairs);
     var weights = opts.weights || buildUniformWeights(pairs, 1);
     var rowWeights = opts.rowWeights || null;
-    var initOptions = opts.initOptions || defaultOuterPlacementOptions({ useSeedOuter: false });
+    var initOptions = opts.initOptions || defaultOuterPlacementOptions();
     var pos = placeOuterFaceVertices(ids, face, initOptions);
     var outerSet = new Set(face);
     var interiorIds = [];
@@ -297,7 +263,7 @@
     var rowWeights = opts.rowWeights || null;
     var maxIters = resolveIntOption(opts.maxIters, 1000, 1);
     var tol = resolveFloatOption(opts.tolerance, 1e-7, 0);
-    var initOptions = opts.initOptions || defaultOuterPlacementOptions({ useSeedOuter: false });
+    var initOptions = opts.initOptions || defaultOuterPlacementOptions();
 
     if (ids.length < 1) {
       return buildLayoutError({
@@ -404,7 +370,7 @@
       : pairs;
     var augmentedOuterFace = prepared.augmentedOuterFace || prepared.outerFace;
     var barycentricOptions = {
-      initOptions: defaultOuterPlacementOptions({ useSeedOuter: false })
+      initOptions: defaultOuterPlacementOptions()
     };
     if (weightMode !== 'uniform') {
       barycentricOptions.weights = buildSoftAugmentationWeights(
@@ -458,43 +424,30 @@
   }
 
   function applyTutteLayout(cy, options) {
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeTutteLayout(graph.nodeIds, graph.edgePairs, options || {});
-    if (!result || !result.ok) {
-      return buildLayoutError(result || {
-        message: 'Tutte failed',
-        graph: graph
-      });
-    }
-
-    if (typeof PlaygroundUtils.applyAndFit === 'function') {
-      PlaygroundUtils.applyAndFit(cy, result.pos);
-    } else {
-      var nodes = cy.nodes().toArray();
-      for (var i = 0; i < nodes.length; i += 1) {
-        var nodeId = nodes[i].id();
-        if (result.pos[nodeId]) {
-          nodes[i].position(result.pos[nodeId]);
-        }
+    return PlaygroundUtils.runLayout(cy, options, {
+      failureMessage: 'Tutte failed',
+      compute: function (nodeIds, edgePairs, computeOptions) {
+        return computeTutteLayout(nodeIds, edgePairs, computeOptions || {});
+      },
+      buildResult: function (context) {
+        var result = context.result;
+        return {
+          ok: true,
+          message: buildLayoutStatusMessage('Tutte', {
+            outerFaceVertexCount: result.outerFace.length,
+            iters: result.iters
+          }),
+          debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
+            ? PlaygroundUtils.createAugmentationDebugState(
+              result.graph,
+              result.outerFace,
+              result.augmented,
+              result.posById
+            )
+            : null
+        };
       }
-      cy.fit(undefined, 24);
-    }
-
-    return {
-      ok: true,
-      message: buildLayoutStatusMessage('Tutte', {
-        outerFaceVertexCount: result.outerFace.length,
-        iters: result.iters
-      }),
-      debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-        ? PlaygroundUtils.createAugmentationDebugState(
-          result.graph,
-          result.outerFace,
-          result.augmented,
-          result.posById
-        )
-        : null
-    };
+    });
   }
 
   global.PlanarVibeTutteAlgorithm = {

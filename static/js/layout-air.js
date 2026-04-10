@@ -289,7 +289,7 @@
 
   function normalizeAirOptions(options) {
     var opts = options || {};
-    var timing = PlaygroundUtils.resolveIncrementalLayoutTimingOptions(opts, {
+    var timing = PlaygroundUtils.resolveLayoutTimingOptions(opts, {
       delayMs: 0,
       renderEvery: 2,
       yieldEvery: 5
@@ -671,7 +671,7 @@
   }
 
   async function applyAirLayout(cy, options) {
-    return PlaygroundUtils.runIncrementalLayout(cy, options, {
+    return PlaygroundUtils.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'Air layout',
       compute: computeAirPositions,

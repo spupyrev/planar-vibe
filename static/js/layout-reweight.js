@@ -31,7 +31,6 @@
       maxIters: maxIters,
       tolerance: 1e-8,
       initOptions: Tutte.defaultOuterPlacementOptions({
-        useSeedOuter: false,
         fixedOuterPos: fixedOuterPos || null
       })
     });
@@ -446,7 +445,7 @@
   }
 
   async function applyReweightTutteLayout(cy, options) {
-    return PlaygroundUtils.runIncrementalLayout(cy, options, {
+    return PlaygroundUtils.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'ReweightTutte layout',
       compute: computeReweightTuttePositions,

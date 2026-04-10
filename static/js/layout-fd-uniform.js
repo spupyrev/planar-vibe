@@ -512,7 +512,7 @@
   function applyFDUniformLayout(cy, options) {
     var opts = options || {};
     var interactive = !!opts.interactive;
-    var timing = PlaygroundUtils.resolveIncrementalLayoutTimingOptions(opts, {
+    var timing = PlaygroundUtils.resolveLayoutTimingOptions(opts, {
       delayMs: 0,
       renderEvery: 2,
       yieldEvery: 5
@@ -549,7 +549,7 @@
     }
 
     return (async function () {
-      return PlaygroundUtils.runIncrementalLayout(cy, Object.assign({}, opts, {
+      return PlaygroundUtils.runLayout(cy, Object.assign({}, opts, {
         interactive: interactive,
         delayMs: delayMs,
         renderEvery: renderEvery,

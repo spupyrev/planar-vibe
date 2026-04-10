@@ -68,7 +68,6 @@ function loadBrowserModules() {
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
-    'static/js/layout-tutte-adaptive.js',
     'static/js/layout-reweight.js',
     'static/js/layout-tutte-explore.js'
   ];
@@ -165,18 +164,6 @@ async function main() {
       name: 'Tutte',
       run(graph) {
         return modules.PlanarVibeTutte.computeTutteLayout(graph.nodeIds, graph.edgePairs);
-      }
-    },
-    {
-      name: 'TutteAdaptive',
-      run(graph) {
-        return modules.PlanarVibeTutteAdaptive.computeTutteAdaptiveLayout(graph.nodeIds, graph.edgePairs);
-      }
-    },
-    {
-      name: 'TutteAdaptiveFaceExpand',
-      run(graph) {
-        return modules.PlanarVibeTutteAdaptiveFaceExpand.computeTutteAdaptiveFaceExpandPositions(graph.nodeIds, graph.edgePairs);
       }
     },
     {

@@ -29,11 +29,22 @@
     });
   }
 
-  function applyRandomLayout(cy) {
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeRandomPositions(graph.nodeIds, cy.width(), cy.height());
-    PlaygroundUtils.applyAndFit(cy, result.pos, 20);
-    return { ok: true, message: 'Applied random coordinates' };
+  function applyRandomLayout(cy, options) {
+    return PlaygroundUtils.runLayout(cy, options || {}, {
+      fitPadding: 20,
+      patchComputeOptions: function (context) {
+        return {
+          width: context.cy.width(),
+          height: context.cy.height()
+        };
+      },
+      compute: function (nodeIds, edgePairs, options) {
+        return computeRandomPositions(nodeIds, options && options.width, options && options.height);
+      },
+      buildResult: function () {
+        return { ok: true, message: 'Applied random coordinates' };
+      }
+    });
   }
 
   global.PlanarVibeRandom = {

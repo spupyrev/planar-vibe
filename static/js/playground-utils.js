@@ -43,40 +43,10 @@
     return out;
   }
 
-  function normalizeLayoutMethodName(layoutName) {
-    var key = String(layoutName || '').toLowerCase();
-    if (key === 'reweight') return 'reweighttutte';
-    if (key === 'fd_uniform') return 'fd-uniform';
-    if (key === 'ceg23_bfs') return 'ceg23-bfs';
-    if (key === 'ceg23_xy') return 'ceg23-xy';
-    return key;
-  }
-
-  function sharedLayoutMethodOptionsByName(layoutName, overrides) {
-    var key = normalizeLayoutMethodName(layoutName);
-    var base = {};
-    if (key === 'air' ||
-        key === 'ppag' ||
-        key === 'facebalancer' ||
-        key === 'edgebalancer' ||
-        key === 'reweighttutte' ||
-        key === 'fd-uniform' ||
-        key === 'impred') {
-      base = {
-        incremental: true,
-        interactive: true,
-        delayMs: 0,
-        renderEvery: 2,
-        yieldEvery: 5
-      };
-    }
-    return Object.assign({}, base, overrides || {});
-  }
-
   function normalizeAugmentationMethodName(methodName) {
     var key = String(methodName || '').trim().toLowerCase();
     if (!key || key === 'default') {
-      return 'triangulateByFaceStellation';
+      return 'triangulateByOuterCycle';
     }
     if (key === 'triangulatebyfacestellation' ||
         key === 'triangulate-by-face-stellation' ||
@@ -419,7 +389,7 @@
     });
   }
 
-  function normalizeIncrementalProgress(progress) {
+  function normalizeLayoutProgress(progress) {
     var event = progress || {};
     var normalized = Object.assign({}, event);
     normalized.debug = normalized.debug ? Object.assign({}, normalized.debug) : {};
@@ -449,7 +419,7 @@
     return normalized;
   }
 
-  function resolveIncrementalLayoutTimingOptions(options, defaults) {
+  function resolveLayoutTimingOptions(options, defaults) {
     var opts = options || {};
     var cfg = defaults || {};
     return {
@@ -465,12 +435,12 @@
     };
   }
 
-  function createIncrementalRenderer(config) {
+  function createLayoutRenderer(config) {
     var cy = config.cy;
     var nodeIds = Array.isArray(config.nodeIds) ? config.nodeIds.map(String) : [];
     var getPositions = typeof config.getPositions === 'function' ? config.getPositions : function () { return {}; };
     var interactive = config.interactive !== false;
-    var timing = resolveIncrementalLayoutTimingOptions(config, {
+    var timing = resolveLayoutTimingOptions(config, {
       delayMs: 0,
       renderEvery: 2,
       yieldEvery: 5
@@ -535,13 +505,13 @@
     };
   }
 
-  async function runIncrementalLayout(cy, options, spec) {
+  function runLayout(cy, options, spec) {
     var opts = options || {};
     var cfg = spec || {};
     var graph = graphFromCy(cy);
     var livePositions = {};
     var interactive = opts.interactive !== false;
-    var timing = resolveIncrementalLayoutTimingOptions(opts, {
+    var timing = resolveLayoutTimingOptions(opts, {
       delayMs: cfg.delayMsDefault,
       renderEvery: cfg.renderEveryDefault,
       yieldEvery: cfg.yieldEveryDefault
@@ -551,6 +521,7 @@
     var yieldEvery = timing.yieldEvery;
     var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
     var didInitialFit = false;
+    var didStreamProgress = false;
 
     if (interactive && cfg.useSharedPreparedSeed) {
       var initialPrepared = prepareGraphAndLayoutData(graph, {
@@ -570,7 +541,7 @@
       }
     }
 
-    var renderer = createIncrementalRenderer({
+    var renderer = createLayoutRenderer({
       cy: cy,
       nodeIds: graph.nodeIds,
       getPositions: function () { return livePositions; },
@@ -581,10 +552,10 @@
       fitPadding: fitPadding,
       initialDidFit: didInitialFit
     });
-    await renderer.begin();
 
     async function onProgress(progress) {
-      var event = normalizeIncrementalProgress(progress);
+      var event = normalizeLayoutProgress(progress);
+      didStreamProgress = true;
       livePositions = event.positions || livePositions;
       if (typeof opts.onIteration === 'function') {
         opts.onIteration(event);
@@ -605,31 +576,61 @@
         : {}
     );
 
-    var result = await cfg.compute(graph.nodeIds, graph.edgePairs, computeOptions);
-    var positions = null;
-    if (result && result.ok) {
-      positions = typeof cfg.getPositions === 'function'
-        ? cfg.getPositions(result)
-        : (result.pos || result.positions);
-      livePositions = positions || livePositions;
-    }
-    renderer.finish();
+    function finalizeResult(result) {
+      var positions = null;
+      var streamed = didStreamProgress;
+      if (result && result.ok) {
+        positions = typeof cfg.getPositions === 'function'
+          ? cfg.getPositions(result)
+          : (result.pos || result.positions);
+        livePositions = positions || livePositions;
+        if (!streamed && positions && typeof opts.onIteration === 'function') {
+          opts.onIteration(normalizeLayoutProgress({
+            iter: 1,
+            maxIters: 1,
+            positions: positions
+          }));
+        }
+      }
+      renderer.finish();
 
-    if (!result || !result.ok) {
-      return result || { ok: false, message: String(cfg.failureMessage || 'Layout failed') };
+      if (!result || !result.ok) {
+        return result || { ok: false, message: String(cfg.failureMessage || 'Layout failed') };
+      }
+
+      function attachProgressMetadata(out) {
+        if (out && typeof out === 'object') {
+          out.didStreamProgress = streamed;
+        }
+        return out;
+      }
+
+      if (typeof cfg.buildResult === 'function') {
+        return attachProgressMetadata(cfg.buildResult({
+          result: result,
+          graph: graph,
+          cy: cy,
+          options: opts,
+          positions: positions
+        }));
+      }
+
+      return attachProgressMetadata(result);
     }
 
-    if (typeof cfg.buildResult === 'function') {
-      return cfg.buildResult({
-        result: result,
-        graph: graph,
-        cy: cy,
-        options: opts,
-        positions: positions
-      });
+    function executeCompute() {
+      var result = cfg.compute(graph.nodeIds, graph.edgePairs, computeOptions);
+      if (result && typeof result.then === 'function') {
+        return result.then(finalizeResult);
+      }
+      return finalizeResult(result);
     }
 
-    return result;
+    if (didInitialFit) {
+      return renderer.begin().then(executeCompute);
+    }
+
+    return executeCompute();
   }
 
   function createZeroVectorLocal(n) {
@@ -668,9 +669,7 @@
     var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(
       ids,
       outerFace,
-      global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions({
-        useSeedOuter: false
-      })
+      global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions()
     );
     var outerSet = new Set((outerFace || []).map(String));
     var interiorIds = [];
@@ -829,17 +828,16 @@
   global.PlaygroundUtils = {
     graphFromCy: graphFromCy,
     currentPositionsFromCy: currentPositionsFromCy,
-    sharedLayoutMethodOptionsByName: sharedLayoutMethodOptionsByName,
     prepareGraphData: prepareGraphData,
     originalFaceKeyForAugmentedFace: originalFaceKeyForAugmentedFace,
     createAugmentationDebugState: createAugmentationDebugState,
     applyPositionsToCy: applyPositionsToCy,
     applyAndFit: applyAndFit,
     waitForNextFrame: waitForNextFrame,
-    normalizeIncrementalProgress: normalizeIncrementalProgress,
-    resolveIncrementalLayoutTimingOptions: resolveIncrementalLayoutTimingOptions,
-    createIncrementalRenderer: createIncrementalRenderer,
-    runIncrementalLayout: runIncrementalLayout,
+    normalizeLayoutProgress: normalizeLayoutProgress,
+    resolveLayoutTimingOptions: resolveLayoutTimingOptions,
+    createLayoutRenderer: createLayoutRenderer,
+    runLayout: runLayout,
     computeSharedBarycentricSeed: computeSharedBarycentricSeed,
     verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
     prepareGraphAndLayoutData: prepareGraphAndLayoutData

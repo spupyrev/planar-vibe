@@ -548,26 +548,25 @@
     });
   }
 
-  function applyFPPLayout(cy) {
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    var result = computeFPPPositions(graph.nodeIds, graph.edgePairs);
-    if (!result || !result.ok) {
-      return buildLayoutError(result || {
-        message: 'FPP failed',
-        graph: graph
-      });
-    }
-
-    PlaygroundUtils.applyAndFit(cy, result.pos);
-    return {
-      ok: true,
-      message: buildLayoutStatusMessage('FPP layout', {
-        vertexCount: result.nodeIds.length,
-        extraParts: result.augmentedDummyCount > 0
-          ? ['after augmentation (+' + result.augmentedDummyCount + ' dummy vertices)']
-          : null
-      })
-    };
+  function applyFPPLayout(cy, options) {
+    return PlaygroundUtils.runLayout(cy, options || {}, {
+      failureMessage: 'FPP failed',
+      compute: function (nodeIds, edgePairs) {
+        return computeFPPPositions(nodeIds, edgePairs);
+      },
+      buildResult: function (context) {
+        var result = context.result;
+        return {
+          ok: true,
+          message: buildLayoutStatusMessage('FPP layout', {
+            vertexCount: result.nodeIds.length,
+            extraParts: result.augmentedDummyCount > 0
+              ? ['after augmentation (+' + result.augmentedDummyCount + ' dummy vertices)']
+              : null
+          })
+        };
+      }
+    });
   }
 
   global.PlanarVibeFPP = {

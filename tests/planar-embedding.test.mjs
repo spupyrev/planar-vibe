@@ -74,8 +74,6 @@ function loadBrowserModules() {
     'static/js/graph-utils.js',
     'static/js/playground-utils.js',
     'static/js/layout-tutte.js',
-    'static/js/layout-tutte-adaptive.js',
-    'static/js/layout-tutte-explore.js',
     'static/js/layout-fpp.js'
   ];
 

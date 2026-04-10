@@ -2,9 +2,7 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
-  var Metrics = global.PlanarVibeMetrics;
   var PlaygroundUtils = global.PlaygroundUtils;
-  var TutteAdaptive = global.PlanarVibeTutteAdaptive;
   var TutteAlgorithm = global.PlanarVibeTutteAlgorithm;
   var applyAndFit = PlaygroundUtils.applyAndFit;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
@@ -67,7 +65,7 @@
       outerFace,
       {
         weights: baseWeights,
-        initOptions: TutteAlgorithm.defaultOuterPlacementOptions({ useSeedOuter: false })
+        initOptions: TutteAlgorithm.defaultOuterPlacementOptions()
       }
     );
     if (!seed || !seed.ok || !seed.pos) {
@@ -98,38 +96,6 @@
     };
   }
 
-  function buildPostProcessStateFromResult(result) {
-    var outerFace = result && result.augmented && Array.isArray(result.augmented.outerFace)
-      ? result.augmented.outerFace
-      : (result && result.outerFace ? result.outerFace : []);
-    var fixedOuterPos = {};
-    var i;
-    for (i = 0; i < outerFace.length; i += 1) {
-      var outerId = String(outerFace[i]);
-      fixedOuterPos[outerId] = {
-        x: result.posById[outerId].x,
-        y: result.posById[outerId].y
-      };
-    }
-
-    return {
-      ok: true,
-      graph: {
-        nodeIds: result.nodeIds,
-        edgePairs: result.edgePairs
-      },
-      prepared: {
-        graph: result.graph,
-        baseEmbedding: result.embedding,
-        outerFace: result.outerFace
-      },
-      augmented: result.augmented,
-      outerFace: outerFace,
-      movable: collectMovableVertices(result.augmented.nodeIds, outerFace),
-      fixedOuterPos: fixedOuterPos
-    };
-  }
-
   function buildAlignedResult(state, posById, label, extraFields) {
     var alignedPosById = GraphUtils.alignOuterFaceEdgeHorizontally(posById, state.outerFace);
     var projected = filterPositions(alignedPosById, state.graph.nodeIds);
@@ -150,31 +116,6 @@
       embedding: state.prepared.baseEmbedding,
       augmented: state.augmented,
       graph: state.prepared.graph,
-      pos: projected,
-      posById: alignedPosById
-    }, extraFields || {}));
-  }
-
-  function buildResultFromExistingLayout(existingResult, state, posById, label, extraFields) {
-    var alignedPosById = GraphUtils.alignOuterFaceEdgeHorizontally(posById, state.outerFace);
-    var projected = filterPositions(alignedPosById, existingResult.nodeIds);
-    if (hasPositionCrossings(projected, existingResult.edgePairs)) {
-      return buildLayoutError({
-        message: label + ' produced a non-plane drawing',
-        graph: existingResult.graph,
-        outerFace: existingResult.outerFace,
-        augmented: existingResult.augmented
-      });
-    }
-
-    return buildLayoutResult(Object.assign({
-      ok: true,
-      nodeIds: existingResult.nodeIds,
-      edgePairs: existingResult.edgePairs,
-      outerFace: existingResult.outerFace,
-      embedding: existingResult.embedding,
-      augmented: existingResult.augmented,
-      graph: existingResult.graph,
       pos: projected,
       posById: alignedPosById
     }, extraFields || {}));
@@ -297,7 +238,6 @@
         weights: weights,
         adjacency: state.adjacency,
         initOptions: TutteAlgorithm.defaultOuterPlacementOptions({
-          useSeedOuter: false,
           fixedOuterPos: state.fixedOuterPos
         })
       }
@@ -722,75 +662,6 @@
     });
   }
 
-  function normalizeTutteAdaptiveFaceExpandOptions(options) {
-    var opts = options || {};
-    return {
-      adaptiveRounds: opts.adaptiveRounds,
-      maxIters: opts.maxIters,
-      tolerance: opts.tolerance,
-      augmentationMethod: opts.augmentationMethod,
-      augmentationOptions: opts.augmentationOptions,
-      normalizeByDegree: opts.normalizeByDegree,
-      originalEdgeWeight: opts.originalEdgeWeight,
-      augmentationEdgeWeight: opts.augmentationEdgeWeight,
-      pressureStep: opts.pressureStep,
-      pressureClamp: opts.pressureClamp,
-      pressureDeltaClamp: opts.pressureDeltaClamp,
-      pressureBeta: opts.pressureBeta,
-      scaleMin: opts.scaleMin,
-      scaleMax: opts.scaleMax,
-      pressureScaleMin: opts.pressureScaleMin,
-      pressureScaleMax: opts.pressureScaleMax,
-      faceScoreThreshold: resolveFloatOption(opts.faceScoreThreshold, 0.9, 0, 1),
-      facePasses: resolveIntOption(opts.facePasses, 4, 0),
-      faceEta: resolveFloatOption(opts.faceEta, 0.04, 0),
-      faceWeightMin: opts.faceWeightMin,
-      faceWeightMax: opts.faceWeightMax,
-      onIteration: resolveFunctionOption(opts.onIteration, null)
-    };
-  }
-
-  function computeTutteAdaptiveFaceExpandPositions(nodeIds, edgePairs, options) {
-    var opts = normalizeTutteAdaptiveFaceExpandOptions(options);
-    var base = TutteAdaptive.computeTutteAdaptiveLayout(nodeIds, edgePairs, opts);
-    if (!base || !base.ok || !base.posById) {
-      return buildLayoutError(base || { message: 'TutteAdaptiveFaceExpand failed' });
-    }
-
-    var projectedBase = filterPositions(base.pos || base.posById || {}, base.nodeIds);
-    var faceScore = Metrics && typeof Metrics.computeUniformFaceAreaScore === 'function'
-      ? Metrics.computeUniformFaceAreaScore(base.nodeIds, base.edgePairs, projectedBase)
-      : null;
-    var threshold = opts.faceScoreThreshold;
-    if (faceScore && faceScore.ok && Number.isFinite(threshold) && faceScore.quality >= threshold) {
-      return buildLayoutResult(Object.assign({}, base, {
-        faceExpandApplied: false,
-        faceExpandAccepted: 0,
-        faceScoreBeforeExpand: faceScore.quality
-      }));
-    }
-
-    var state = buildPostProcessStateFromResult(base);
-    var result = runFaceExpansion(state, base.posById, {
-      passes: opts.facePasses,
-      eta: opts.faceEta,
-      faceWeightMin: opts.faceWeightMin,
-      faceWeightMax: opts.faceWeightMax,
-      onIteration: opts.onIteration
-    });
-    if (!result || !result.ok) {
-      return buildLayoutError(result || { message: 'TutteAdaptiveFaceExpand failed' });
-    }
-
-    return buildResultFromExistingLayout(base, state, result.pos, 'TutteAdaptiveFaceExpand', {
-      iters: (Number.isFinite(base.iters) ? base.iters : 0) + result.iters,
-      accepted: result.accepted,
-      faceExpandApplied: result.accepted > 0,
-      faceExpandAccepted: result.accepted,
-      faceScoreBeforeExpand: faceScore && faceScore.ok ? faceScore.quality : null
-    });
-  }
-
   function applyLayoutWithResult(cy, result, label) {
     if (!result || !result.ok) {
       return buildLayoutError(result || {
@@ -838,11 +709,6 @@
     return applyLayoutWithResult(cy, computeDistanceReweightedTuttePlusPositions(graph.nodeIds, graph.edgePairs, options || {}), 'DistanceReweightedTuttePlus');
   }
 
-  function applyTutteAdaptiveFaceExpandLayout(cy, options) {
-    var graph = graphFromCy(cy);
-    return applyLayoutWithResult(cy, computeTutteAdaptiveFaceExpandPositions(graph.nodeIds, graph.edgePairs, options || {}), 'TutteAdaptiveFaceExpand');
-  }
-
   global.PlanarVibeDistanceReweightedTutte = {
     computeDistanceReweightedTuttePositions: computeDistanceReweightedTuttePositions,
     applyDistanceReweightedTutteLayout: applyDistanceReweightedTutteLayout
@@ -861,10 +727,5 @@
   global.PlanarVibeDistanceReweightedTuttePlus = {
     computeDistanceReweightedTuttePlusPositions: computeDistanceReweightedTuttePlusPositions,
     applyDistanceReweightedTuttePlusLayout: applyDistanceReweightedTuttePlusLayout
-  };
-
-  global.PlanarVibeTutteAdaptiveFaceExpand = {
-    computeTutteAdaptiveFaceExpandPositions: computeTutteAdaptiveFaceExpandPositions,
-    applyTutteAdaptiveFaceExpandLayout: applyTutteAdaptiveFaceExpandLayout
   };
 })(window);
