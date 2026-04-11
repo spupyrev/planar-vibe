@@ -112,7 +112,7 @@ test('PlanarEmbedding.fromDrawing captures the literal outer face of the drawing
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);
   const pos = parseVertexPositionsFromEdgeList(text);
-  const embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(graph.nodeIds, graph.edgePairs, pos);
+  const embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(graph, pos);
 
   assert.ok(embedding, 'expected drawing embedding');
   assert.ok(Array.isArray(embedding.outerFace) && embedding.outerFace.length > 3);
@@ -121,7 +121,7 @@ test('PlanarEmbedding.fromDrawing captures the literal outer face of the drawing
   const abstractEmbedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   assert.notEqual(
     faceCanonicalKey(embedding.outerFace),
-    faceCanonicalKey(GraphUtils.chooseOuterFaceFromEmbedding(abstractEmbedding))
+    faceCanonicalKey(PlanarGraphUtils.chooseOuterFaceFromEmbedding(abstractEmbedding))
   );
 });
 
@@ -129,7 +129,7 @@ test('PlanarEmbedding.addFaceDummy preserves the chosen outer face when splittin
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);
   const pos = parseVertexPositionsFromEdgeList(text);
-  const embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(graph.nodeIds, graph.edgePairs, pos);
+  const embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(graph, pos);
   const outer = embedding.outerFace.slice();
   const interiorFace = embedding.faces.find((face) =>
     face.length > 3 && faceCanonicalKey(face) !== faceCanonicalKey(outer));
@@ -146,8 +146,7 @@ test('PlanarEmbedding distinguishes the reversed inner face from the chosen oute
   const graph = parseEdgeListText(text);
   const embeddingObject = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   const embedding = PlanarGraphUtils.PlanarEmbedding.fromEmbeddingObject(
-    graph.nodeIds,
-    graph.edgePairs,
+    graph,
     embeddingObject,
     embeddingObject.outerFace
   );
@@ -165,8 +164,7 @@ test('PlanarEmbedding.addFaceDummy can split the reversed inner face of a cycle 
   const graph = parseEdgeListText(text);
   const embeddingObject = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   const embedding = PlanarGraphUtils.PlanarEmbedding.fromEmbeddingObject(
-    graph.nodeIds,
-    graph.edgePairs,
+    graph,
     embeddingObject,
     embeddingObject.outerFace
   );
@@ -184,8 +182,7 @@ test('PlanarEmbedding.addFaceDummy can split the chosen outer face when a replac
   const graph = parseEdgeListText(text);
   const embeddingObject = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   const embedding = PlanarGraphUtils.PlanarEmbedding.fromEmbeddingObject(
-    graph.nodeIds,
-    graph.edgePairs,
+    graph,
     embeddingObject,
     embeddingObject.outerFace
   );
@@ -210,7 +207,7 @@ test('PlanarEmbedding.addOuterFaceCycle handles an outer face with repeated vert
     d: { x: 3, y: 2 },
     e: { x: 3, y: 0 }
   };
-  const embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(graph.nodeIds, graph.edgePairs, pos);
+  const embedding = PlanarGraphUtils.PlanarEmbedding.fromDrawing(graph, pos);
   const outer = embedding.outerFace.slice();
 
   assert.equal(outer.filter((id) => id === 'b').length, 2, 'expected repeated articulation vertex on the outer face');
@@ -231,16 +228,15 @@ test('triangulateByFaceStellation preserves the literal drawing outer face on sa
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);
   const pos = parseVertexPositionsFromEdgeList(text);
-  const drawingEmbedding = GraphUtils.extractEmbeddingFromPositions(graph.nodeIds, graph.edgePairs, pos);
+  const drawingEmbedding = PlanarGraphUtils.extractEmbeddingFromPositions(graph.nodeIds, graph.edgePairs, pos);
   const outer = drawingEmbedding.outerFace.slice();
 
-  const augmented = GraphUtils.triangulateByFaceStellation(
-    graph.nodeIds,
-    graph.edgePairs,
+  const augmented = PlanarGraphUtils.triangulateByFaceStellation(
+    graph,
     drawingEmbedding,
     outer
   );
 
   assert.equal(augmented.ok, true, augmented.reason || 'triangulation failed');
-  assert.equal(GraphUtils.embeddingHasFace(augmented.embedding, outer), true, 'outer face should still be present after augmentation');
+  assert.equal(PlanarGraphUtils.embeddingHasFace(augmented.embedding, outer), true, 'outer face should still be present after augmentation');
 });

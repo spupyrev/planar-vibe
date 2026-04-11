@@ -2,6 +2,7 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var GeometryUtils = global.GeometryUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var Metrics = global.PlanarVibeMetrics;
   var CyRuntime = global.CyRuntime;
@@ -9,19 +10,18 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
-  var copyPositions = GraphUtils.copyPositions;
-  var findOuterFaceIndex = GraphUtils.findOuterFaceIndex;
-  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
+  var copyPositions = GeometryUtils.copyPositionMap;
+  var findOuterFaceIndex = global.PlanarGraphUtils.findOuterFaceIndex;
   var resolveFloatOption = GraphUtils.resolveFloatOption;
   var resolveFunctionOption = GraphUtils.resolveFunctionOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolveOpenIntervalOption = GraphUtils.resolveOpenIntervalOption;
   var resolvePositiveOption = GraphUtils.resolvePositiveOption;
-  var orientFaceCCW = GraphUtils.orientFaceCCW;
-  var outerFaceDiameter = GraphUtils.outerFaceDiameter;
-  var polygonArea2 = GraphUtils.polygonArea2;
-  var triangleArea2 = GraphUtils.triangleArea2;
-  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
+  var orientFaceCCW = GeometryUtils.orientFaceCCW;
+  var outerFaceDiameter = GeometryUtils.outerFaceDiameter;
+  var polygonArea2 = GeometryUtils.polygonArea2;
+  var triangleArea2 = GeometryUtils.triangleArea2;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var PPAG_INTERNAL = {
     tolGrad: 1e-8,
     acceptanceTol: 1e-12,
@@ -449,9 +449,9 @@
     };
   }
 
-  async function computePPAGPositions(nodeIds, edgePairs, options) {
+  async function computePPAGPositions(graph, options) {
     var opts = options || {};
-    var prepared = preparePPAGState(normalizeGraphInput(nodeIds, edgePairs), opts);
+    var prepared = preparePPAGState(graph, opts);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'PPAG setup failed' });
     }
@@ -516,7 +516,7 @@
   }
 
   async function applyPPAGLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options || {}, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'PPAG layout',
       compute: computePPAGPositions,

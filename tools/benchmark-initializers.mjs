@@ -104,19 +104,20 @@ async function measureAsync(fn) {
 }
 
 function projectOriginalPositions(GraphUtils, graph, result) {
-  return GraphUtils.filterPositions((result && (result.positions || result.posById)) || {}, graph.nodeIds);
+  return modules.GeometryUtils.filterPositionMap((result && (result.positions || result.posById)) || {}, graph.nodeIds);
 }
 
-function validateSeedContext(modules, nodeIds, edgePairs, outerFace, context) {
+function validateSeedContext(modules, graph, outerFace, context) {
   const GraphUtils = modules.GraphUtils;
+  const PlanarGraphUtils = modules.PlanarGraphUtils;
   const embedding = context && context.augmented ? context.augmented.embedding : null;
   if (!embedding || !embedding.ok) {
     return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
   }
-  if (!GraphUtils.embeddingHasFace(embedding, outerFace)) {
+  if (!PlanarGraphUtils.embeddingHasFace(embedding, outerFace)) {
     return { ok: false, message: 'Provided outer face is not a face of the embedding' };
   }
-  const connectivity = GraphUtils.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
+  const connectivity = GraphUtils.analyzeInternallyThreeConnected(graph, outerFace);
   if (!connectivity || !connectivity.ok) {
     return {
       ok: false,
@@ -126,16 +127,15 @@ function validateSeedContext(modules, nodeIds, edgePairs, outerFace, context) {
   return { ok: true };
 }
 
-function computeIterativeSeedForBenchmark(modules, nodeIds, edgePairs, outerFace, context, options) {
-  const validation = validateSeedContext(modules, nodeIds, edgePairs, outerFace, context);
+function computeIterativeSeedForBenchmark(modules, graph, outerFace, context, options) {
+  const validation = validateSeedContext(modules, graph, outerFace, context);
   if (!validation.ok) {
     return validation;
   }
   const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
   const opts = options || {};
   return TutteAlgorithm.computeBarycentricPositions(
-    nodeIds,
-    edgePairs,
+    graph,
     outerFace,
     {
       maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000,
@@ -145,121 +145,16 @@ function computeIterativeSeedForBenchmark(modules, nodeIds, edgePairs, outerFace
   );
 }
 
-function computeExactSeedForBenchmark(modules, nodeIds, edgePairs, outerFace, context) {
-  const validation = validateSeedContext(modules, nodeIds, edgePairs, outerFace, context);
+function computeExactSeedForBenchmark(modules, graph, outerFace, context) {
+  const validation = validateSeedContext(modules, graph, outerFace, context);
   if (!validation.ok) {
     return validation;
   }
-  const GraphUtils = modules.GraphUtils;
-  const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
-  const ids = (nodeIds || []).map(String);
-  const adjacency = GraphUtils.buildAdjacencyArrays(ids, edgePairs || []);
-  const pos = TutteAlgorithm.placeOuterFaceVertices(
-    ids,
+  return modules.LayoutPreprocessing.computeSharedBarycentricSeed(
+    graph,
     outerFace,
-    TutteAlgorithm.defaultOuterPlacementOptions({ useSeedOuter: false })
+    context && context.augmented ? context.augmented.embedding : null
   );
-  const outerSet = new Set((outerFace || []).map(String));
-  const interiorIds = [];
-  const interiorIndexById = {};
-
-  for (let i = 0; i < ids.length; i += 1) {
-    const id = ids[i];
-    if (!outerSet.has(id)) {
-      interiorIndexById[id] = interiorIds.length;
-      interiorIds.push(id);
-    }
-  }
-  if (interiorIds.length === 0) {
-    return { ok: true, positions: pos, iters: 0 };
-  }
-
-  const L = new Array(interiorIds.length);
-  const bx = new Array(interiorIds.length).fill(0);
-  const by = new Array(interiorIds.length).fill(0);
-  for (let i = 0; i < interiorIds.length; i += 1) {
-    L[i] = new Array(interiorIds.length).fill(0);
-    L[i][i] = 1;
-    const neighbors = adjacency[interiorIds[i]] || [];
-    if (neighbors.length === 0) {
-      continue;
-    }
-    const weight = 1 / neighbors.length;
-    for (let j = 0; j < neighbors.length; j += 1) {
-      const neighborId = String(neighbors[j]);
-      const interiorIdx = interiorIndexById[neighborId];
-      if (interiorIdx === undefined) {
-        bx[i] += weight * pos[neighborId].x;
-        by[i] += weight * pos[neighborId].y;
-      } else {
-        L[i][interiorIdx] -= weight;
-      }
-    }
-  }
-
-  const n = L.length;
-  const LU = L.map((row) => row.slice());
-  const piv = new Array(n);
-  for (let i = 0; i < n; i += 1) {
-    piv[i] = i;
-  }
-  for (let k = 0; k < n; k += 1) {
-    let pivotRow = k;
-    let pivotValue = Math.abs(LU[k][k]);
-    for (let i = k + 1; i < n; i += 1) {
-      const cand = Math.abs(LU[i][k]);
-      if (cand > pivotValue) {
-        pivotValue = cand;
-        pivotRow = i;
-      }
-    }
-    if (!(pivotValue > 1e-14)) {
-      return { ok: false, message: 'Exact barycentric solve failed' };
-    }
-    if (pivotRow !== k) {
-      const tmpRow = LU[k];
-      LU[k] = LU[pivotRow];
-      LU[pivotRow] = tmpRow;
-      const tmpP = piv[k];
-      piv[k] = piv[pivotRow];
-      piv[pivotRow] = tmpP;
-    }
-    for (let i = k + 1; i < n; i += 1) {
-      LU[i][k] /= LU[k][k];
-      const factor = LU[i][k];
-      for (let j = k + 1; j < n; j += 1) {
-        LU[i][j] -= factor * LU[k][j];
-      }
-    }
-  }
-
-  const y1 = new Array(n);
-  const y2 = new Array(n);
-  for (let i = 0; i < n; i += 1) {
-    y1[i] = bx[piv[i]];
-    y2[i] = by[piv[i]];
-    for (let j = 0; j < i; j += 1) {
-      y1[i] -= LU[i][j] * y1[j];
-      y2[i] -= LU[i][j] * y2[j];
-    }
-  }
-  const x1 = new Array(n);
-  const x2 = new Array(n);
-  for (let i = n - 1; i >= 0; i -= 1) {
-    let sum1 = y1[i];
-    let sum2 = y2[i];
-    for (let j = i + 1; j < n; j += 1) {
-      sum1 -= LU[i][j] * x1[j];
-      sum2 -= LU[i][j] * x2[j];
-    }
-    x1[i] = sum1 / LU[i][i];
-    x2[i] = sum2 / LU[i][i];
-  }
-
-  for (let i = 0; i < interiorIds.length; i += 1) {
-    pos[interiorIds[i]] = { x: x1[i], y: x2[i] };
-  }
-  return { ok: true, positions: pos, iters: 1 };
 }
 
 function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
@@ -276,9 +171,8 @@ function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
 
   const init = seedHelper(
     modules,
-    prepared.augmented.nodeIds,
-    prepared.augmented.edgePairs,
-    prepared.outerFace,
+    prepared.augmentedGraph,
+    prepared.augmentedOuterFace,
     {
       graph: prepared.graph,
       baseEmbedding: prepared.baseEmbedding,
@@ -298,8 +192,9 @@ function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
     baseEmbedding: prepared.baseEmbedding,
     outerFace: prepared.outerFace,
     augmented: prepared.augmented,
-    posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.positions, prepared.outerFace),
-    movableVertices: GraphUtils.collectMovableVertices(prepared.augmented.nodeIds, prepared.outerFace),
+    augmentedGraph: prepared.augmentedGraph,
+    posById: modules.GeometryUtils.alignOuterFaceEdgeHorizontally(init.positions, prepared.augmentedOuterFace),
+    movableVertices: GraphUtils.collectMovableVertices(prepared.augmented.graph.nodeIds, prepared.augmentedOuterFace),
     initResult: init
   };
 }
@@ -389,7 +284,7 @@ async function main() {
   const layoutBenchmarks = [
     {
       name: 'Air',
-      run: (graph) => Air.computeAirPositions(graph.nodeIds, graph.edgePairs, {
+      run: (graph) => Air.computeAirPositions(graph, {
         maxSweeps: 80,
         delayMs: 0,
         yieldEvery: 50,
@@ -398,7 +293,7 @@ async function main() {
     },
     {
       name: 'PPAG',
-      run: (graph) => PPAG.computePPAGPositions(graph.nodeIds, graph.edgePairs, {
+      run: (graph) => PPAG.computePPAGPositions(graph, {
         maxIters: 120,
         delayMs: 0,
         yieldEvery: 50,
@@ -407,21 +302,21 @@ async function main() {
     },
     {
       name: 'FaceBalancer',
-      run: (graph) => FaceBalancer.computeFaceBalancerPositions(graph.nodeIds, graph.edgePairs, {
+      run: (graph) => FaceBalancer.computeFaceBalancerPositions(graph, {
         maxIters: 30,
         delayMs: 0
       })
     },
     {
       name: 'EdgeBalancer',
-      run: (graph) => EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+      run: (graph) => EdgeBalancer.computeEdgeBalancerPositions(graph, {
         maxIters: 30,
         delayMs: 0
       })
     },
     {
       name: 'ReweightTutte',
-      run: (graph) => Reweight.computeReweightTuttePositions(graph.nodeIds, graph.edgePairs, {
+      run: (graph) => Reweight.computeReweightTuttePositions(graph, {
         maxOuterIters: 6,
         warmIters: 1200,
         innerIters: 1600,
@@ -431,7 +326,7 @@ async function main() {
     },
     {
       name: 'FD-uniform',
-      run: (graph) => FDUniform.computeFDUniformPositions(graph.nodeIds, graph.edgePairs, {
+      run: (graph) => FDUniform.computeFDUniformPositions(graph, {
         maxIters: 120,
         delayMs: 0
       })
@@ -443,7 +338,7 @@ async function main() {
     for (const seedName of ['iterative', 'exact']) {
       const measured = await measureAsync(async () => buildPreparedContext(modules, graph, seedBenchConfig, seedName, iterativeSeedOptions));
       const result = measured.value;
-      const posById = result && result.ok ? GraphUtils.filterPositions(result.posById || {}, graph.nodeIds) : null;
+      const posById = result && result.ok ? modules.GeometryUtils.filterPositionMap(result.posById || {}, graph.nodeIds) : null;
       const face = posById ? Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, posById) : null;
       seedRows.push({
         graph: graph.name,

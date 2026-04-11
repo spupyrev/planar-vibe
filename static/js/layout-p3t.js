@@ -4,7 +4,6 @@
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
-  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
   var PlanarityTest = global.PlanarVibePlanarityTest;
   var CyRuntime = global.CyRuntime;
 
@@ -16,11 +15,10 @@
     return arr[0] + '|' + arr[1] + '|' + arr[2];
   }
 
-  function computeP3TPositions(nodeIds, edgePairs) {
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
+  function computeP3TPositions(graph) {
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
-    var info = PlanarityTest.analyzePlanar3Tree(ids, pairs);
+    var info = PlanarityTest.analyzePlanar3Tree(graph);
     if (!info.ok) {
       return buildLayoutError({
         message: 'P3T requires a planar 3-tree: ' + info.reason
@@ -115,18 +113,17 @@
 
   function applyP3TLayout(cy, options) {
     return CyRuntime.runLayout(cy, options || {}, {
-      failureMessage: 'P3T failed',
-      compute: function (nodeIds, edgePairs) {
-        return computeP3TPositions(nodeIds, edgePairs);
-      },
-      buildResult: function (context) {
+      compute: computeP3TPositions,
+      buildResult: function (ctx) {
+        var result = ctx.result;
         return {
           ok: true,
           message: buildLayoutStatusMessage('P3T equal-face-area layout', {
-            vertexCount: context.result.nodeIds.length
+            vertexCount: result.nodeIds.length
           })
         };
-      }
+      },
+      failureMessage: 'P3T failed'
     });
   }
 

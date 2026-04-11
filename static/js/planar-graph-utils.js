@@ -3,57 +3,10 @@
 
   // Planar embedding helpers and augmentation routines.
 
-  var GraphGeometryUtils = global.GraphGeometryUtils;
+  var GeometryUtils = global.GeometryUtils;
 
-  if (!GraphGeometryUtils) {
-    throw new Error('GraphGeometryUtils must be loaded before PlanarGraphUtils');
-  }
-
-  function edgeKey(u, v) {
-    var a = String(u);
-    var b = String(v);
-    return a < b ? a + '::' + b : b + '::' + a;
-  }
-
-  function cloneEdgePairs(edgePairs) {
-    var out = [];
-    for (var i = 0; i < (edgePairs || []).length; i += 1) {
-      out.push([String(edgePairs[i][0]), String(edgePairs[i][1])]);
-    }
-    return out;
-  }
-
-  function normalizeNodeIds(nodeIds) {
-    var seen = new Set();
-    var out = [];
-    for (var i = 0; i < (nodeIds || []).length; i += 1) {
-      var id = String(nodeIds[i]);
-      if (seen.has(id)) {
-        continue;
-      }
-      seen.add(id);
-      out.push(id);
-    }
-    return out;
-  }
-
-  function normalizeSimpleEdgePairs(edgePairs) {
-    var seen = new Set();
-    var out = [];
-    for (var i = 0; i < (edgePairs || []).length; i += 1) {
-      var a = String(edgePairs[i][0]);
-      var b = String(edgePairs[i][1]);
-      if (a === b) {
-        continue;
-      }
-      var key = edgeKey(a, b);
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      out.push([a, b]);
-    }
-    return out;
+  if (!GeometryUtils) {
+    throw new Error('GeometryUtils must be loaded before PlanarGraphUtils');
   }
 
   function sameCyclicDirection(a, b) {
@@ -84,18 +37,7 @@
     return sameCyclicDirection(a, (b || []).slice().reverse());
   }
 
-  function polygonAreaAbs(face, posById) {
-    var sum = 0;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById[String(face[i])];
-      var b = posById[String(face[(i + 1) % face.length])];
-      if (!a || !b) {
-        return 0;
-      }
-      sum += a.x * b.y - b.x * a.y;
-    }
-    return Math.abs(sum) / 2;
-  }
+  var polygonAreaAbs = GeometryUtils.polygonAreaAbs;
 
   function extractFacesFromRotationMap(rotation) {
     var seenHalfEdges = new Set();
@@ -275,7 +217,7 @@
     for (var i = 0; i < edgePairs.length; i += 1) {
       var e = edgePairs[i];
       if (!e || e.length < 2) continue;
-      out[edgeKey(e[0], e[1])] = true;
+      out[global.GraphUtils.edgeKey(e[0], e[1])] = true;
     }
     return out;
   }
@@ -287,7 +229,7 @@
       for (var j = i + 1; j < face.length; j += 1) {
         var isBoundaryEdge = (j === i + 1) || (i === 0 && j === face.length - 1);
         if (isBoundaryEdge) continue;
-        if (edgeSet[edgeKey(face[i], face[j])]) {
+        if (edgeSet[global.GraphUtils.edgeKey(face[i], face[j])]) {
           count += 1;
         }
       }
@@ -327,11 +269,11 @@
     if (!hasCompleteFinitePositions(nodeIds, posById)) {
       return null;
     }
-    if (GraphGeometryUtils.hasPositionCrossings(posById, edgePairs)) {
+    if (GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
       return null;
     }
 
-    var embedding = PlanarEmbedding.fromDrawing(nodeIds, edgePairs, posById);
+    var embedding = PlanarEmbedding.fromDrawing({ nodeIds: nodeIds, edgePairs: edgePairs }, posById);
     return embedding ? embedding.toEmbeddingObject() : null;
   }
 
@@ -357,26 +299,6 @@
     return -1;
   }
 
-  function isTriangulatedEmbedding(embedding) {
-    if (!embedding || !embedding.ok) {
-      return false;
-    }
-    var n = embedding.idByIndex.length;
-    var m = embedding.edges.length;
-    if (n < 3) {
-      return false;
-    }
-    if (m !== 3 * n - 6) {
-      return false;
-    }
-    for (var i = 0; i < embedding.faces.length; i += 1) {
-      if (embedding.faces[i].length !== 3) {
-        return false;
-      }
-    }
-    return true;
-  }
-
   function isTriangulatedEmbeddingExceptOuter(embedding, outerFace) {
     if (!embedding || !embedding.ok) {
       return false;
@@ -397,43 +319,7 @@
     return true;
   }
 
-  function augmentByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
-    var nodes = normalizeNodeIds(nodeIds);
-    var edges = cloneEdgePairs(edgePairs);
-    var fixedOuter = Array.isArray(outerFace) && outerFace.length >= 3 ? outerFace.slice().map(String) : null;
-    var pe = PlanarEmbedding.fromEmbeddingObject(nodes, edges, embedding, fixedOuter);
-    if (!fixedOuter) {
-      pe.outerFace = null;
-    }
-    var dummyFaceVerticesById = {};
-    var dummyCount = 0;
-    var faces = pe.faces.slice();
-
-    for (var i = 0; i < faces.length; i += 1) {
-      var face = faces[i];
-      if (!face || face.length <= 3) {
-        continue;
-      }
-      if (fixedOuter && sameCyclicEitherDirection(face, fixedOuter)) {
-        continue;
-      }
-      var dummyId = '@dummy' + dummyCount;
-      dummyCount += 1;
-      dummyFaceVerticesById[dummyId] = face.slice().map(String);
-      pe.addFaceDummy(face, dummyId);
-    }
-
-    var graph = pe.toGraph();
-    return {
-      nodeIds: graph.nodeIds,
-      edgePairs: graph.edgePairs,
-      dummyCount: Object.keys(dummyFaceVerticesById).length,
-      dummyFaceVerticesById: dummyFaceVerticesById,
-      embedding: pe.toEmbeddingObject()
-    };
-  }
-
-  function triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options) {
+  function triangulateByFaceStellation(graph, embedding, outerFace, options) {
     function faceHasSimpleBoundary(face) {
       var seen = new Set();
       for (var j = 0; j < (face || []).length; j += 1) {
@@ -468,10 +354,8 @@
         };
       }
     }
-    var nodes = normalizeNodeIds(nodeIds);
-    var edges = normalizeSimpleEdgePairs(edgePairs);
     var opts = options || {};
-    var pe = PlanarEmbedding.fromEmbeddingObject(nodes, edges, emb, selectedOuterFace);
+    var pe = PlanarEmbedding.fromEmbeddingObject(graph, emb, selectedOuterFace);
     var dummyFaceVerticesById = {};
     var dummyCount = 0;
 
@@ -513,8 +397,7 @@
     var finalGraph = pe.toGraph();
     return {
       ok: true,
-      nodeIds: finalGraph.nodeIds,
-      edgePairs: finalGraph.edgePairs,
+      graph: finalGraph,
       dummyCount: Object.keys(dummyFaceVerticesById).length,
       outerDummyId: outerDummyId,
       dummyFaceVerticesById: dummyFaceVerticesById,
@@ -522,7 +405,7 @@
     };
   }
 
-  function triangulateByOuterCycle(nodeIds, edgePairs, embedding, outerFace, options) {
+  function triangulateByOuterCycle(graph, embedding, outerFace, options) {
     var emb = embedding;
     if (!emb || !emb.ok) {
       return {
@@ -538,9 +421,7 @@
       };
     }
 
-    var nodes = normalizeNodeIds(nodeIds);
-    var edges = normalizeSimpleEdgePairs(edgePairs);
-    var pe = PlanarEmbedding.fromEmbeddingObject(nodes, edges, emb, selectedOuterFace);
+    var pe = PlanarEmbedding.fromEmbeddingObject(graph, emb, selectedOuterFace);
     var dummyFaceVerticesById = {};
     var outerDummyIds;
     var dummyCount = 0;
@@ -586,8 +467,7 @@
     var finalGraph = pe.toGraph();
     return {
       ok: true,
-      nodeIds: finalGraph.nodeIds,
-      edgePairs: finalGraph.edgePairs,
+      graph: finalGraph,
       dummyCount: dummyCount,
       outerDummyIds: outerDummyIds.slice().map(String),
       dummyFaceVerticesById: dummyFaceVerticesById,
@@ -595,48 +475,57 @@
     };
   }
 
-  function PlanarEmbedding(data) {
-    var opts = data || {};
-    this.nodeIds = normalizeNodeIds(opts.nodeIds || []);
-    this.edgePairs = normalizeSimpleEdgePairs(opts.edgePairs || []);
+  function PlanarEmbedding(options) {
+    var opts = options || {};
+    if (!Array.isArray(opts.nodeIds)) {
+      throw new Error('PlanarEmbedding requires nodeIds array');
+    }
+    if (!Array.isArray(opts.edgePairs)) {
+      throw new Error('PlanarEmbedding requires edgePairs array');
+    }
+    this.nodeIds = opts.nodeIds.slice();
+    this.edgePairs = global.GraphUtils.cloneEdgePairs(opts.edgePairs);
     this.indexById = {};
     this.rotationById = {};
     this.faces = [];
-    this.outerFace = Array.isArray(opts.outerFace) ? opts.outerFace.slice().map(String) : null;
+    this.outerFace = Array.isArray(opts.outerFace) ? opts.outerFace.slice() : null;
 
     for (var i = 0; i < this.nodeIds.length; i += 1) {
+      if (typeof this.nodeIds[i] !== 'string') {
+        throw new Error('PlanarEmbedding node ids must be strings');
+      }
       this.indexById[this.nodeIds[i]] = i;
     }
 
     var sourceRotation = opts.rotationById || {};
     for (i = 0; i < this.nodeIds.length; i += 1) {
       var id = this.nodeIds[i];
-      this.rotationById[id] = (sourceRotation[id] || []).slice().map(String);
+      this.rotationById[id] = Array.isArray(sourceRotation[id]) ? sourceRotation[id].slice() : [];
     }
 
     this._edgeSet = new Set();
     for (i = 0; i < this.edgePairs.length; i += 1) {
-      this._edgeSet.add(edgeKey(this.edgePairs[i][0], this.edgePairs[i][1]));
+      this._edgeSet.add(global.GraphUtils.edgeKey(this.edgePairs[i][0], this.edgePairs[i][1]));
     }
 
     if (Array.isArray(opts.faces) && opts.faces.length > 0) {
       this.faces = opts.faces.map(function (face) {
-        return face.slice().map(String);
+        return face.slice();
       });
     } else {
       this.recomputeFaces();
     }
   }
 
-  PlanarEmbedding.fromEmbeddingObject = function (nodeIds, edgePairs, embedding, outerFace) {
-    var ids = normalizeNodeIds(nodeIds || (embedding && embedding.idByIndex) || []);
-    var pairs = normalizeSimpleEdgePairs(edgePairs || (embedding && embedding.edges) || []);
+  PlanarEmbedding.fromEmbeddingObject = function (graph, embedding, outerFace) {
+    var ids = graph.nodeIds.slice();
+    var pairs = global.GraphUtils.cloneEdgePairs(graph.edgePairs);
     var rotationById = {};
     for (var i = 0; i < ids.length; i += 1) {
       var id = ids[i];
       var idx = embedding && embedding.indexById ? embedding.indexById[id] : i;
       var row = embedding && embedding.rotation ? embedding.rotation[idx] : [];
-      rotationById[id] = (row || []).slice().map(String);
+      rotationById[id] = Array.isArray(row) ? row.slice() : [];
     }
     return new PlanarEmbedding({
       nodeIds: ids,
@@ -647,9 +536,9 @@
     });
   };
 
-  PlanarEmbedding.fromDrawing = function (nodeIds, edgePairs, posById) {
-    var ids = normalizeNodeIds(nodeIds || []);
-    var pairs = normalizeSimpleEdgePairs(edgePairs || []);
+  PlanarEmbedding.fromDrawing = function (graph, posById) {
+    var ids = graph.nodeIds.slice();
+    var pairs = global.GraphUtils.cloneEdgePairs(graph.edgePairs);
     var rotationById = buildRotationFromPositions(ids, pairs, posById || {});
     if (!rotationById) {
       return null;
@@ -705,7 +594,7 @@
   };
 
   PlanarEmbedding.prototype._addEdge = function (u, v) {
-    var key = edgeKey(u, v);
+    var key = global.GraphUtils.edgeKey(u, v);
     if (this._edgeSet.has(key)) {
       return false;
     }
@@ -835,7 +724,7 @@
       ok: true,
       idByIndex: this.nodeIds.slice().map(String),
       indexById: Object.assign({}, this.indexById),
-      edges: cloneEdgePairs(this.edgePairs),
+      edges: global.GraphUtils.cloneEdgePairs(this.edgePairs),
       rotation: rotation,
       faces: this.faces.map(function (face) { return face.slice().map(String); }),
       outerFace: this.outerFace ? this.outerFace.slice().map(String) : null
@@ -843,22 +732,20 @@
   };
 
   PlanarEmbedding.prototype.toGraph = function () {
-    return {
-      nodeIds: this.nodeIds.slice().map(String),
-      edgePairs: cloneEdgePairs(this.edgePairs)
-    };
+    if (!global.GraphUtils || typeof global.GraphUtils.createGraph !== 'function') {
+      throw new Error('GraphUtils must be loaded before PlanarEmbedding.toGraph');
+    }
+    return global.GraphUtils.createGraph(this.nodeIds, this.edgePairs);
   };
 
   global.PlanarGraphUtils = {
-    edgeKey: edgeKey,
     sameCyclicDirection: sameCyclicDirection,
     sameCyclicEitherDirection: sameCyclicEitherDirection,
+    findOuterFaceIndex: findOuterFaceIndex,
     embeddingHasFace: embeddingHasFace,
     extractEmbeddingFromPositions: extractEmbeddingFromPositions,
     chooseOuterFaceFromPositions: chooseOuterFaceFromPositions,
     chooseOuterFaceFromEmbedding: chooseOuterFaceFromEmbedding,
-    isTriangulatedEmbedding: isTriangulatedEmbedding,
-    augmentByFaceStellation: augmentByFaceStellation,
     triangulateByFaceStellation: triangulateByFaceStellation,
     triangulateByOuterCycle: triangulateByOuterCycle,
     PlanarEmbedding: PlanarEmbedding

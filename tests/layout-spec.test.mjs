@@ -54,6 +54,7 @@ function loadBrowserModules() {
 
 const modules = loadBrowserModules();
 const GraphUtils = modules.GraphUtils;
+const GeometryUtils = modules.GeometryUtils;
 const LayoutPreprocessing = modules.LayoutPreprocessing;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
@@ -71,38 +72,35 @@ const P3T = modules.PlanarVibeP3T;
 const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
 
-const K4 = {
-  name: 'K4',
-  nodeIds: ['1', '2', '3', '4'],
-  edgePairs: [
+const K4 = Object.assign(GraphUtils.createGraph(
+  ['1', '2', '3', '4'],
+  [
     ['1', '2'], ['1', '3'], ['1', '4'],
     ['2', '3'], ['2', '4'], ['3', '4']
   ]
-};
+), { name: 'K4' });
 
-const CUBE = {
-  name: 'cube',
-  nodeIds: ['1', '2', '3', '4', '5', '6', '7', '8'],
-  edgePairs: [
+const CUBE = Object.assign(GraphUtils.createGraph(
+  ['1', '2', '3', '4', '5', '6', '7', '8'],
+  [
     ['1', '2'], ['2', '3'], ['3', '4'], ['4', '1'],
     ['5', '6'], ['6', '7'], ['7', '8'], ['8', '5'],
     ['1', '5'], ['2', '6'], ['3', '7'], ['4', '8']
   ]
-};
+), { name: 'cube' });
 
-const OCTAHEDRON = {
-  name: 'octahedron',
-  nodeIds: ['1', '2', '3', '4', '5', '6'],
-  edgePairs: [
+const OCTAHEDRON = Object.assign(GraphUtils.createGraph(
+  ['1', '2', '3', '4', '5', '6'],
+  [
     ['1', '2'], ['1', '3'], ['1', '4'], ['1', '5'],
     ['6', '2'], ['6', '3'], ['6', '4'], ['6', '5'],
     ['2', '3'], ['3', '4'], ['4', '5'], ['5', '2']
   ]
-};
+), { name: 'octahedron' });
 
 function projectOriginalPositions(graph, result) {
   const pos = result && (result.positions || result.posById);
-  return GraphUtils.filterPositions(pos || {}, graph.nodeIds);
+  return GeometryUtils.filterPositionMap(pos || {}, graph.nodeIds);
 }
 
 function assertFiniteOriginalPositions(graph, posById, label) {
@@ -116,7 +114,7 @@ function assertFiniteOriginalPositions(graph, posById, label) {
 }
 
 function assertPlaneDrawing(graph, posById, label) {
-  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false, `${label}: drawing has crossings`);
+  assert.equal(GeometryUtils.hasPositionCrossings(posById, graph.edgePairs), false, `${label}: drawing has crossings`);
 }
 
 function assertFaceScoreRange(graph, posById, label) {
@@ -142,12 +140,32 @@ function assertNormalizedFailureResult(result, label) {
   assert.equal(result.posById, null, `${label}: expected posById to be null`);
 }
 
-test('GraphUtils.normalizeGraphInput normalizes ids and edge pairs once', () => {
-  const graph = GraphUtils.normalizeGraphInput([1, '2', 3], [[1, 2], ['2', 3]]);
-  assert.deepEqual(JSON.parse(JSON.stringify(graph)), {
+test('GraphUtils.createGraph requires canonical string ids and edge pairs', () => {
+  assert.throws(() => GraphUtils.createGraph(
+    [1, '2', 3],
+    [[1, 2], ['2', 3]]
+  ), /Graph node ids must be strings/);
+
+  const graph = GraphUtils.createGraph(
+    ['1', '2', '3'],
+    [['1', '2'], ['2', '3']]
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify({
+    nodeIds: graph.nodeIds,
+    edgePairs: graph.edgePairs,
+    adjacency: graph.adjacency
+  })), {
     nodeIds: ['1', '2', '3'],
-    edgePairs: [['1', '2'], ['2', '3']]
+    edgePairs: [['1', '2'], ['2', '3']],
+    adjacency: {
+      '1': ['2'],
+      '2': ['1', '3'],
+      '3': ['2']
+    }
   });
+  assert.deepEqual(JSON.parse(JSON.stringify(Array.from(graph.adjacencySets['1']))), ['2']);
+  assert.deepEqual(JSON.parse(JSON.stringify(Array.from(graph.adjacencySets['2']).sort())), ['1', '3']);
+  assert.deepEqual(JSON.parse(JSON.stringify(Array.from(graph.adjacencySets['3']))), ['2']);
 });
 
 test('shared barycentric seed helpers produce finite plane drawings', () => {
@@ -155,7 +173,7 @@ test('shared barycentric seed helpers produce finite plane drawings', () => {
     failureLabel: 'Shared seed test'
   });
   assert.equal(prepared && prepared.ok, true, prepared && (prepared.message || prepared.reason || 'shared seed prep failed'));
-  const posById = GraphUtils.filterPositions(prepared.posById || {}, CUBE.nodeIds);
+  const posById = GeometryUtils.filterPositionMap(prepared.posById || {}, CUBE.nodeIds);
   assertFiniteOriginalPositions(CUBE, posById, `shared seed on ${CUBE.name}`);
   assertPlaneDrawing(CUBE, posById, `shared seed on ${CUBE.name}`);
   assertFaceScoreRange(CUBE, posById, `shared seed on ${CUBE.name}`);
@@ -177,8 +195,7 @@ const layoutSpecs = [
     graph: K4,
     run(graph) {
       return TutteAlgorithm.computeBarycentricPositions(
-        graph.nodeIds,
-        graph.edgePairs,
+        graph,
         ['1', '2', '3'],
         {
           maxIters: 500,
@@ -192,14 +209,14 @@ const layoutSpecs = [
     name: 'Tutte compute',
     graph: CUBE,
     run(graph) {
-      return Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs);
+      return Tutte.computeTutteLayout(graph);
     }
   },
   {
     name: 'Air compute',
     graph: CUBE,
     run(graph) {
-      return Air.computeAirPositions(graph.nodeIds, graph.edgePairs, {
+      return Air.computeAirPositions(graph, {
         delayMs: 0,
         yieldEvery: 50,
         maxSweeps: 40
@@ -210,7 +227,7 @@ const layoutSpecs = [
     name: 'PPAG compute',
     graph: CUBE,
     run(graph) {
-      return PPAG.computePPAGPositions(graph.nodeIds, graph.edgePairs, {
+      return PPAG.computePPAGPositions(graph, {
         delayMs: 0,
         yieldEvery: 50,
         maxIters: 120
@@ -221,7 +238,7 @@ const layoutSpecs = [
     name: 'FaceBalancer compute',
     graph: CUBE,
     run(graph) {
-      return FaceBalancer.computeFaceBalancerPositions(graph.nodeIds, graph.edgePairs, {
+      return FaceBalancer.computeFaceBalancerPositions(graph, {
         delayMs: 0,
         maxIters: 20
       });
@@ -231,7 +248,7 @@ const layoutSpecs = [
     name: 'EdgeBalancer compute',
     graph: CUBE,
     run(graph) {
-      return EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+      return EdgeBalancer.computeEdgeBalancerPositions(graph, {
         delayMs: 0,
         maxIters: 20
       });
@@ -241,7 +258,7 @@ const layoutSpecs = [
     name: 'CEG23-bfs compute',
     graph: CUBE,
     run(graph) {
-      return CEG23.computeCEG23BfsPositions(graph.nodeIds, graph.edgePairs, {
+      return CEG23.computeCEG23BfsPositions(graph, {
         maxIters: 1200
       });
     }
@@ -250,7 +267,7 @@ const layoutSpecs = [
     name: 'CEG23-xy compute',
     graph: CUBE,
     run(graph) {
-      return CEG23XY.computeCEG23XyPositions(graph.nodeIds, graph.edgePairs, {
+      return CEG23XY.computeCEG23XyPositions(graph, {
         maxIters: 1200
       });
     }
@@ -259,7 +276,7 @@ const layoutSpecs = [
     name: 'ImPrEd compute',
     graph: CUBE,
     run(graph) {
-      return ImPrEd.computeImPrEdPositions(graph.nodeIds, graph.edgePairs, {
+      return ImPrEd.computeImPrEdPositions(graph, {
         delayMs: 0,
         maxIters: 40
       });
@@ -269,7 +286,7 @@ const layoutSpecs = [
     name: 'ReweightTutte compute',
     graph: CUBE,
     run(graph) {
-      return Reweight.computeReweightTuttePositions(graph.nodeIds, graph.edgePairs, {
+      return Reweight.computeReweightTuttePositions(graph, {
         maxOuterIters: 6,
         innerIters: 300,
         finalIters: 400
@@ -280,7 +297,7 @@ const layoutSpecs = [
     name: 'FD-uniform compute',
     graph: CUBE,
     run(graph) {
-      return FDUniform.computeFDUniformPositions(graph.nodeIds, graph.edgePairs, {
+      return FDUniform.computeFDUniformPositions(graph, {
         maxIters: 120
       });
     }
@@ -289,21 +306,21 @@ const layoutSpecs = [
     name: 'FPP compute',
     graph: OCTAHEDRON,
     run(graph) {
-      return FPP.computeFPPPositions(graph.nodeIds, graph.edgePairs);
+      return FPP.computeFPPPositions(graph);
     }
   },
   {
     name: 'Schnyder compute',
     graph: OCTAHEDRON,
     run(graph) {
-      return Schnyder.computeSchnyderPositions(graph.nodeIds, graph.edgePairs);
+      return Schnyder.computeSchnyderPositions(graph);
     }
   },
   {
     name: 'P3T compute',
     graph: K4,
     run(graph) {
-      return P3T.computeP3TPositions(graph.nodeIds, graph.edgePairs);
+      return P3T.computeP3TPositions(graph);
     }
   }
 ];
@@ -315,52 +332,54 @@ for (const spec of layoutSpecs) {
 }
 
 test('normalized failure shape is preserved for exported compute functions', async () => {
-  const nonPlanarK5 = {
-    nodeIds: ['1', '2', '3', '4', '5'],
-    edgePairs: [
+  const nonPlanarK5 = GraphUtils.createGraph(
+    ['1', '2', '3', '4', '5'],
+    [
       ['1', '2'], ['1', '3'], ['1', '4'], ['1', '5'],
       ['2', '3'], ['2', '4'], ['2', '5'],
       ['3', '4'], ['3', '5'],
       ['4', '5']
     ]
-  };
+  );
+  const emptyGraph = GraphUtils.createGraph([], []);
+  const singleEdgeGraph = GraphUtils.createGraph(['1', '2'], [['1', '2']]);
 
   const failureCases = [
     {
       name: 'Tutte barycentric primitive',
-      run: () => TutteAlgorithm.computeBarycentricPositions([], [], [])
+      run: () => TutteAlgorithm.computeBarycentricPositions(emptyGraph, [])
     },
     {
       name: 'Tutte compute',
-      run: () => Tutte.computeTutteLayout(['1', '2'], [['1', '2']])
+      run: () => Tutte.computeTutteLayout(singleEdgeGraph)
     },
     {
       name: 'CEG23-bfs compute',
-      run: () => CEG23.computeCEG23BfsPositions(['1', '2'], [['1', '2']])
+      run: () => CEG23.computeCEG23BfsPositions(singleEdgeGraph)
     },
     {
       name: 'CEG23-xy compute',
-      run: () => CEG23XY.computeCEG23XyPositions(['1', '2'], [['1', '2']])
+      run: () => CEG23XY.computeCEG23XyPositions(singleEdgeGraph)
     },
     {
       name: 'ReweightTutte compute',
-      run: () => Reweight.computeReweightTuttePositions(['1', '2'], [['1', '2']])
+      run: () => Reweight.computeReweightTuttePositions(singleEdgeGraph)
     },
     {
       name: 'FD-uniform compute',
-      run: () => FDUniform.computeFDUniformPositions(['1', '2'], [['1', '2']])
+      run: () => FDUniform.computeFDUniformPositions(singleEdgeGraph)
     },
     {
       name: 'FPP compute',
-      run: () => FPP.computeFPPPositions(nonPlanarK5.nodeIds, nonPlanarK5.edgePairs)
+      run: () => FPP.computeFPPPositions(nonPlanarK5)
     },
     {
       name: 'Schnyder compute',
-      run: () => Schnyder.computeSchnyderPositions(nonPlanarK5.nodeIds, nonPlanarK5.edgePairs)
+      run: () => Schnyder.computeSchnyderPositions(nonPlanarK5)
     },
     {
       name: 'P3T compute',
-      run: () => P3T.computeP3TPositions(CUBE.nodeIds, CUBE.edgePairs)
+      run: () => P3T.computeP3TPositions(CUBE)
     }
   ];
 

@@ -2,15 +2,14 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var GeometryUtils = global.GeometryUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var CyRuntime = global.CyRuntime;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
-  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
-  var copyPositions = GraphUtils.copyPositions;
-  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
-  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
+  var copyPositions = GeometryUtils.copyPositionMap;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
 
   function buildRotationById(embedding) {
@@ -460,8 +459,7 @@
     return out;
   }
 
-  function computeSchnyderPositions(nodeIds, edgePairs) {
-    var g = normalizeGraphInput(nodeIds, edgePairs);
+  function computeSchnyderPositions(g) {
     if (g.nodeIds.length < 3) {
       var smallPos = {};
       if (g.nodeIds.length === 2) {
@@ -494,7 +492,7 @@
 
     var emb = prepared.embedding;
     var rotationById = buildRotationById(emb);
-    var adjacency = buildAdjacencyArrays(prepared.augmentedNodeIds, prepared.augmentedEdgePairs);
+    var adjacency = prepared.augmentedGraph.adjacency;
     var bestPos = null;
     var bestOverlapCount = Infinity;
     var candidates = candidateOuterTriples(emb, rotationById);
@@ -558,18 +556,17 @@
 
   function applySchnyderLayout(cy, options) {
     return CyRuntime.runLayout(cy, options || {}, {
-      failureMessage: 'Schnyder failed',
-      compute: function (nodeIds, edgePairs) {
-        return computeSchnyderPositions(nodeIds, edgePairs);
-      },
-      buildResult: function (context) {
+      compute: computeSchnyderPositions,
+      buildResult: function (ctx) {
+        var result = ctx.result;
         return {
           ok: true,
           message: buildLayoutStatusMessage('Schnyder layout', {
-            vertexCount: context.graph.nodeIds.length
+            vertexCount: result.nodeIds.length
           })
         };
-      }
+      },
+      failureMessage: 'Schnyder failed'
     });
   }
 

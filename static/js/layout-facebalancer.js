@@ -4,31 +4,32 @@
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var CyRuntime = global.CyRuntime;
   var Metrics = global.PlanarVibeMetrics;
+  var GeometryUtils = global.GeometryUtils;
+  var LinearAlgebraUtils = global.LinearAlgebraUtils;
   var faceKey = global.GraphUtils.faceKey;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var computeMoveStats = global.GraphUtils.computeMoveStats;
-  var hasPositionCrossings = global.GraphUtils.hasPositionCrossings;
-  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
-  var pointOnSegmentInterior = global.GraphUtils.pointOnSegmentInterior;
-  var polygonArea2 = global.GraphUtils.polygonArea2;
-  var orientFaceCCW = global.GraphUtils.orientFaceCCW;
-  var luFactorize = global.GraphUtils.luFactorize;
-  var segmentsIntersectStrict = global.GraphUtils.segmentsIntersectStrict;
-  var solveLUWithTwoRhs = global.GraphUtils.solveLUWithTwoRhs;
-  var solveTransposeLUWithTwoRhs = global.GraphUtils.solveTransposeLUWithTwoRhs;
-  var triangleArea2 = global.GraphUtils.triangleArea2;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
+  var pointOnSegmentInterior = GeometryUtils.pointOnSegmentInterior;
+  var polygonArea2 = GeometryUtils.polygonArea2;
+  var orientFaceCCW = GeometryUtils.orientFaceCCW;
+  var luFactorize = LinearAlgebraUtils.luFactorize;
+  var segmentsIntersectStrict = GeometryUtils.segmentsIntersectStrict;
+  var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
+  var solveTransposeLUWithTwoRhs = LinearAlgebraUtils.solveTransposeLUWithTwoRhs;
+  var triangleArea2 = GeometryUtils.triangleArea2;
   var resolveFloatOption = global.GraphUtils.resolveFloatOption;
   var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
   var resolveIntOption = global.GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
-  var createZeroVector = global.GraphUtils.createZeroVector;
-  var vecAddScaled = global.GraphUtils.vecAddScaled;
-  var vecDot = global.GraphUtils.vecDot;
-  var vecNorm = global.GraphUtils.vecNorm;
-  var vecScale = global.GraphUtils.vecScale;
-  var vecSub = global.GraphUtils.vecSub;
+  var createZeroVector = GeometryUtils.createZeroVector;
+  var vecAddScaled = GeometryUtils.vecAddScaled;
+  var vecDot = GeometryUtils.vecDot;
+  var vecNorm = GeometryUtils.vecNorm;
+  var vecScale = GeometryUtils.vecScale;
+  var vecSub = GeometryUtils.vecSub;
 
   function softmaxInto(q, start, length, out) {
     var m = -Infinity;
@@ -678,11 +679,9 @@
     });
   }
 
-  async function computeFaceBalancerPositions(nodeIds, edgePairs, options) {
+  async function computeFaceBalancerPositions(graph, options) {
     var opts = options || {};
     var maxIters = resolveIntOption(opts.maxIters, 80, 1);
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
-
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FaceBalancer layout',
       augmentationMethod: opts.augmentationMethod || null,
@@ -700,7 +699,7 @@
     var hasExplicitMinEdgeLength2 = Number.isFinite(opts.minEdgeLength2) && opts.minEdgeLength2 >= 0;
     var areaTol = resolveNonNegativeOption(opts.areaTol, 1e-15);
     var data = buildFaceBalancerData({
-      augmentedEdgePairs: augmented.edgePairs,
+      augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
       outerFace: outerFace,
       initPos: initPos,
@@ -751,7 +750,7 @@
     }
 
     var q0 = createZeroVector(data.qSize);
-    var movementScale = global.GraphUtils.computeDrawingDiameter(augmented.nodeIds, initPos);
+    var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
     var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
       minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),
       stableIterLimit: resolveIntOption(opts.stableIterLimit, 8, 1),

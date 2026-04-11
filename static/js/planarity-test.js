@@ -752,8 +752,8 @@
     return computePlanarEmbedding(nodeIds, edgePairs);
   }
 
-  function analyzePlanar3Tree(nodeIds, edgePairs) {
-    var emb = computePlanarEmbedding(nodeIds, edgePairs);
+  function analyzePlanar3Tree(graph) {
+    var emb = computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
     if (!emb.ok) {
       return { ok: false, reason: 'Graph is not planar' };
     }
@@ -773,7 +773,7 @@
       return { ok: false, reason: 'Edge count does not match maximal planar graph' };
     }
 
-    var adjacency = global.GraphUtils.buildAdjacencySets(emb.idByIndex, emb.edges);
+    var adjacency = global.GraphUtils.createGraph(emb.idByIndex, emb.edges).adjacencySets;
 
     var outerSet = new Set(outer);
     var uniqueOuterApexCount = 0;
@@ -858,8 +858,8 @@
     };
   }
 
-  function isPlanar3Tree(nodeIds, edgePairs) {
-    return analyzePlanar3Tree(nodeIds, edgePairs).ok;
+  function isPlanar3Tree(graph) {
+    return analyzePlanar3Tree(graph).ok;
   }
 
   global.PlanarVibePlanarityTest = {

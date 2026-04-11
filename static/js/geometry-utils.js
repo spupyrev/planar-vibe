@@ -212,6 +212,20 @@
     return out;
   }
 
+  function filterPositionMap(posById, nodeIds) {
+    var ids = Array.isArray(nodeIds) ? nodeIds.slice() : [];
+    var out = {};
+    for (var i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
+      var p = posById ? posById[id] : null;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      out[id] = { x: p.x, y: p.y };
+    }
+    return out;
+  }
+
   function computeFaceCentroid(posById, face) {
     var ids = Array.isArray(face) ? face : [];
     var sx = 0;
@@ -343,7 +357,7 @@
     return false;
   }
 
-  global.GraphGeometryUtils = {
+  global.GeometryUtils = {
     polygonArea2: polygonArea2,
     polygonAreaAbs: polygonAreaAbs,
     pointAdd: pointAdd,
@@ -368,6 +382,7 @@
     segmentsIntersectOrTouch: segmentsIntersectOrTouch,
     computeDrawingDiameter: computeDrawingDiameter,
     copyPositionMap: copyPositionMap,
+    filterPositionMap: filterPositionMap,
     computeFaceCentroid: computeFaceCentroid,
     rotatePositionMap: rotatePositionMap,
     alignOuterFaceEdgeHorizontally: alignOuterFaceEdgeHorizontally,

@@ -141,7 +141,7 @@
       posById[id][axis] = mergedCoord;
     }
 
-    if (GraphUtils.hasPositionCrossings(posById, edgePairs)) {
+    if (global.GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
       for (i = 0; i < affectedIds.length; i += 1) {
         id = affectedIds[i];
         posById[id][axis] = oldCoords[id];
@@ -189,8 +189,8 @@
   }
 
   function alignToAxisGreedy(nodeIds, edgePairs, posById, options) {
-    if (!GraphUtils || typeof GraphUtils.hasPositionCrossings !== 'function') {
-      return { ok: false, reason: 'Planar graph utilities are missing' };
+    if (!global.GeometryUtils || typeof global.GeometryUtils.hasPositionCrossings !== 'function') {
+      return { ok: false, reason: 'Geometry utilities are missing' };
     }
     if (!nodeIds || nodeIds.length < 2) {
       return { ok: false, reason: 'Not enough nodes' };
@@ -204,7 +204,7 @@
         return { ok: false, reason: 'Not enough positioned nodes' };
       }
     }
-    if (GraphUtils.hasPositionCrossings(posById, edgePairs)) {
+    if (global.GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
       return { ok: false, reason: 'Drawing is not plane' };
     }
 

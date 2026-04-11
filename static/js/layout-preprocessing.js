@@ -2,6 +2,9 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var GeometryUtils = global.GeometryUtils;
+  var LinearAlgebraUtils = global.LinearAlgebraUtils;
+  var PlanarGraphUtils = global.PlanarGraphUtils;
 
   function normalizePreparedAugmentationResult(augmented, failureLabel) {
     var label = failureLabel || 'layout';
@@ -11,8 +14,7 @@
     var dummyFaceVerticesById = augmented.dummyFaceVerticesById || {};
     return {
       ok: true,
-      nodeIds: augmented.nodeIds.map(String),
-      edgePairs: augmented.edgePairs.map(function (edge) { return [String(edge[0]), String(edge[1])]; }),
+      graph: augmented.graph,
       dummyCount: augmented.dummyCount || 0,
       dummyFaceVerticesById: dummyFaceVerticesById,
       embedding: augmented.embedding,
@@ -22,25 +24,25 @@
     };
   }
 
-  function prepareAugmentedTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
+  function prepareAugmentedTriangulation(graph, embedding, outerFace, failureLabel, options) {
     if (!embedding || !embedding.ok) {
       return { ok: false, reason: 'prepareAugmentedTriangulation requires a planar embedding' };
     }
     if (!Array.isArray(outerFace) || outerFace.length < 3) {
       return { ok: false, reason: 'prepareAugmentedTriangulation requires an outer face' };
     }
-    var augmented = GraphUtils.triangulateByFaceStellation(nodeIds, edgePairs, embedding, outerFace, options);
+    var augmented = PlanarGraphUtils.triangulateByFaceStellation(graph, embedding, outerFace, options);
     return normalizePreparedAugmentationResult(augmented, failureLabel);
   }
 
-  function prepareOuterCycleTriangulation(nodeIds, edgePairs, embedding, outerFace, failureLabel, options) {
+  function prepareOuterCycleTriangulation(graph, embedding, outerFace, failureLabel, options) {
     if (!embedding || !embedding.ok) {
       return { ok: false, reason: 'prepareOuterCycleTriangulation requires a planar embedding' };
     }
     if (!Array.isArray(outerFace) || outerFace.length < 3) {
       return { ok: false, reason: 'prepareOuterCycleTriangulation requires an outer face' };
     }
-    var augmented = GraphUtils.triangulateByOuterCycle(nodeIds, edgePairs, embedding, outerFace, options);
+    var augmented = PlanarGraphUtils.triangulateByOuterCycle(graph, embedding, outerFace, options);
     return normalizePreparedAugmentationResult(augmented, failureLabel);
   }
 
@@ -96,12 +98,11 @@
   function prepareGraphData(graph, config) {
     var cfg = config || {};
     var label = String(cfg.failureLabel || 'Layout');
-    var normalizedGraph = {
-      nodeIds: GraphUtils.normalizeNodeIds(graph && graph.nodeIds),
-      edgePairs: GraphUtils.normalizeSimpleEdgePairs(graph && graph.edgePairs)
-    };
+    if (!graph || !Array.isArray(graph.nodeIds) || !Array.isArray(graph.edgePairs)) {
+      throw new Error('prepareGraphData requires a graph');
+    }
 
-    if (normalizedGraph.nodeIds.length < 3) {
+    if (graph.nodeIds.length < 3) {
       return { ok: false, message: label + ' requires at least 3 vertices' };
     }
 
@@ -115,15 +116,15 @@
       return { ok: false, message: 'Unknown augmentation method: ' + String(cfg.augmentationMethod) };
     }
 
-    var drawingEmbedding = GraphUtils.extractEmbeddingFromPositions(
-      normalizedGraph.nodeIds,
-      normalizedGraph.edgePairs,
+    var drawingEmbedding = PlanarGraphUtils.extractEmbeddingFromPositions(
+      graph.nodeIds,
+      graph.edgePairs,
       cfg.currentPositions || null
     );
     var extractedEmbedding = sanitizeEmbeddingSnapshot(drawingEmbedding);
     drawingEmbedding = null;
     var baseEmbedding = extractedEmbedding ||
-      global.PlanarVibePlanarityTest.computePlanarEmbedding(normalizedGraph.nodeIds, normalizedGraph.edgePairs);
+      global.PlanarVibePlanarityTest.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
     if (!baseEmbedding || !baseEmbedding.ok) {
       return { ok: false, message: label + ' requires a planar graph' };
     }
@@ -145,8 +146,7 @@
     var augmented;
     if (augmentationMethod === 'triangulateByFaceStellation') {
       augmented = prepareAugmentedTriangulation(
-        normalizedGraph.nodeIds,
-        normalizedGraph.edgePairs,
+        graph,
         baseEmbedding,
         selectedOuterFace,
         label,
@@ -154,8 +154,7 @@
       );
     } else if (augmentationMethod === 'triangulateByOuterCycle') {
       augmented = prepareOuterCycleTriangulation(
-        normalizedGraph.nodeIds,
-        normalizedGraph.edgePairs,
+        graph,
         baseEmbedding,
         selectedOuterFace,
         label,
@@ -172,22 +171,24 @@
 
     return {
       ok: true,
-      graph: normalizedGraph,
+      graph: graph,
       baseEmbedding: baseEmbedding,
       outerFace: selectedOuterFace.slice().map(String),
       augmentedOuterFace: augmentedOuterFace,
       augmented: augmented,
+      augmentedGraph: augmented.graph,
       embedding: augmented.embedding,
       augmentationMethod: augmentationMethod,
-      augmentedNodeIds: augmented.nodeIds,
-      augmentedEdgePairs: augmented.edgePairs,
+      augmentedNodeIds: augmented.graph.nodeIds,
+      augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedDummyCount: augmented.dummyCount || 0
     };
   }
 
   function createAugmentationDebugState(graph, augmented, posById) {
     var baseGraph = graph || { nodeIds: [], edgePairs: [] };
-    var aug = augmented || { nodeIds: [], edgePairs: [], dummyFaceVerticesById: {} };
+    var aug = augmented || { graph: { nodeIds: [], edgePairs: [] }, dummyFaceVerticesById: {} };
+    var augmentedGraph = aug.graph || { nodeIds: [], edgePairs: [] };
     var positions = posById || {};
     var originalEdgeSet = {};
     var i;
@@ -212,9 +213,9 @@
     }
 
     var addedEdgePairs = [];
-    for (i = 0; i < aug.edgePairs.length; i += 1) {
-      var u = String(aug.edgePairs[i][0]);
-      var v = String(aug.edgePairs[i][1]);
+    for (i = 0; i < augmentedGraph.edgePairs.length; i += 1) {
+      var u = String(augmentedGraph.edgePairs[i][0]);
+      var v = String(augmentedGraph.edgePairs[i][1]);
       var edgeKey = u < v ? u + '::' + v : v + '::' + u;
       if (!originalEdgeSet[edgeKey]) {
         addedEdgePairs.push([u, v]);
@@ -230,14 +231,14 @@
     };
   }
 
-  function validateBarycentricSeedContext(embedding, nodeIds, edgePairs, outerFace) {
+  function validateBarycentricSeedContext(embedding, graph, outerFace) {
     if (!embedding || !embedding.ok) {
       return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
     }
-    if (!GraphUtils.embeddingHasFace(embedding, outerFace)) {
+    if (!PlanarGraphUtils.embeddingHasFace(embedding, outerFace)) {
       return { ok: false, message: 'Provided outer face is not a face of the embedding' };
     }
-    var connectivity = GraphUtils.analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace);
+    var connectivity = GraphUtils.analyzeInternallyThreeConnected(graph, outerFace);
     if (!connectivity || !connectivity.ok) {
       return {
         ok: false,
@@ -247,13 +248,13 @@
     return { ok: true };
   }
 
-  function computeSharedBarycentricSeed(nodeIds, edgePairs, outerFace, embedding) {
-    var validation = validateBarycentricSeedContext(embedding, nodeIds, edgePairs, outerFace);
+  function computeSharedBarycentricSeed(graph, outerFace, embedding) {
+    var validation = validateBarycentricSeedContext(embedding, graph, outerFace);
     if (!validation.ok) {
       return validation;
     }
-    var ids = (nodeIds || []).map(String);
-    var adjacency = GraphUtils.buildAdjacencyArrays(ids, edgePairs || []);
+    var ids = Array.isArray(graph && graph.nodeIds) ? graph.nodeIds.map(String) : [];
+    var adjacency = graph.adjacency;
     var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(
       ids,
       outerFace,
@@ -277,10 +278,10 @@
     }
 
     var L = new Array(interiorIds.length);
-    var bx = GraphUtils.createZeroVector(interiorIds.length);
-    var by = GraphUtils.createZeroVector(interiorIds.length);
+    var bx = GeometryUtils.createZeroVector(interiorIds.length);
+    var by = GeometryUtils.createZeroVector(interiorIds.length);
     for (i = 0; i < interiorIds.length; i += 1) {
-      L[i] = GraphUtils.createZeroVector(interiorIds.length);
+      L[i] = GeometryUtils.createZeroVector(interiorIds.length);
       L[i][i] = 1;
       var neighbors = adjacency[interiorIds[i]] || [];
       if (neighbors.length === 0) {
@@ -299,11 +300,11 @@
       }
     }
 
-    var factor = GraphUtils.luFactorize(L);
+    var factor = LinearAlgebraUtils.luFactorize(L);
     if (!factor) {
       return { ok: false, message: 'Exact barycentric solve failed' };
     }
-    var solved = GraphUtils.solveLUWithTwoRhs(factor, bx, by);
+    var solved = LinearAlgebraUtils.solveLUWithTwoRhs(factor, bx, by);
     if (!solved) {
       return { ok: false, message: 'Exact barycentric solve failed' };
     }
@@ -341,15 +342,15 @@
     if (!outerFace) {
       return { ok: false, message: 'Position verification requires an outer face' };
     }
-    if (!GraphUtils.embeddingHasFace(emb, outerFace)) {
+    if (!PlanarGraphUtils.embeddingHasFace(emb, outerFace)) {
       return { ok: false, message: 'Position verification found an outer face that is not present in the embedding' };
     }
-    if (!(GraphUtils.polygonAreaAbs(outerFace, posById) > 1e-12)) {
+    if (!(GeometryUtils.polygonAreaAbs(outerFace, posById) > 1e-12)) {
       return { ok: false, message: 'Position verification found a degenerate outer face' };
     }
 
     var edges = Array.isArray(opts.edgePairs) ? opts.edgePairs : emb.edges;
-    if (GraphUtils.hasPositionCrossings(posById, edges || [])) {
+    if (GeometryUtils.hasPositionCrossings(posById, edges || [])) {
       return { ok: false, message: 'Position verification found crossings in the drawing' };
     }
 
@@ -359,7 +360,7 @@
       if (!Array.isArray(face) || face.length < 3) {
         return { ok: false, message: 'Position verification found an invalid face in the embedding' };
       }
-      if (!(GraphUtils.polygonAreaAbs(face, posById) > 1e-12)) {
+      if (!(GeometryUtils.polygonAreaAbs(face, posById) > 1e-12)) {
         return { ok: false, message: 'Position verification found a degenerate face' };
       }
     }
@@ -381,8 +382,7 @@
     var augmented = prepared.augmented;
 
     var init = computeSharedBarycentricSeed(
-      augmented.nodeIds,
-      augmented.edgePairs,
+      prepared.augmentedGraph,
       augmentedOuterFace,
       augmented.embedding
     );
@@ -390,7 +390,7 @@
       return { ok: false, message: (init && init.message) || (label + ' initialization failed') };
     }
     var verification = verifyEmbeddingWithPositions(augmented.embedding, init.positions, {
-      edgePairs: augmented.edgePairs,
+      edgePairs: augmented.graph.edgePairs,
       outerFace: augmentedOuterFace
     });
     if (!verification.ok) {
@@ -404,17 +404,18 @@
       outerFace: outerFace,
       augmentedOuterFace: augmentedOuterFace,
       augmented: augmented,
-      posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.positions, augmentedOuterFace),
-      movableVertices: GraphUtils.collectMovableVertices(augmented.nodeIds, augmentedOuterFace),
+      augmentedGraph: prepared.augmentedGraph,
+      posById: GeometryUtils.alignOuterFaceEdgeHorizontally(init.positions, augmentedOuterFace),
+      movableVertices: GraphUtils.collectMovableVertices(augmented.graph.nodeIds, augmentedOuterFace),
       initResult: init
     };
   }
 
   global.LayoutPreprocessing = {
-    prepareGraphData: prepareGraphData,
     createAugmentationDebugState: createAugmentationDebugState,
     computeSharedBarycentricSeed: computeSharedBarycentricSeed,
     verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
+    prepareGraphData: prepareGraphData,
     prepareGraphAndLayoutData: prepareGraphAndLayoutData
   };
 })(window);

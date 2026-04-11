@@ -37,6 +37,7 @@ function loadMetricsModules() {
   }
 
   return {
+    GeometryUtils: window.GeometryUtils,
     GraphUtils: window.GraphUtils,
     Metrics: window.PlanarVibeMetrics,
     PlanarityTest: window.PlanarVibePlanarityTest
@@ -44,11 +45,12 @@ function loadMetricsModules() {
 }
 
 const loaded = loadMetricsModules();
+const GeometryUtils = loaded.GeometryUtils;
 const GraphUtils = loaded.GraphUtils;
 const Metrics = loaded.Metrics;
 const PlanarityTest = loaded.PlanarityTest;
 
-test('adjacency builders normalize duplicate simple edges consistently', () => {
+test('GraphUtils.createGraph rejects duplicate and non-simple edges', () => {
   const nodeIds = ['1', '2', '3'];
   const edgePairs = [
     ['1', '2'],
@@ -58,14 +60,22 @@ test('adjacency builders normalize duplicate simple edges consistently', () => {
     ['2', '3']
   ];
 
-  const adjacencyArrays = GraphUtils.buildAdjacencyArrays(nodeIds, edgePairs);
+  assert.throws(() => GraphUtils.createGraph(nodeIds, edgePairs), /Graph edges must be unique|Graph edges must be simple and cannot contain self-loops/);
+});
+
+test('adjacency builders use canonical graph edges consistently', () => {
+  const graph = GraphUtils.createGraph(
+    ['1', '2', '3'],
+    [['1', '2'], ['2', '3']]
+  );
+  const adjacencyArrays = graph.adjacency;
   assert.deepEqual(JSON.parse(JSON.stringify(adjacencyArrays)), {
     '1': ['2'],
     '2': ['1', '3'],
     '3': ['2']
   });
 
-  const adjacencySets = GraphUtils.buildAdjacencySets(nodeIds, edgePairs);
+  const adjacencySets = graph.adjacencySets;
   assert.deepEqual({
     '1': Array.from(adjacencySets['1']).sort(),
     '2': Array.from(adjacencySets['2']).sort(),
@@ -233,7 +243,7 @@ test('hasCrossingsFromPositions detects crossing and non-crossing drawings', () 
     '3': { x: 0, y: 1 },
     '4': { x: 1, y: 0 }
   };
-  assert.equal(GraphUtils.hasPositionCrossings(crossingPos, crossingEdges), true);
+  assert.equal(GeometryUtils.hasPositionCrossings(crossingPos, crossingEdges), true);
 
   const nonCrossingEdges = [['1', '2'], ['2', '3']];
   const nonCrossingPos = {
@@ -241,25 +251,31 @@ test('hasCrossingsFromPositions detects crossing and non-crossing drawings', () 
     '2': { x: 1, y: 0 },
     '3': { x: 2, y: 0 }
   };
-  assert.equal(GraphUtils.hasPositionCrossings(nonCrossingPos, nonCrossingEdges), false);
+  assert.equal(GeometryUtils.hasPositionCrossings(nonCrossingPos, nonCrossingEdges), false);
 });
 
 test('isBipartiteGraph works for even cycle and odd cycle', () => {
-  const evenNodes = ['1', '2', '3', '4'];
-  const evenEdges = [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']];
-  assert.equal(Metrics.isBipartiteGraph(evenNodes, evenEdges), true);
+  const evenGraph = GraphUtils.createGraph(
+    ['1', '2', '3', '4'],
+    [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
+  );
+  assert.equal(Metrics.isBipartiteGraph(evenGraph), true);
 
-  const oddNodes = ['1', '2', '3'];
-  const oddEdges = [['1', '2'], ['2', '3'], ['3', '1']];
-  assert.equal(Metrics.isBipartiteGraph(oddNodes, oddEdges), false);
+  const oddGraph = GraphUtils.createGraph(
+    ['1', '2', '3'],
+    [['1', '2'], ['2', '3'], ['3', '1']]
+  );
+  assert.equal(Metrics.isBipartiteGraph(oddGraph), false);
 });
 
 test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K4', () => {
-  const nodeIds = ['1', '2', '3', '4'];
-  const edgePairs = [
-    ['1', '2'], ['2', '3'], ['3', '1'],
-    ['1', '4'], ['2', '4'], ['3', '4']
-  ];
+  const graph = GraphUtils.createGraph(
+    ['1', '2', '3', '4'],
+    [
+      ['1', '2'], ['2', '3'], ['3', '1'],
+      ['1', '4'], ['2', '4'], ['3', '4']
+    ]
+  );
   const sqrt3 = Math.sqrt(3);
   const posById = {
     '1': { x: 0, y: 0 },
@@ -275,8 +291,8 @@ test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K
     '4': { x: 0.2, y: 0.1 }
   };
 
-  const symmetric = Metrics.computeUniformAngleResolutionScore(nodeIds, edgePairs, posById);
-  const skewed = Metrics.computeUniformAngleResolutionScore(nodeIds, edgePairs, skewedPosById);
+  const symmetric = Metrics.computeUniformAngleResolutionScore(graph, posById);
+  const skewed = Metrics.computeUniformAngleResolutionScore(graph, skewedPosById);
 
   assert.equal(symmetric.ok, true);
   assert.equal(skewed.ok, true);
@@ -333,7 +349,7 @@ test('hasCrossingsFromPositions rejects a vertex on a non-incident edge', () => 
     '2': { x: 10, y: 0 },
     '3': { x: 5, y: 0 }
   };
-  assert.equal(GraphUtils.hasPositionCrossings(posById, edgePairs), true);
+  assert.equal(GeometryUtils.hasPositionCrossings(posById, edgePairs), true);
 });
 
 test('computeAxisAlignmentScore is 0 when all x and y coordinates are distinct with zero tolerance', () => {

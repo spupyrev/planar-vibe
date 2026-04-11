@@ -23,14 +23,14 @@
       filteredNodes.push(id);
       keep[id] = true;
     }
-    return {
-      nodeIds: filteredNodes,
-      edgePairs: GraphUtils.normalizeSimpleEdgePairs((cy.edges().toArray ? cy.edges().toArray() : cy.edges()).map(function (e) {
+    return GraphUtils.createGraph(
+      filteredNodes,
+      (cy.edges().toArray ? cy.edges().toArray() : cy.edges()).map(function (e) {
         return [String(e.source().id()), String(e.target().id())];
       }).filter(function (edge) {
         return keep[edge[0]] && keep[edge[1]];
-      }))
-    };
+      })
+    );
   }
 
   function currentPositionsFromCy(cy) {
@@ -45,23 +45,6 @@
       out[id] = { x: p.x, y: p.y };
     }
     return out;
-  }
-
-  function currentPositionMap(options) {
-    var opts = options || {};
-    if (opts.cy) {
-      return currentPositionsFromCy(opts.cy);
-    }
-    if (opts.savedPositions && Object.keys(opts.savedPositions).length > 0) {
-      return GraphUtils.copyPositions(opts.savedPositions);
-    }
-    if (opts.currentParsed && opts.currentParsed.hasExplicitPositions && opts.currentParsed.positionsById) {
-      return GraphUtils.copyPositions(opts.currentParsed.positionsById);
-    }
-    if (typeof opts.assignDeterministicPositionsForParsed === 'function') {
-      return opts.assignDeterministicPositionsForParsed(opts.currentParsed);
-    }
-    return {};
   }
 
   function captureViewportFromCy(cy) {
@@ -426,7 +409,7 @@
     }
 
     function executeCompute() {
-      var result = cfg.compute(graph.nodeIds, graph.edgePairs, computeOptions);
+      var result = cfg.compute(graph, computeOptions);
       if (result && typeof result.then === 'function') {
         return result.then(finalizeResult);
       }
@@ -441,7 +424,6 @@
   }
 
   global.CyRuntime = {
-    currentPositionMap: currentPositionMap,
     currentPositionsFromCy: currentPositionsFromCy,
     captureViewportFromCy: captureViewportFromCy,
     applyPositionsToCy: applyPositionsToCy,

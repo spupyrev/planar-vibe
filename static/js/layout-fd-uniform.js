@@ -4,22 +4,21 @@
   var Metrics = global.PlanarVibeMetrics;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var CyRuntime = global.CyRuntime;
+  var GeometryUtils = global.GeometryUtils;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
-  var buildAdjacencyArrays = global.GraphUtils.buildAdjacencyArrays;
   var collectMovableVertices = global.GraphUtils.collectMovableVertices;
-  var computeDrawingDiameter = global.GraphUtils.computeDrawingDiameter;
-  var hasPositionCrossings = global.GraphUtils.hasPositionCrossings;
-  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
+  var computeDrawingDiameter = GeometryUtils.computeDrawingDiameter;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var computePositionMoveStats = global.GraphUtils.computePositionMoveStats;
-  var copyPositions = global.GraphUtils.copyPositions;
+  var copyPositions = GeometryUtils.copyPositionMap;
   var createMovementConvergenceTracker = global.GraphUtils.createMovementConvergenceTracker;
   var resolveFloatOption = global.GraphUtils.resolveFloatOption;
   var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
   var resolveIntOption = global.GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
-  var segmentsIntersectOrTouch = global.GraphUtils.segmentsIntersectOrTouch;
+  var segmentsIntersectOrTouch = GeometryUtils.segmentsIntersectOrTouch;
 
   function wouldIntroduceCrossing(vertexId, newPos, positions, edgePairs, incidentEdges, eps) {
     var v = String(vertexId);
@@ -386,7 +385,7 @@
     })();
   }
 
-  function computeFDUniformPositions(nodeIds, edgePairs, options) {
+  function computeFDUniformPositions(graph, options) {
     var opts = options || {};
     var EPS = resolveFloatOption(opts.epsilon, 1e-9, 1e-12);
     var repEps = resolveFloatOption(opts.repulsionEps, 1e-6, 1e-12);
@@ -407,16 +406,6 @@
     var evalEvery = resolveIntOption(opts.evalEvery, 10, 1);
     var onIteration = resolveFunctionOption(opts.onIteration, null);
 
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
-    var ids = graph.nodeIds.slice();
-    if (ids.length < 3) {
-      return buildLayoutError({ message: 'FD-uniform requires at least 3 vertices', graph: graph });
-    }
-    var pairs = graph.edgePairs.slice();
-    if (pairs.length < 3) {
-      return buildLayoutError({ message: 'FD-uniform requires at least 3 edges', graph: graph });
-    }
-
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FD-uniform',
       augmentationMethod: opts.augmentationMethod || null,
@@ -426,9 +415,16 @@
       return buildLayoutError(context || { message: 'FD-uniform setup failed' });
     }
 
+    var graph = context.graph;
+    var ids = graph.nodeIds.slice();
+    var pairs = graph.edgePairs.slice();
+    if (pairs.length < 3) {
+      return buildLayoutError({ message: 'FD-uniform requires at least 3 edges', graph: graph });
+    }
+
     var outerFace = context.outerFace;
     var pos = context.posById;
-    var adjOrig = buildAdjacencyArrays(ids, pairs);
+    var adjOrig = graph.adjacency;
     var movable = collectMovableVertices(ids, outerFace);
 
     var i;
@@ -487,7 +483,7 @@
       nodeIds: ids,
       edgePairs: pairs,
       outerFace: outerFace,
-      positions: pos,
+      pos: pos,
       adjOrig: adjOrig,
       movable: movable,
       incidentEdges: incidentEdges,

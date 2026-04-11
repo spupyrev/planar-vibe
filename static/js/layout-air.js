@@ -4,27 +4,27 @@
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var CyRuntime = global.CyRuntime;
   var Metrics = global.PlanarVibeMetrics;
+  var GeometryUtils = global.GeometryUtils;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var faceKey = global.GraphUtils.faceKey;
-  var polygonArea2 = global.GraphUtils.polygonArea2;
-  var pointAdd = global.GraphUtils.pointAdd;
-  var pointDot = global.GraphUtils.pointDot;
-  var pointNorm = global.GraphUtils.pointNorm;
-  var pointRot90 = global.GraphUtils.pointRot90;
-  var pointScale = global.GraphUtils.pointScale;
-  var pointSub = global.GraphUtils.pointSub;
-  var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
+  var polygonArea2 = GeometryUtils.polygonArea2;
+  var pointAdd = GeometryUtils.pointAdd;
+  var pointDot = GeometryUtils.pointDot;
+  var pointNorm = GeometryUtils.pointNorm;
+  var pointRot90 = GeometryUtils.pointRot90;
+  var pointScale = GeometryUtils.pointScale;
+  var pointSub = GeometryUtils.pointSub;
   var resolveFloatOption = global.GraphUtils.resolveFloatOption;
   var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
   var resolveIntOption = global.GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
   var resolvePositiveOption = global.GraphUtils.resolvePositiveOption;
-  var orientFaceCCW = global.GraphUtils.orientFaceCCW;
-  var outerFaceDiameter = global.GraphUtils.outerFaceDiameter;
-  var triangleArea2 = global.GraphUtils.triangleArea2;
-  var hasPositionCrossings = global.GraphUtils.hasPositionCrossings;
+  var orientFaceCCW = GeometryUtils.orientFaceCCW;
+  var outerFaceDiameter = GeometryUtils.outerFaceDiameter;
+  var triangleArea2 = GeometryUtils.triangleArea2;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
 
   function outerEdgeKey(u, v) {
     var a = String(u);
@@ -602,9 +602,9 @@
     };
   }
 
-  async function computeAirPositions(nodeIds, edgePairs, options) {
+  async function computeAirPositions(graph, options) {
     var opts = options || {};
-    var prepared = prepareAirState(normalizeGraphInput(nodeIds, edgePairs), opts);
+    var prepared = prepareAirState(graph, opts);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'Air failed' });
     }
@@ -670,7 +670,7 @@
   }
 
   async function applyAirLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options || {}, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'Air layout',
       compute: computeAirPositions,

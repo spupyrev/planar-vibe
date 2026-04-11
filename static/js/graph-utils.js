@@ -1,64 +1,23 @@
 (function (global) {
   'use strict';
 
-  // Graph-specific helpers plus compatibility re-exports from geometry and linear algebra modules.
+  // Graph-specific helpers and lightweight graph analysis utilities.
 
-  var PlanarGraphUtils = global.PlanarGraphUtils;
-  var GraphGeometryUtils = global.GraphGeometryUtils;
-  var LinearAlgebraUtils = global.LinearAlgebraUtils;
-
-  if (!PlanarGraphUtils) {
-    throw new Error('PlanarGraphUtils must be loaded before GraphUtils');
-  }
-  if (!GraphGeometryUtils) {
-    throw new Error('GraphGeometryUtils must be loaded before GraphUtils');
-  }
-  if (!LinearAlgebraUtils) {
-    throw new Error('LinearAlgebraUtils must be loaded before GraphUtils');
+  function normalizeOuterFace(outerFace) {
+    return Array.isArray(outerFace) ? outerFace.slice() : [];
   }
 
-  function normalizeNodeIds(nodeIds) {
-    return (nodeIds || []).map(String);
+  function edgeKey(u, v) {
+    return u < v ? u + '::' + v : v + '::' + u;
   }
 
-  function normalizeEdgePairs(edgePairs) {
-    return (edgePairs || []).map(function (edge) {
-      return [String(edge[0]), String(edge[1])];
-    });
-  }
-
-  function normalizeGraphInput(nodeIds, edgePairs) {
-    return {
-      nodeIds: normalizeNodeIds(nodeIds),
-      edgePairs: normalizeEdgePairs(edgePairs)
-    };
-  }
-
-  function normalizeSimpleEdgePairs(edgePairs) {
-    var pairs = normalizeEdgePairs(edgePairs);
+  function cloneEdgePairs(edgePairs) {
     var out = [];
-    var seen = new Set();
-    for (var i = 0; i < pairs.length; i += 1) {
-      var u = pairs[i][0];
-      var v = pairs[i][1];
-      if (u === v) {
-        continue;
-      }
-      var key = edgeKey(u, v);
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      out.push([u, v]);
+    for (var i = 0; i < (edgePairs || []).length; i += 1) {
+      out.push([edgePairs[i][0], edgePairs[i][1]]);
     }
     return out;
   }
-
-  function normalizeOuterFace(outerFace) {
-    return Array.isArray(outerFace) ? outerFace.slice().map(String) : [];
-  }
-
-  var edgeKey = PlanarGraphUtils.edgeKey;
 
   function hashString(value, seed) {
     var hash = seed >>> 0;
@@ -135,10 +94,6 @@
     return typeof value === 'function' ? value : fallback;
   }
 
-  var luFactorize = LinearAlgebraUtils.luFactorize;
-  var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
-  var solveTransposeLUWithTwoRhs = LinearAlgebraUtils.solveTransposeLUWithTwoRhs;
-
   function faceKey(face) {
     if (!face || face.length === 0) return '';
     var arr = face.map(String);
@@ -157,90 +112,74 @@
     return best || '';
   }
 
-  var polygonArea2 = GraphGeometryUtils.polygonArea2;
-  var polygonAreaAbs = GraphGeometryUtils.polygonAreaAbs;
-  var pointAdd = GraphGeometryUtils.pointAdd;
-  var pointSub = GraphGeometryUtils.pointSub;
-  var pointScale = GraphGeometryUtils.pointScale;
-  var pointDot = GraphGeometryUtils.pointDot;
-  var pointRot90 = GraphGeometryUtils.pointRot90;
-  var pointNorm = GraphGeometryUtils.pointNorm;
-  var pointEquals = GraphGeometryUtils.pointEquals;
-  var pointOnSegment = GraphGeometryUtils.pointOnSegment;
-  var pointOnSegmentInterior = GraphGeometryUtils.pointOnSegmentInterior;
-  var vecDot = GraphGeometryUtils.vecDot;
-  var vecNorm = GraphGeometryUtils.vecNorm;
-  var vecAddScaled = GraphGeometryUtils.vecAddScaled;
-  var vecSub = GraphGeometryUtils.vecSub;
-  var vecScale = GraphGeometryUtils.vecScale;
-  var createZeroVector = GraphGeometryUtils.createZeroVector;
-  var orientFaceCCW = GraphGeometryUtils.orientFaceCCW;
-  var outerFaceDiameter = GraphGeometryUtils.outerFaceDiameter;
-  var triangleArea2 = GraphGeometryUtils.triangleArea2;
-  var segmentsIntersectStrict = GraphGeometryUtils.segmentsIntersectStrict;
-  var segmentsIntersectOrTouch = GraphGeometryUtils.segmentsIntersectOrTouch;
-
-  function createEmptyAdjacency(nodeIds) {
-    var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adj[nodeIds[i]] = [];
+  function Graph(nodeIds, edgePairs) {
+    if (!Array.isArray(nodeIds)) {
+      throw new Error('Graph requires nodeIds array');
     }
-    return adj;
-  }
-
-  function addUndirectedEdge(adjacency, source, target) {
-    if (!adjacency[source]) {
-      adjacency[source] = [];
+    if (!Array.isArray(edgePairs)) {
+      throw new Error('Graph requires edgePairs array');
     }
-    if (!adjacency[target]) {
-      adjacency[target] = [];
-    }
-    adjacency[source].push(target);
-    adjacency[target].push(source);
-  }
 
-  function buildAdjacencyArrays(nodeIds, edgePairs) {
-    // Use neighbor lists when callers want simple iteration order or indexable arrays.
-    // The edge input is normalized first, so duplicate undirected edges are removed.
-    var ids = normalizeNodeIds(nodeIds);
-    var pairs = normalizeSimpleEdgePairs(edgePairs);
-    var adjacency = createEmptyAdjacency(ids);
-    for (var i = 0; i < pairs.length; i += 1) {
-      addUndirectedEdge(adjacency, pairs[i][0], pairs[i][1]);
-    }
-    return adjacency;
-  }
+    this.nodeIds = nodeIds.slice();
+    this.edgePairs = [];
+    this.adjacency = {};
+    this.adjacencySets = {};
 
-  function createEmptyAdjacencySets(nodeIds) {
-    var adj = {};
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      adj[String(nodeIds[i])] = new Set();
-    }
-    return adj;
-  }
-
-  function buildAdjacencySets(nodeIds, edgePairs) {
-    // Use neighbor sets when callers care about uniqueness and set-style membership/mutation.
-    var ids = normalizeNodeIds(nodeIds);
-    var pairs = normalizeSimpleEdgePairs(edgePairs);
-    var adj = createEmptyAdjacencySets(ids);
-    for (var i = 0; i < pairs.length; i += 1) {
-      var u = pairs[i][0];
-      var v = pairs[i][1];
-      if (!adj[u]) {
-        adj[u] = new Set();
+    var nodeIdSet = new Set();
+    for (var i = 0; i < this.nodeIds.length; i += 1) {
+      var id = this.nodeIds[i];
+      if (typeof id !== 'string') {
+        throw new Error('Graph node ids must be strings');
       }
-      if (!adj[v]) {
-        adj[v] = new Set();
+      if (nodeIdSet.has(id)) {
+        throw new Error('Graph node ids must be unique');
       }
-      adj[u].add(v);
-      adj[v].add(u);
+      nodeIdSet.add(id);
+      this.adjacency[id] = [];
+      this.adjacencySets[id] = new Set();
     }
-    return adj;
+
+    var edgeSet = new Set();
+    for (i = 0; i < edgePairs.length; i += 1) {
+      var edge = edgePairs[i];
+      if (!Array.isArray(edge) || edge.length < 2) {
+        throw new Error('Graph edges must be [source, target] pairs');
+      }
+      var u = edge[0];
+      var v = edge[1];
+      if (typeof u !== 'string' || typeof v !== 'string') {
+        throw new Error('Graph edge endpoints must be strings');
+      }
+      if (!nodeIdSet.has(u) || !nodeIdSet.has(v)) {
+        throw new Error('Graph edges must reference known node ids');
+      }
+      if (u === v) {
+        throw new Error('Graph edges must be simple and cannot contain self-loops');
+      }
+      var key = edgeKey(u, v);
+      if (edgeSet.has(key)) {
+        throw new Error('Graph edges must be unique');
+      }
+      edgeSet.add(key);
+      this.edgePairs.push([u, v]);
+    }
+
+    for (var i = 0; i < this.edgePairs.length; i += 1) {
+      var u = this.edgePairs[i][0];
+      var v = this.edgePairs[i][1];
+      this.adjacency[u].push(v);
+      this.adjacency[v].push(u);
+      this.adjacencySets[u].add(v);
+      this.adjacencySets[v].add(u);
+    }
+  }
+
+  function createGraph(nodeIds, edgePairs) {
+    return new Graph(nodeIds, edgePairs);
   }
 
   function connectivityAfterRemoving(nodeIds, adjacency, removedSet) {
-    var ids = nodeIds.map(String);
+    var ids = nodeIds;
     var start = null;
     var remaining = 0;
     for (var i = 0; i < ids.length; i += 1) {
@@ -283,8 +222,8 @@
     };
   }
 
-  function analyzeThreeConnectivity(nodeIds, edgePairs) {
-    var ids = nodeIds.map(String);
+  function analyzeThreeConnectivity(graph) {
+    var ids = graph.nodeIds;
     if (ids.length < 4) {
       return {
         ok: false,
@@ -292,7 +231,7 @@
       };
     }
 
-    var adj = buildAdjacencySets(ids, edgePairs);
+    var adj = graph.adjacencySets;
     for (var i = 0; i < ids.length; i += 1) {
       if ((adj[ids[i]] ? adj[ids[i]].size : 0) < 3) {
         return {
@@ -339,9 +278,9 @@
     return { ok: true };
   }
 
-  function analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace) {
-    var ids = nodeIds.map(String);
-    var outer = Array.isArray(outerFace) ? outerFace.slice().map(String) : [];
+  function analyzeInternallyThreeConnected(graph, outerFace) {
+    var ids = graph.nodeIds;
+    var outer = Array.isArray(outerFace) ? outerFace.slice() : [];
     if (outer.length < 3) {
       return {
         ok: false,
@@ -367,7 +306,7 @@
     }
 
     var augmentedNodeIds = ids.concat([hubId]);
-    var augmentedEdgePairs = cloneEdgePairs(edgePairs);
+    var augmentedEdgePairs = cloneEdgePairs(graph.edgePairs);
     var seenOuter = new Set();
     for (i = 0; i < outer.length; i += 1) {
       var v = outer[i];
@@ -378,7 +317,7 @@
       augmentedEdgePairs.push([hubId, v]);
     }
 
-    var result = analyzeThreeConnectivity(augmentedNodeIds, augmentedEdgePairs);
+    var result = analyzeThreeConnectivity(createGraph(augmentedNodeIds, augmentedEdgePairs));
     if (result.ok) {
       return result;
     }
@@ -389,114 +328,17 @@
     };
   }
 
-  function isThreeConnected(nodeIds, edgePairs) {
-    return analyzeThreeConnectivity(nodeIds, edgePairs).ok;
-  }
-
-  function isInternallyThreeConnected(nodeIds, edgePairs, outerFace) {
-    return analyzeInternallyThreeConnected(nodeIds, edgePairs, outerFace).ok;
-  }
-
-  var sameCyclicDirection = PlanarGraphUtils.sameCyclicDirection;
-  var sameCyclicEitherDirection = PlanarGraphUtils.sameCyclicEitherDirection;
-
-  function findOuterFaceIndex(faces, outerFace) {
-    if (!Array.isArray(faces) || !Array.isArray(outerFace) || outerFace.length === 0) {
-      return -1;
-    }
-    for (var i = 0; i < faces.length; i += 1) {
-      if (sameCyclicDirection(outerFace, faces[i])) {
-        return i;
-      }
-    }
-    for (i = 0; i < faces.length; i += 1) {
-      if (sameCyclicEitherDirection(outerFace, faces[i])) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  var embeddingHasFace = PlanarGraphUtils.embeddingHasFace;
-
-  function chooseOuterFace(nodeIds, adjacency) {
-      var edgePairs = [];
-      var edgeSeen = {};
-
-      for (var i = 0; i < nodeIds.length; i += 1) {
-        var u = String(nodeIds[i]);
-        var neighbors = adjacency[u] || [];
-        for (var j = 0; j < neighbors.length; j += 1) {
-          var v = String(neighbors[j]);
-          var key = u < v ? u + '::' + v : v + '::' + u;
-          if (edgeSeen[key]) {
-            continue;
-          }
-          edgeSeen[key] = true;
-          edgePairs.push([u, v]);
-        }
-      }
-
-      if (arguments.length >= 3) {
-        var selectedFromPositions = chooseOuterFaceFromPositions(nodeIds, edgePairs, arguments[2]);
-        if (selectedFromPositions && selectedFromPositions.length >= 3) {
-          return selectedFromPositions;
-        }
-      }
-
-      var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
-      if (embedding && embedding.ok && embedding.faces && embedding.faces.length > 0) {
-        var selected = chooseOuterFaceFromEmbedding(embedding);
-        if (selected && selected.length >= 3) {
-          return selected;
-        }
-    }
-    return null;
-  }
-
-  var extractEmbeddingFromPositions = PlanarGraphUtils.extractEmbeddingFromPositions;
-  var chooseOuterFaceFromPositions = PlanarGraphUtils.chooseOuterFaceFromPositions;
-  var chooseOuterFaceFromEmbedding = PlanarGraphUtils.chooseOuterFaceFromEmbedding;
-  var isTriangulatedEmbedding = PlanarGraphUtils.isTriangulatedEmbedding;
-
-  function cloneEdgePairs(edgePairs) {
-    return edgePairs.map(function (e) {
-      return [String(e[0]), String(e[1])];
-    });
-  }
-
-  var computeDrawingDiameter = GraphGeometryUtils.computeDrawingDiameter;
-  var copyPositionMap = GraphGeometryUtils.copyPositionMap;
-
-  function filterPositionMap(posById, nodeIds) {
-    var ids = normalizeNodeIds(nodeIds);
-    var out = {};
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      var p = posById ? posById[id] : null;
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      out[id] = { x: p.x, y: p.y };
-    }
-    return out;
-  }
-
   function collectMovableVertices(nodeIds, outerFace) {
-    var outerSet = new Set((outerFace || []).map(String));
+    var outerSet = new Set(outerFace || []);
     var movable = [];
     for (var i = 0; i < (nodeIds || []).length; i += 1) {
-      var id = String(nodeIds[i]);
+      var id = nodeIds[i];
       if (!outerSet.has(id)) {
         movable.push(id);
       }
     }
     return movable;
   }
-
-  var computeFaceCentroid = GraphGeometryUtils.computeFaceCentroid;
-  var rotatePositionMap = GraphGeometryUtils.rotatePositionMap;
-  var alignOuterFaceEdgeHorizontally = GraphGeometryUtils.alignOuterFaceEdgeHorizontally;
 
   function computeMoveStats(items, distanceFn, options) {
     var opts = options || {};
@@ -637,8 +479,6 @@
     }, options);
   }
 
-  var hasPositionCrossings = GraphGeometryUtils.hasPositionCrossings;
-
   function createMovementConvergenceTracker(options) {
     var opts = options || {};
     var minItersBeforeStop = resolveIntOption(opts.minItersBeforeStop, 20, 1);
@@ -667,89 +507,10 @@
     };
   }
 
-  var augmentByFaceStellation = PlanarGraphUtils.augmentByFaceStellation;
-  var triangulateByOuterCycle = PlanarGraphUtils.triangulateByOuterCycle;
-
-  function removeDegreeThreeDummyVertices(nodeIds, edgePairs, dummyFaceVerticesById, outerFace) {
-    var nodes = (nodeIds || []).map(String);
-    var edges = cloneEdgePairs(edgePairs || []);
-    var dummyMap = {};
-    var dummyIds = Object.keys(dummyFaceVerticesById || {});
-    var outerSet = new Set((outerFace || []).map(String));
-    var i;
-
-    for (i = 0; i < dummyIds.length; i += 1) {
-      var dummyId = String(dummyIds[i]);
-      dummyMap[dummyId] = (dummyFaceVerticesById[dummyId] || []).map(String);
-    }
-
-    var removedDummyIds = [];
-    while (true) {
-      var adjacency = buildAdjacencySets(nodes, edges);
-      var removable = [];
-      var currentDummyIds = Object.keys(dummyMap);
-      for (i = 0; i < currentDummyIds.length; i += 1) {
-        var currentDummyId = String(currentDummyIds[i]);
-        if (outerSet.has(currentDummyId)) {
-          continue;
-        }
-        if (!adjacency[currentDummyId]) {
-          delete dummyMap[currentDummyId];
-          continue;
-        }
-        if (adjacency[currentDummyId].size === 3) {
-          removable.push(currentDummyId);
-        }
-      }
-      if (removable.length === 0) {
-        break;
-      }
-
-      var removeSet = new Set(removable);
-      nodes = nodes.filter(function (id) {
-        return !removeSet.has(String(id));
-      });
-      edges = edges.filter(function (edge) {
-        return !removeSet.has(String(edge[0])) && !removeSet.has(String(edge[1]));
-      });
-      for (i = 0; i < removable.length; i += 1) {
-        delete dummyMap[String(removable[i])];
-        removedDummyIds.push(String(removable[i]));
-      }
-    }
-
-    return {
-      nodeIds: nodes,
-      edgePairs: edges,
-      dummyFaceVerticesById: dummyMap,
-      dummyCount: Object.keys(dummyMap).length,
-      removedDummyIds: removedDummyIds
-    };
-  }
-
-  var triangulateByFaceStellation = PlanarGraphUtils.triangulateByFaceStellation;
-
   global.GraphUtils = {
+    Graph: Graph,
+    createGraph: createGraph,
     faceKey: faceKey,
-    polygonArea2: polygonArea2,
-    polygonAreaAbs: polygonAreaAbs,
-    pointAdd: pointAdd,
-    pointSub: pointSub,
-    pointScale: pointScale,
-    pointDot: pointDot,
-    pointRot90: pointRot90,
-    pointNorm: pointNorm,
-    pointEquals: pointEquals,
-    pointOnSegment: pointOnSegment,
-    pointOnSegmentInterior: pointOnSegmentInterior,
-    vecDot: vecDot,
-    vecNorm: vecNorm,
-    vecAddScaled: vecAddScaled,
-    vecSub: vecSub,
-    vecScale: vecScale,
-    createZeroVector: createZeroVector,
-    orientFaceCCW: orientFaceCCW,
-    outerFaceDiameter: outerFaceDiameter,
     edgeKey: edgeKey,
     hashString: hashString,
     normalizedHash: normalizedHash,
@@ -761,47 +522,16 @@
     resolveGreaterThanOption: resolveGreaterThanOption,
     resolveOpenIntervalOption: resolveOpenIntervalOption,
     resolveFunctionOption: resolveFunctionOption,
-    luFactorize: luFactorize,
-    solveLUWithTwoRhs: solveLUWithTwoRhs,
-    solveTransposeLUWithTwoRhs: solveTransposeLUWithTwoRhs,
-    triangleArea2: triangleArea2,
-    segmentsIntersectStrict: segmentsIntersectStrict,
-    segmentsIntersectOrTouch: segmentsIntersectOrTouch,
-    buildAdjacencyArrays: buildAdjacencyArrays,
-    buildAdjacencySets: buildAdjacencySets,
-    normalizeNodeIds: normalizeNodeIds,
-    normalizeEdgePairs: normalizeEdgePairs,
-    normalizeGraphInput: normalizeGraphInput,
-    normalizeSimpleEdgePairs: normalizeSimpleEdgePairs,
     normalizeOuterFace: normalizeOuterFace,
-    sameCyclicDirection: sameCyclicDirection,
-    sameCyclicEitherDirection: sameCyclicEitherDirection,
-    findOuterFaceIndex: findOuterFaceIndex,
-    embeddingHasFace: embeddingHasFace,
     cloneEdgePairs: cloneEdgePairs,
-    computeDrawingDiameter: computeDrawingDiameter,
-    copyPositions: copyPositionMap,
-    filterPositions: filterPositionMap,
     collectMovableVertices: collectMovableVertices,
-    alignOuterFaceEdgeHorizontally: alignOuterFaceEdgeHorizontally,
     computeMoveStats: computeMoveStats,
     buildLayoutResult: buildLayoutResult,
     buildLayoutError: buildLayoutError,
     buildLayoutStatusMessage: buildLayoutStatusMessage,
     computePositionMoveStats: computePositionMoveStats,
-    hasPositionCrossings: hasPositionCrossings,
     createMovementConvergenceTracker: createMovementConvergenceTracker,
     analyzeThreeConnectivity: analyzeThreeConnectivity,
-    analyzeInternallyThreeConnected: analyzeInternallyThreeConnected,
-    isThreeConnected: isThreeConnected,
-    isInternallyThreeConnected: isInternallyThreeConnected,
-    isTriangulatedEmbedding: isTriangulatedEmbedding,
-    augmentByFaceStellation: augmentByFaceStellation,
-    triangulateByOuterCycle: triangulateByOuterCycle,
-    triangulateByFaceStellation: triangulateByFaceStellation,
-    chooseOuterFace: chooseOuterFace,
-    extractEmbeddingFromPositions: extractEmbeddingFromPositions,
-    chooseOuterFaceFromPositions: chooseOuterFaceFromPositions,
-    chooseOuterFaceFromEmbedding: chooseOuterFaceFromEmbedding
+    analyzeInternallyThreeConnected: analyzeInternallyThreeConnected
   };
 })(window);

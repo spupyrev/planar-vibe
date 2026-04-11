@@ -2,25 +2,25 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var GeometryUtils = global.GeometryUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var Metrics = global.PlanarVibeMetrics;
+  var PlanarGraphUtils = global.PlanarGraphUtils;
   var CyRuntime = global.CyRuntime;
-  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
-  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
-  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
-  var copyPositions = GraphUtils.copyPositions;
-  var pointOnSegmentInterior = GraphUtils.pointOnSegmentInterior;
+  var copyPositions = GeometryUtils.copyPositionMap;
+  var pointOnSegmentInterior = GeometryUtils.pointOnSegmentInterior;
   var resolveFiniteOption = GraphUtils.resolveFiniteOption;
   var resolveFloatOption = GraphUtils.resolveFloatOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
   var resolvePositiveOption = GraphUtils.resolvePositiveOption;
-  var segmentsIntersectOrTouch = GraphUtils.segmentsIntersectOrTouch;
+  var segmentsIntersectOrTouch = GeometryUtils.segmentsIntersectOrTouch;
 
   function estimateDelta(edgePairs, posById) {
     var sum = 0;
@@ -368,9 +368,8 @@
     };
   }
 
-  async function computeImPrEdPositions(nodeIds, edgePairs, options) {
+  async function computeImPrEdPositions(g, options) {
     var opts = options || {};
-    var g = normalizeGraphInput(nodeIds, edgePairs);
     if (!g.nodeIds || g.nodeIds.length < 2) {
       return buildLayoutError({ message: 'ImPrEd requires at least 2 vertices', graph: g });
     }
@@ -392,7 +391,7 @@
 
     var seed = null;
     var currentEmbedding = currentCount === g.nodeIds.length
-      ? GraphUtils.extractEmbeddingFromPositions(g.nodeIds, g.edgePairs, currentPositions)
+      ? PlanarGraphUtils.extractEmbeddingFromPositions(g.nodeIds, g.edgePairs, currentPositions)
       : null;
     if (currentEmbedding && currentEmbedding.ok) {
       seed = {
@@ -425,7 +424,7 @@
     }
 
     var posById = copyPositions(seed.posById || {});
-    var adj = buildAdjacencyArrays(g.nodeIds, g.edgePairs);
+    var adj = g.adjacency;
     var emb = seed.baseEmbedding || null;
     var fixedOuter = new Set((seed.outerFace || []).map(String));
     var delta = resolvePositiveOption(opts.delta, estimateDelta(g.edgePairs, posById));
@@ -622,7 +621,7 @@
   }
 
   async function applyImPrEdLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options || {}, {
       compute: computeImPrEdPositions,
       buildResult: function (ctx) {
         var result = ctx.result;

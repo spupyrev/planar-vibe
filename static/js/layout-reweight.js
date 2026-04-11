@@ -2,6 +2,7 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var GeometryUtils = global.GeometryUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var Metrics = global.PlanarVibeMetrics;
   var CyRuntime = global.CyRuntime;
@@ -9,24 +10,23 @@
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
-  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var collectMovableVertices = GraphUtils.collectMovableVertices;
-  var computeDrawingDiameter = GraphUtils.computeDrawingDiameter;
+  var computeDrawingDiameter = GeometryUtils.computeDrawingDiameter;
   var computeDistributionQuality = Metrics && Metrics.computeDistributionQuality;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
   var createAugmentationDebugState = LayoutPreprocessing.createAugmentationDebugState;
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
+  var createGraph = GraphUtils.createGraph;
   var edgeKey = GraphUtils.edgeKey;
-  var findOuterFaceIndex = GraphUtils.findOuterFaceIndex;
-  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
-  var polygonAreaAbs = GraphUtils.polygonAreaAbs;
+  var findOuterFaceIndex = global.PlanarGraphUtils.findOuterFaceIndex;
+  var polygonAreaAbs = GeometryUtils.polygonAreaAbs;
   var resolveFloatOption = GraphUtils.resolveFloatOption;
   var resolveFunctionOption = GraphUtils.resolveFunctionOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
 
   function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, fixedOuterPos) {
-    return Tutte.computeBarycentricPositions(nodeIds, [], outerFace, {
+    return Tutte.computeBarycentricPositions(createGraph(nodeIds, []), outerFace, {
       adjacency: adj,
       weights: weights,
       maxIters: maxIters,
@@ -237,7 +237,6 @@
 
   function prepareReweightState(graph, options) {
     var opts = normalizeReweightOptions(options);
-    graph = normalizeGraphInput(graph && graph.nodeIds, graph && graph.edgePairs);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'ReweightTutte',
       augmentationMethod: opts.augmentationMethod,
@@ -277,11 +276,11 @@
       });
     }
 
-    var adj = buildAdjacencyArrays(augmented.nodeIds, augmented.edgePairs);
+    var adj = context.augmentedGraph.adjacency;
     var e2f = buildEdgeToFaceMap(faces);
     var weights = {};
-    for (i = 0; i < augmented.edgePairs.length; i += 1) {
-      weights[edgeKey(augmented.edgePairs[i][0], augmented.edgePairs[i][1])] = 1;
+    for (i = 0; i < augmented.graph.edgePairs.length; i += 1) {
+      weights[edgeKey(augmented.graph.edgePairs[i][0], augmented.graph.edgePairs[i][1])] = 1;
     }
     var facePressure = [];
     for (i = 0; i < faces.length; i += 1) facePressure[i] = 0;
@@ -295,8 +294,8 @@
       fixedOuterPos[ov] = { x: initPos[ov].x, y: initPos[ov].y };
     }
     var currentPos = context.posById;
-    var movableVertices = collectMovableVertices(augmented.nodeIds, outer);
-    var movementScale = computeDrawingDiameter(augmented.nodeIds, currentPos);
+    var movableVertices = collectMovableVertices(augmented.graph.nodeIds, outer);
+    var movementScale = computeDrawingDiameter(augmented.graph.nodeIds, currentPos);
     var movementTracker = createMovementConvergenceTracker({
       minItersBeforeStop: opts.minItersBeforeStop,
       stableIterLimit: opts.stableIterLimit,
@@ -350,7 +349,7 @@
 
     for (var iter = 0; iter < opts.maxOuterIters; iter += 1) {
       var prevPos = currentPos;
-      var inner = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, opts.innerIters, fixedOuterPos);
+      var inner = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, opts.innerIters, fixedOuterPos);
       totalInnerIters += inner.iters;
       performedOuterIters = iter + 1;
 
@@ -373,7 +372,7 @@
 
       facePressure = updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, opts.pressureStep, opts.pressureClamp, opts.pressureDeltaClamp);
       weights = adjustWeights(
-        augmented.edgePairs,
+        augmented.graph.edgePairs,
         outer,
         faces,
         faceAreas,
@@ -413,7 +412,7 @@
       }
     }
 
-    var finalLayout = barycentricLayoutWeighted(augmented.nodeIds, adj, outer, weights, opts.finalIters, fixedOuterPos);
+    var finalLayout = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, opts.finalIters, fixedOuterPos);
     totalInnerIters += finalLayout.iters;
 
     return buildLayoutResult({
@@ -433,11 +432,8 @@
     });
   }
 
-  async function computeReweightTuttePositions(nodeIds, edgePairs, options) {
-    var prepared = prepareReweightState({
-      nodeIds: nodeIds,
-      edgePairs: edgePairs
-    }, options);
+  async function computeReweightTuttePositions(graph, options) {
+    var prepared = prepareReweightState(graph, options);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'ReweightTutte setup failed' });
     }
@@ -445,7 +441,7 @@
   }
 
   async function applyReweightTutteLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options || {}, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'ReweightTutte layout',
       compute: computeReweightTuttePositions,

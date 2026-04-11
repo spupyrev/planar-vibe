@@ -7,15 +7,10 @@
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
-  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
-  var buildAdjacencySets = GraphUtils.buildAdjacencySets;
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
 
-  function prepareTriangulatedEmbedding(nodeIds, edgePairs) {
-    var prepared = prepareGraphData({
-      nodeIds: nodeIds,
-      edgePairs: edgePairs
-    }, {
+  function prepareTriangulatedEmbedding(graph) {
+    var prepared = prepareGraphData(graph, {
       failureLabel: 'FPP',
       augmentationOptions: {
         triangulateOuterFace: true
@@ -32,6 +27,7 @@
       outerFace: prepared.outerFace,
       embedding: prepared.embedding,
       augmented: prepared.augmented,
+      augmentedGraph: prepared.augmentedGraph,
       augmentedNodeIds: prepared.augmentedNodeIds,
       augmentedEdgePairs: prepared.augmentedEdgePairs,
       augmentedDummyCount: prepared.augmentedDummyCount
@@ -62,7 +58,7 @@
       rotationById[embedding.idByIndex[r]] = embedding.rotation[r] ? embedding.rotation[r].slice() : [];
     }
 
-    var adjacency = buildAdjacencySets(nodeIds, prepared.augmentedEdgePairs);
+    var adjacency = prepared.augmentedGraph.adjacencySets;
 
     function rotationPathInclusive(v, start, end) {
       var nbrs = rotationById[v] || [];
@@ -510,11 +506,10 @@
     });
   }
 
-  function computeFPPPositions(nodeIds, edgePairs) {
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
+  function computeFPPPositions(graph) {
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
-    var prepared = prepareTriangulatedEmbedding(ids, pairs);
+    var prepared = prepareTriangulatedEmbedding(graph);
     if (!prepared.ok) {
       return buildLayoutError({
         message: prepared.message || prepared.reason,
@@ -550,12 +545,9 @@
 
   function applyFPPLayout(cy, options) {
     return CyRuntime.runLayout(cy, options || {}, {
-      failureMessage: 'FPP failed',
-      compute: function (nodeIds, edgePairs) {
-        return computeFPPPositions(nodeIds, edgePairs);
-      },
-      buildResult: function (context) {
-        var result = context.result;
+      compute: computeFPPPositions,
+      buildResult: function (ctx) {
+        var result = ctx.result;
         return {
           ok: true,
           message: buildLayoutStatusMessage('FPP layout', {
@@ -565,14 +557,12 @@
               : null
           })
         };
-      }
+      },
+      failureMessage: 'FPP failed'
     });
   }
 
   global.PlanarVibeFPP = {
-    augmentPlanarByFaceStellation: GraphUtils.augmentByFaceStellation,
-    prepareTriangulatedEmbedding: prepareTriangulatedEmbedding,
-    computeCanonicalOrdering: computeCanonicalOrdering,
     computeFPPPositions: computeFPPPositions,
     applyFPPLayout: applyFPPLayout
   };

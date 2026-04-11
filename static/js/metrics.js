@@ -322,7 +322,6 @@
   }
 
   function computeUniformFaceAreaScore(nodeIds, edgePairs, posById) {
-    var graphUtils = global.GraphUtils;
     var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
     if (!emb || !emb.ok) {
       return { ok: false, reason: 'Graph is not planar' };
@@ -331,7 +330,7 @@
       return { ok: false, reason: 'No faces available' };
     }
 
-    var outerFaceIdx = global.GraphUtils.findOuterFaceIndex(emb.faces, emb.outerFace || []);
+    var outerFaceIdx = global.PlanarGraphUtils.findOuterFaceIndex(emb.faces, emb.outerFace || []);
     var areas = [];
     var idealWeights = [];
     for (var i = 0; i < emb.faces.length; i += 1) {
@@ -339,7 +338,7 @@
       if (i === outerFaceIdx) {
         continue;
       }
-      var a = graphUtils.polygonAreaAbs(face, posById);
+      var a = global.GeometryUtils.polygonAreaAbs(face, posById);
       if (a > 1e-12) {
         areas.push(a);
         idealWeights.push(Math.max(1, face.length - 2));
@@ -545,7 +544,9 @@
     return computeUniformityScore(values, ideal);
   }
 
-  function computeUniformAngleResolutionScore(nodeIds, edgePairs, posById) {
+  function computeUniformAngleResolutionScore(graph, posById) {
+    var nodeIds = graph.nodeIds;
+    var edgePairs = graph.edgePairs;
     if (!nodeIds || nodeIds.length === 0) {
       return { ok: false, reason: 'No nodes' };
     }
@@ -557,7 +558,7 @@
       return { ok: false, reason: 'Graph is not planar' };
     }
 
-    var adjacency = global.GraphUtils.buildAdjacencyArrays(nodeIds, edgePairs);
+    var adjacency = graph.adjacency;
     var i;
 
     var outerSet = new Set((emb.outerFace || []).map(String));
@@ -650,7 +651,9 @@
     };
   }
 
-  function isBipartiteGraph(nodeIds, edgePairs) {
+  function isBipartiteGraph(graph) {
+    var nodeIds = graph.nodeIds;
+    var edgePairs = graph.edgePairs;
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
       var v = String(edgePairs[i][1]);
@@ -658,7 +661,7 @@
         return false;
       }
     }
-    var adjacency = global.GraphUtils.buildAdjacencyArrays(nodeIds, edgePairs);
+    var adjacency = graph.adjacency;
 
     var color = {};
     for (i = 0; i < nodeIds.length; i += 1) {

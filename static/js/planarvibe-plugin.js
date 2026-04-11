@@ -244,7 +244,7 @@
     var isInteractive = readStorage(PREF_INTERACTIVE_KEY) !== '0';
     var isStatusCollapsed = readStorage(PREF_STATUS_COLLAPSED_KEY) === '1';
     var useOuterCycleAugmentation = readStorage(PREF_OUTER_CYCLE_AUGMENTATION_KEY) !== '0';
-    var savedPositions = {};
+    var currentPositionsCache = {};
     var savedViewport = null;
     var currentVisualizedInput = null;
     var layoutBusyState = null;
@@ -424,14 +424,32 @@
       return byId;
     }
 
+    function setCurrentPositions(posById) {
+      currentPositionsCache = global.GeometryUtils.copyPositionMap(posById || {});
+      return currentPositionsCache;
+    }
+
+    function getCurrentPositions() {
+      if (cy) {
+        return global.CyRuntime.currentPositionsFromCy(cy);
+      }
+      if (Object.keys(currentPositionsCache).length > 0) {
+        return global.GeometryUtils.copyPositionMap(currentPositionsCache);
+      }
+      if (currentParsed && currentParsed.hasExplicitPositions && currentParsed.positionsById) {
+        return global.GeometryUtils.copyPositionMap(currentParsed.positionsById);
+      }
+      return assignDeterministicPositionsForParsed(currentParsed);
+    }
+
     function applyPositionMapToCurrentDrawing(posById) {
       if (cy) {
         global.CyRuntime.applyPositionsToCy(cy, posById);
-        savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+        setCurrentPositions(global.CyRuntime.currentPositionsFromCy(cy));
         saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
         return;
       }
-      savedPositions = global.GraphUtils.copyPositions(posById);
+      setCurrentPositions(posById);
       renderStaticSnapshot();
     }
 
@@ -587,7 +605,7 @@
       }
       setStatus(message + graphSizeSuffix() + smallGraphCoordinatesSuffix(), false);
       if (cy) {
-        savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+        setCurrentPositions(global.CyRuntime.currentPositionsFromCy(cy));
         saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
         updateFaceAreaPlot();
         updateEdgeLengthPlot();
@@ -963,7 +981,7 @@
       }
     }
 
-    function updateAngleResolutionScore(nodeIds, edgePairs, posById, hasCrossings) {
+    function updateAngleResolutionScore(graph, posById, hasCrossings) {
       if (hasCrossings) {
         clearAngleResolutionPlot('Drawing is not plane');
         return;
@@ -972,7 +990,7 @@
         clearAngleResolutionPlot('Metrics unavailable');
         return;
       }
-      var result = global.PlanarVibeMetrics.computeUniformAngleResolutionScore(nodeIds, edgePairs, posById);
+      var result = global.PlanarVibeMetrics.computeUniformAngleResolutionScore(graph, posById);
       if (!result || !result.ok || !Number.isFinite(result.score) || !result.values || !result.idealValues) {
         clearAngleResolutionPlot((result && result.reason) ? result.reason : 'No data');
         return;
@@ -989,20 +1007,8 @@
         return;
       }
       var edgePairs = edgePairsFromParsed(currentParsed);
-      var posById = {};
-      var nodeIds = [];
-      if (cy) {
-        nodeIds = getNodeIdsFromParsed(currentParsed);
-        for (var ni = 0; ni < nodeIds.length; ni += 1) {
-          var cyNode = cy.getElementById(nodeIds[ni]);
-          if (cyNode && cyNode.length) {
-            posById[nodeIds[ni]] = cyNode.position();
-          }
-        }
-      } else {
-        nodeIds = getNodeIdsFromParsed(currentParsed);
-        posById = savedPositions || {};
-      }
+      var nodeIds = getNodeIdsFromParsed(currentParsed);
+      var posById = getCurrentPositions();
       if (!nodeIds.length) {
         clearFaceAreaPlot('No graph');
         clearAngleResolutionPlot('No graph');
@@ -1010,17 +1016,18 @@
         return;
       }
 
-      if (!global.GraphUtils || typeof global.GraphUtils.hasPositionCrossings !== 'function') {
+      if (!global.GeometryUtils || typeof global.GeometryUtils.hasPositionCrossings !== 'function') {
         clearFaceAreaPlot('Metrics unavailable');
         clearAngleResolutionPlot('Metrics unavailable');
         setPlaneStat(null);
         setAlignEnabled(false);
         return;
       }
-      var hasCrossings = global.GraphUtils.hasPositionCrossings(posById, edgePairs);
+      var graph = global.GraphUtils.createGraph(nodeIds, edgePairs);
+      var hasCrossings = global.GeometryUtils.hasPositionCrossings(posById, edgePairs);
       setPlaneStat(!hasCrossings);
       setAlignEnabled(!hasCrossings);
-      updateAngleResolutionScore(nodeIds, edgePairs, posById, hasCrossings);
+      updateAngleResolutionScore(graph, posById, hasCrossings);
       if (hasCrossings) {
         clearFaceAreaPlot('Drawing is not plane');
         setPlaneStat(false);
@@ -1062,20 +1069,8 @@
         return;
       }
       var edgePairs = edgePairsFromParsed(currentParsed);
-      var posById = {};
-      var nodeIds = [];
-      if (cy) {
-        nodeIds = getNodeIdsFromParsed(currentParsed);
-        for (var ni = 0; ni < nodeIds.length; ni += 1) {
-          var cyNode = cy.getElementById(nodeIds[ni]);
-          if (cyNode && cyNode.length) {
-            posById[nodeIds[ni]] = cyNode.position();
-          }
-        }
-      } else {
-        nodeIds = getNodeIdsFromParsed(currentParsed);
-        posById = savedPositions || {};
-      }
+      var nodeIds = getNodeIdsFromParsed(currentParsed);
+      var posById = getCurrentPositions();
       if (!nodeIds.length) {
         clearEdgeLengthPlot('No graph');
         global.$('#stats-spacing-uniformity').text('--');
@@ -1159,24 +1154,19 @@
         setStatus('Axis-alignment module is missing', true);
         return;
       }
-      if (!global.GraphUtils || typeof global.GraphUtils.hasPositionCrossings !== 'function') {
+      if (!global.GeometryUtils || typeof global.GeometryUtils.hasPositionCrossings !== 'function') {
         setStatus('Planar graph utilities are missing', true);
         return;
       }
 
       var nodeIds = getNodeIdsFromParsed(currentParsed);
       var edgePairs = edgePairsFromParsed(currentParsed);
-      var posById = global.CyRuntime.currentPositionMap({
-        cy: cy,
-        savedPositions: savedPositions,
-        currentParsed: currentParsed,
-        assignDeterministicPositionsForParsed: assignDeterministicPositionsForParsed
-      });
+      var posById = getCurrentPositions();
       if (!nodeIds.length) {
         setStatus('No graph', true);
         return;
       }
-      if (global.GraphUtils.hasPositionCrossings(posById, edgePairs)) {
+      if (global.GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
         setAlignEnabled(false);
         setStatus('Align requires a plane drawing', true);
         return;
@@ -1205,7 +1195,7 @@
     }
 
     function buildVisibleSnapshotData() {
-      var basePositions = savedPositions || {};
+      var basePositions = getCurrentPositions();
       var baseEdgePairs = currentParsed ? edgePairsFromParsed(currentParsed) : [];
       var labelsById = Object.assign({}, currentParsed && currentParsed.labelsById ? currentParsed.labelsById : {});
       var classesById = Object.assign({}, currentParsed && currentParsed.classesById ? currentParsed.classesById : {});
@@ -1427,7 +1417,7 @@
 
       if (!isInteractive) {
         if (cy) {
-          savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+          setCurrentPositions(global.CyRuntime.currentPositionsFromCy(cy));
           saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
           cy.destroy();
           cy = null;
@@ -1445,7 +1435,7 @@
       applyGraphAppearance();
       if (currentParsed && currentParsed.elements) {
         cy.add(currentParsed.elements);
-        if (!global.CyRuntime.restorePositionsToCy(cy, savedPositions)) {
+        if (!global.CyRuntime.restorePositionsToCy(cy, currentPositionsCache)) {
           if (global.PlanarVibeRandom && typeof global.PlanarVibeRandom.applyRandomLayout === 'function') {
             global.PlanarVibeRandom.applyRandomLayout(cy);
           }
@@ -1622,13 +1612,14 @@
       }
       var nodeIds = getNodeIdsFromParsed(parsed);
       var edgePairs = edgePairsFromParsed(parsed);
+      var graph = global.GraphUtils.createGraph(nodeIds, edgePairs);
       var embedding = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
       var isPlanar = !!(embedding && embedding.ok);
       var isBipartite = !!(global.PlanarVibeMetrics && global.PlanarVibeMetrics.isBipartiteGraph &&
-        global.PlanarVibeMetrics.isBipartiteGraph(nodeIds, edgePairs));
+        global.PlanarVibeMetrics.isBipartiteGraph(graph));
       var isPlanar3Tree = false;
       if (isPlanar && global.PlanarVibePlanarityTest.isPlanar3Tree) {
-        isPlanar3Tree = !!global.PlanarVibePlanarityTest.isPlanar3Tree(nodeIds, edgePairs);
+        isPlanar3Tree = !!global.PlanarVibePlanarityTest.isPlanar3Tree(graph);
       }
       setStatistics({
         vertexCount: nodeIds.length,
@@ -1682,7 +1673,7 @@
           setInteractiveMode(true, false, true);
           cy.elements().remove();
           cy.add(currentParsed.elements);
-          savedPositions = {};
+          setCurrentPositions({});
           saveViewportState(null);
           updateStatistics(currentParsed);
           if (!applyParsedPositionsIfAny()) {
@@ -1695,7 +1686,7 @@
         }
         cy.elements().remove();
         cy.add(currentParsed.elements);
-        savedPositions = {};
+        setCurrentPositions({});
         saveViewportState(null);
         updateStatistics(currentParsed);
         if (!applyParsedPositionsIfAny()) {
@@ -2181,9 +2172,21 @@
           moduleLike: global.LayoutPreprocessing,
           message: 'Shared layout preprocessing utilities are missing'
         },
+        geometry: {
+          moduleLike: global.GeometryUtils,
+          message: 'Geometry utilities are missing'
+        },
         graph: {
           moduleLike: global.GraphUtils,
+          message: 'Graph utilities are missing'
+        },
+        planarGraph: {
+          moduleLike: global.PlanarGraphUtils,
           message: 'Planar graph utilities are missing'
+        },
+        linearAlgebra: {
+          moduleLike: global.LinearAlgebraUtils,
+          message: 'Linear algebra utilities are missing'
         },
         planarity: {
           moduleLike: global.PlanarVibePlanarityTest,
@@ -2226,7 +2229,8 @@
           methodName: 'applyRandomLayout',
           missingMessage: 'Random layout module is missing',
           requires: {
-            cyRuntime: ['runLayout']
+            cyRuntime: ['runLayout'],
+            geometry: ['hasPositionCrossings', 'copyPositionMap', 'pointOnSegmentInterior', 'segmentsIntersectOrTouch']
           }
         },
         {
@@ -2235,7 +2239,12 @@
           methodName: 'applyImPrEdLayout',
           missingMessage: 'ImPrEd layout module is missing',
           requires: {
-            cyRuntime: ['runLayout']
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['hasPositionCrossings', 'copyPositionMap', 'pointOnSegmentInterior', 'segmentsIntersectOrTouch'],
+            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'resolveFiniteOption', 'resolveFloatOption', 'resolveIntOption', 'resolveNonNegativeOption', 'resolvePositiveOption'],
+            planarGraph: ['extractEmbeddingFromPositions', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
         },
         {
@@ -2245,9 +2254,12 @@
           missingMessage: 'Tutte layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
+            graph: ['analyzeInternallyThreeConnected', 'normalizeOuterFace', 'edgeKey'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            graph: ['buildAdjacencyArrays', 'embeddingHasFace', 'analyzeInternallyThreeConnected', 'normalizeNodeIds', 'normalizeEdgePairs', 'normalizeOuterFace', 'edgeKey'],
-            planarity: ['computePlanarEmbedding']
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
+            planarity: ['computePlanarEmbedding'],
+            geometry: ['hasPositionCrossings', 'alignOuterFaceEdgeHorizontally']
           }
         },
         {
@@ -2257,7 +2269,11 @@
           missingMessage: 'Air layout module is missing',
           requires: {
             cyRuntime: ['runLayout', 'resolveLayoutTimingOptions'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState']
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
+            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
         },
         {
@@ -2267,7 +2283,11 @@
           missingMessage: 'PPAG layout module is missing',
           requires: {
             cyRuntime: ['runLayout', 'resolveLayoutTimingOptions'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState']
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['copyPositionMap', 'orientFaceCCW', 'outerFaceDiameter', 'polygonArea2', 'triangleArea2', 'hasPositionCrossings'],
+            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices', 'computePositionMoveStats'],
+            planarGraph: ['findOuterFaceIndex', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
         },
         {
@@ -2278,6 +2298,10 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
+            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
             tutte: ['defaultOuterPlacementOptions']
           }
         },
@@ -2289,6 +2313,10 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
+            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
             tutte: ['defaultOuterPlacementOptions']
           }
         },
@@ -2300,7 +2328,10 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData'],
-            graph: ['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey'],
+            geometry: ['alignOuterFaceEdgeHorizontally', 'hasPositionCrossings'],
+            graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
             tutte: ['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']
           }
         },
@@ -2312,7 +2343,10 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData'],
-            graph: ['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey'],
+            geometry: ['alignOuterFaceEdgeHorizontally', 'hasPositionCrossings'],
+            graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
             tutte: ['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']
           }
         },
@@ -2334,7 +2368,7 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData'],
-            graph: ['buildAdjacencySets', 'chooseOuterFaceFromEmbedding', 'isTriangulatedEmbedding', 'triangulateByFaceStellation'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions'],
             planarity: ['computePlanarEmbedding']
           }
         },
@@ -2346,7 +2380,8 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData'],
-            graph: ['buildAdjacencyArrays', 'copyPositions', 'triangulateByFaceStellation']
+            geometry: ['copyPositionMap', 'hasPositionCrossings'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions']
           }
         },
         {
@@ -2357,7 +2392,10 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            graph: ['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'collectMovableVertices', 'computeDrawingDiameter', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'findOuterFaceIndex', 'polygonAreaAbs'],
+            geometry: ['alignOuterFaceEdgeHorizontally', 'computeDrawingDiameter', 'polygonAreaAbs'],
+            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'analyzeInternallyThreeConnected'],
+            planarGraph: ['findOuterFaceIndex', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
             tutte: ['placeOuterFaceVertices', 'defaultOuterPlacementOptions']
           }
         },
@@ -2369,7 +2407,10 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            graph: ['buildAdjacencyArrays', 'computeDrawingDiameter', 'copyPositions', 'segmentsIntersectOrTouch', 'computePositionMoveStats', 'createMovementConvergenceTracker']
+            geometry: ['computeDrawingDiameter', 'copyPositionMap', 'segmentsIntersectOrTouch'],
+            graph: ['computePositionMoveStats', 'createMovementConvergenceTracker', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
         }
       ];
@@ -2713,7 +2754,7 @@
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);
 
     if (!isInteractive && cy) {
-      savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+      setCurrentPositions(global.CyRuntime.currentPositionsFromCy(cy));
       saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
       cy.destroy();
       cy = null;

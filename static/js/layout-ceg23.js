@@ -3,16 +3,15 @@
 
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var CyRuntime = global.CyRuntime;
+  var GeometryUtils = global.GeometryUtils;
   var GraphUtils = global.GraphUtils;
   var Tutte = global.PlanarVibeTutteAlgorithm;
-  var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
+  var alignOuterFaceEdgeHorizontally = GeometryUtils.alignOuterFaceEdgeHorizontally;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
-  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var edgeKey = GraphUtils.edgeKey;
-  var filterPositions = GraphUtils.filterPositions;
-  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
-  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
+  var filterPositions = GeometryUtils.filterPositionMap;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var resolveFiniteOption = GraphUtils.resolveFiniteOption;
   var resolveGreaterThanOption = GraphUtils.resolveGreaterThanOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
@@ -156,31 +155,20 @@
     return out;
   }
 
-  function prepareCEG23State(nodeIds, edgePairs, failureLabel, options) {
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
-    var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
-    if (ids.length < 3) {
-      return buildLayoutError({
-        message: failureLabel + ' requires at least 3 vertices',
-        graph: graph
-      });
-    }
-
-    var prepared = prepareGraphAndLayoutData({
-      nodeIds: ids,
-      edgePairs: pairs
-    }, {
+  function prepareCEG23State(graph, failureLabel, options) {
+    var prepared = prepareGraphAndLayoutData(graph, {
       failureLabel: failureLabel,
       augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null
     });
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || {
-        message: failureLabel + ' requires a planar graph',
-        graph: graph
+        message: failureLabel + ' requires a planar graph'
       });
     }
 
+    var baseGraph = prepared.graph;
+    var ids = baseGraph.nodeIds;
+    var pairs = baseGraph.edgePairs;
     var augmented = prepared.augmented;
     return buildLayoutResult({
       ok: true,
@@ -189,18 +177,18 @@
       pairs: pairs,
       prepared: prepared,
       augmented: augmented,
+      augmentedGraph: prepared.augmentedGraph,
       outerFace: prepared.outerFace,
       augmentedOuterFace: prepared.augmentedOuterFace || prepared.outerFace,
-      augmentedIds: augmented.nodeIds,
-      augmentedPairs: augmented.edgePairs,
-      adjacency: buildAdjacencyArrays(augmented.nodeIds, augmented.edgePairs)
+      augmentedIds: augmented.graph.nodeIds,
+      augmentedPairs: augmented.graph.edgePairs,
+      adjacency: prepared.augmentedGraph.adjacency
     });
   }
 
   function solveAugmentedWeightedLayout(state, weights, maxIters) {
     return Tutte.computeBarycentricPositions(
-      state.augmentedIds,
-      state.augmentedPairs,
+      state.augmentedGraph,
       state.augmentedOuterFace,
       {
         adjacency: state.adjacency,
@@ -245,9 +233,9 @@
     });
   }
 
-  function computeCEG23BfsPositions(nodeIds, edgePairs, options) {
+  function computeCEG23BfsPositions(graph, options) {
     var opts = options || {};
-    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-bfs', opts);
+    var state = prepareCEG23State(graph, 'CEG23-bfs', opts);
     if (!state || !state.ok) {
       return state;
     }
@@ -281,9 +269,9 @@
     );
   }
 
-  function computeCEG23XyPositions(nodeIds, edgePairs, options) {
+  function computeCEG23XyPositions(graph, options) {
     var opts = options || {};
-    var state = prepareCEG23State(nodeIds, edgePairs, 'CEG23-xy', opts);
+    var state = prepareCEG23State(graph, 'CEG23-xy', opts);
     if (!state || !state.ok) {
       return state;
     }
@@ -332,17 +320,15 @@
   }
 
   function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
-    return CyRuntime.runLayout(cy, options, {
-      failureMessage: failureMessage,
-      compute: function (nodeIds, edgePairs, computeOptions) {
-        return computeLayout(nodeIds, edgePairs, computeOptions || {});
-      },
-      buildResult: function (context) {
+    return CyRuntime.runLayout(cy, options || {}, {
+      compute: computeLayout,
+      buildResult: function (ctx) {
         return {
           ok: true,
-          message: context.result.message
+          message: ctx.result.message
         };
-      }
+      },
+      failureMessage: failureMessage
     });
   }
 

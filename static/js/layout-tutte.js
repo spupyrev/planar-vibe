@@ -3,25 +3,24 @@
 
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var CyRuntime = global.CyRuntime;
+  var GeometryUtils = global.GeometryUtils;
   var GraphUtils = global.GraphUtils;
-  var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
+  var LinearAlgebraUtils = global.LinearAlgebraUtils;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
+  var createGraph = GraphUtils.createGraph;
   var edgeKey = GraphUtils.edgeKey;
-  var filterPositions = GraphUtils.filterPositions;
-  var luFactorize = GraphUtils.luFactorize;
+  var filterPositions = GeometryUtils.filterPositionMap;
+  var luFactorize = LinearAlgebraUtils.luFactorize;
   var resolveFloatOption = GraphUtils.resolveFloatOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
-  var normalizeGraphInput = GraphUtils.normalizeGraphInput;
-  var normalizeNodeIds = GraphUtils.normalizeNodeIds;
-  var normalizeEdgePairs = GraphUtils.normalizeEdgePairs;
   var normalizeOuterFace = GraphUtils.normalizeOuterFace;
-  var hasPositionCrossings = GraphUtils.hasPositionCrossings;
-  var solveLUWithTwoRhs = GraphUtils.solveLUWithTwoRhs;
+  var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
+  var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
 
   function buildUniformWeights(edgePairs, value) {
-    var pairs = normalizeEdgePairs(edgePairs);
+    var pairs = edgePairs;
     var weights = {};
     var w = Number.isFinite(value) && value > 0 ? value : 1;
     for (var i = 0; i < pairs.length; i += 1) {
@@ -32,8 +31,7 @@
     return weights;
   }
 
-  function buildDegreeMap(nodeIds, edgePairs) {
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
+  function buildDegreeMap(graph) {
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
     var degreeById = {};
@@ -49,11 +47,11 @@
     return degreeById;
   }
 
-  function buildSoftAugmentationWeights(nodeIds, originalEdgePairs, augmentedEdgePairs, options) {
+  function buildSoftAugmentationWeights(graph, augmentedGraph, options) {
     var opts = options || {};
-    var originalPairs = normalizeEdgePairs(originalEdgePairs);
-    var augmentedPairs = normalizeEdgePairs(augmentedEdgePairs);
-    var degreeById = buildDegreeMap(nodeIds, augmentedPairs);
+    var originalPairs = graph.edgePairs;
+    var augmentedPairs = augmentedGraph.edgePairs;
+    var degreeById = buildDegreeMap(augmentedGraph);
     var originalEdgeSet = {};
     var weights = {};
     var useDegreeNormalization = opts.normalizeByDegree !== false;
@@ -96,7 +94,7 @@
   }
 
   function placeOuterFaceVertices(nodeIds, outerFace, options) {
-    var ids = normalizeNodeIds(nodeIds);
+    var ids = (nodeIds || []).map(String);
     var face = normalizeOuterFace(outerFace);
     var opts = defaultOuterPlacementOptions(options);
     var pos = {};
@@ -129,13 +127,12 @@
     return pos;
   }
 
-  function solveBarycentricPositionsExact(nodeIds, edgePairs, outerFace, options) {
+  function solveBarycentricPositionsExact(graph, outerFace, options) {
     var opts = options || {};
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
     var face = normalizeOuterFace(outerFace);
-    var adjacency = opts.adjacency || buildAdjacencyArrays(ids, pairs);
+    var adjacency = opts.adjacency || graph.adjacency;
     var weights = opts.weights || buildUniformWeights(pairs, 1);
     var rowWeights = opts.rowWeights || null;
     var initOptions = opts.initOptions || defaultOuterPlacementOptions();
@@ -253,13 +250,12 @@
     });
   }
 
-  function computeBarycentricPositions(nodeIds, edgePairs, outerFace, options) {
+  function computeBarycentricPositions(graph, outerFace, options) {
     var opts = options || {};
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
     var face = normalizeOuterFace(outerFace);
-    var adjacency = opts.adjacency || buildAdjacencyArrays(ids, pairs);
+    var adjacency = opts.adjacency || graph.adjacency;
     var weights = opts.weights || buildUniformWeights(pairs, 1);
     var rowWeights = opts.rowWeights || null;
     var maxIters = resolveIntOption(opts.maxIters, 1000, 1);
@@ -336,9 +332,8 @@
     });
   }
 
-  function computeTutteLayout(nodeIds, edgePairs, options) {
+  function computeTutteLayout(graph, options) {
     var opts = options || {};
-    var graph = normalizeGraphInput(nodeIds, edgePairs);
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
     var weightMode = String(opts.weightMode || 'soft-augmentation').toLowerCase();
@@ -350,10 +345,7 @@
       });
     }
 
-    var prepared = LayoutPreprocessing.prepareGraphData({
-      nodeIds: ids,
-      edgePairs: pairs
-    }, {
+    var prepared = LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'Tutte layout',
       augmentationMethod: opts.augmentationMethod || null,
       augmentationOptions: opts.augmentationOptions || null
@@ -362,21 +354,18 @@
       return buildLayoutError(prepared || { message: 'Tutte failed' });
     }
 
-    var augmentedNodeIds = prepared.augmented && prepared.augmented.nodeIds
-      ? prepared.augmented.nodeIds
-      : ids;
-    var augmentedEdgePairs = prepared.augmented && prepared.augmented.edgePairs
-      ? prepared.augmented.edgePairs
-      : pairs;
+    var augmentedGraph = prepared.augmentedGraph || createGraph(
+      prepared.augmented && prepared.augmented.graph && prepared.augmented.graph.nodeIds ? prepared.augmented.graph.nodeIds : ids,
+      prepared.augmented && prepared.augmented.graph && prepared.augmented.graph.edgePairs ? prepared.augmented.graph.edgePairs : pairs
+    );
     var augmentedOuterFace = prepared.augmentedOuterFace || prepared.outerFace;
     var barycentricOptions = {
       initOptions: defaultOuterPlacementOptions()
     };
     if (weightMode !== 'uniform') {
       barycentricOptions.weights = buildSoftAugmentationWeights(
-        augmentedNodeIds,
-        pairs,
-        augmentedEdgePairs,
+        prepared.graph,
+        augmentedGraph,
         {
           normalizeByDegree: opts.normalizeByDegree,
           originalEdgeWeight: opts.originalEdgeWeight,
@@ -385,8 +374,7 @@
       );
     }
     var barycentric = solveBarycentricPositionsExact(
-      augmentedNodeIds,
-      augmentedEdgePairs,
+      augmentedGraph,
       augmentedOuterFace,
       barycentricOptions
     );
@@ -394,7 +382,7 @@
       return buildLayoutError(barycentric || { message: 'Tutte failed' });
     }
 
-    var alignedPosById = GraphUtils.alignOuterFaceEdgeHorizontally(
+    var alignedPosById = GeometryUtils.alignOuterFaceEdgeHorizontally(
       barycentric.positions,
       augmentedOuterFace
     );
@@ -424,13 +412,10 @@
   }
 
   function applyTutteLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options, {
-      failureMessage: 'Tutte failed',
-      compute: function (nodeIds, edgePairs, computeOptions) {
-        return computeTutteLayout(nodeIds, edgePairs, computeOptions || {});
-      },
-      buildResult: function (context) {
-        var result = context.result;
+    return CyRuntime.runLayout(cy, options || {}, {
+      compute: computeTutteLayout,
+      buildResult: function (ctx) {
+        var result = ctx.result;
         return {
           ok: true,
           message: buildLayoutStatusMessage('Tutte', {
@@ -445,7 +430,8 @@
             )
             : null
         };
-      }
+      },
+      failureMessage: 'Tutte failed'
     });
   }
 

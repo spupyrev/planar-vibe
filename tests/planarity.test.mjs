@@ -118,8 +118,10 @@ function loadBrowserModules() {
 const modules = loadBrowserModules();
 const Generator = modules.PlanarVibeGraphGenerator;
 const LayoutPreprocessing = modules.LayoutPreprocessing;
+const PlanarGraphUtils = modules.PlanarGraphUtils;
 const Planarity = modules.PlanarVibePlanarityTest;
 const GraphUtils = modules.GraphUtils;
+const GeometryUtils = modules.GeometryUtils;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
@@ -307,7 +309,7 @@ function minBoundedFaceArea(graph, positionsById) {
   if (!embedding || !embedding.ok) {
     return null;
   }
-  const outerKey = faceCanonicalKeyForTest(GraphUtils.chooseOuterFaceFromEmbedding(embedding) || []);
+  const outerKey = faceCanonicalKeyForTest(PlanarGraphUtils.chooseOuterFaceFromEmbedding(embedding) || []);
   let minArea = Infinity;
   for (const face of embedding.faces || []) {
     if (faceCanonicalKeyForTest(face) === outerKey) {
@@ -448,10 +450,10 @@ test('maximal planar 3-tree generator returns planar 3-tree', () => {
   assert.equal(emb.ok, true);
   assert.equal(emb.idByIndex.length, 30);
 
-  const is3Tree = Planarity.isPlanar3Tree(graph.nodeIds, graph.edgePairs);
+  const is3Tree = Planarity.isPlanar3Tree(graph);
   assert.equal(is3Tree, true);
 
-  const analysis = Planarity.analyzePlanar3Tree(graph.nodeIds, graph.edgePairs);
+  const analysis = Planarity.analyzePlanar3Tree(graph);
   assert.equal(analysis.ok, true);
   assert.equal(analysis.outerFace.length, 3);
   assert.equal(analysis.elimination.length, 27);
@@ -461,21 +463,23 @@ test('cycle graph is planar but not planar 3-tree', () => {
   const text = Generator.cycleGraph(8);
   const graph = parseEdgeListText(text);
   assert.equal(Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs).ok, true);
-  assert.equal(Planarity.isPlanar3Tree(graph.nodeIds, graph.edgePairs), false);
+  assert.equal(Planarity.isPlanar3Tree(graph), false);
 });
 
 test('wheel graph W7 is planar and not planar 3-tree', () => {
   const text = Generator.wheelGraph(7);
   const graph = parseEdgeListText(text);
   assert.equal(Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs).ok, true);
-  assert.equal(Planarity.isPlanar3Tree(graph.nodeIds, graph.edgePairs), false);
+  assert.equal(Planarity.isPlanar3Tree(graph), false);
 });
 
 test('planar augmentation triangulates non-triangular planar faces', () => {
   const text = Generator.cycleGraph(8);
   const graph = parseEdgeListText(text);
-  const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+  const result = FPP.computeFPPPositions(graph);
+  const prepared = result.prepared;
 
+  assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed');
   assert.equal(prepared.ok, true);
   assert.equal(prepared.augmentedDummyCount > 0, true);
   assert.equal(prepared.embedding.ok, true);
@@ -488,16 +492,23 @@ test('planar augmentation triangulates non-triangular planar faces', () => {
   }
 });
 
-test('face stellation adds one dummy vertex for every non-triangular face including the outer face', () => {
+test('triangulateByFaceStellation adds one dummy vertex for every non-triangular face including the outer face when requested', () => {
   const text = Generator.cycleGraph(8);
   const graph = parseEdgeListText(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
+  const outerFace = embedding.outerFace.slice();
 
   assert.equal(embedding.ok, true);
 
-  const augmented = GraphUtils.augmentByFaceStellation(graph.nodeIds, graph.edgePairs, embedding);
+  const augmented = PlanarGraphUtils.triangulateByFaceStellation(
+    graph,
+    embedding,
+    outerFace,
+    { triangulateOuterFace: true }
+  );
   const dummyIds = Object.keys(augmented.dummyFaceVerticesById || {});
 
+  assert.equal(augmented.ok, true, augmented.reason || 'triangulation failed');
   assert.equal(augmented.dummyCount, 2);
   assert.equal(dummyIds.length, 2);
   for (const dummyId of dummyIds) {
@@ -505,7 +516,7 @@ test('face stellation adds one dummy vertex for every non-triangular face includ
     assert.equal(face.length, 8);
     for (const v of face) {
       assert.equal(
-        augmented.edgePairs.some(([a, b]) =>
+        augmented.graph.edgePairs.some(([a, b]) =>
           (String(a) === String(dummyId) && String(b) === String(v)) ||
           (String(a) === String(v) && String(b) === String(dummyId))
         ),
@@ -520,10 +531,9 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  const outerFace = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
-  const prepared = GraphUtils.triangulateByFaceStellation(
-    graph.nodeIds,
-    graph.edgePairs,
+  const outerFace = PlanarGraphUtils.chooseOuterFaceFromEmbedding(embedding);
+  const prepared = PlanarGraphUtils.triangulateByFaceStellation(
+    graph,
     embedding,
     outerFace
   );
@@ -531,10 +541,10 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
   assert.equal(prepared.ok, true);
 
   const degreeById = {};
-  for (const id of prepared.nodeIds) {
+  for (const id of prepared.graph.nodeIds) {
     degreeById[String(id)] = 0;
   }
-  for (const [a, b] of prepared.edgePairs) {
+  for (const [a, b] of prepared.graph.edgePairs) {
     degreeById[String(a)] += 1;
     degreeById[String(b)] += 1;
   }
@@ -551,9 +561,8 @@ test('triangulateByFaceStellation triangulates a cycle when the outer face must 
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   const outerFace = embedding.outerFace.slice();
 
-  const prepared = GraphUtils.triangulateByFaceStellation(
-    graph.nodeIds,
-    graph.edgePairs,
+  const prepared = PlanarGraphUtils.triangulateByFaceStellation(
+    graph,
     embedding,
     outerFace,
     { triangulateOuterFace: true }
@@ -566,14 +575,14 @@ test('triangulateByFaceStellation triangulates a cycle when the outer face must 
 });
 
 test('common outer-face helper prefers a chordless explicit outer face and otherwise falls back to the longest chordless face', () => {
-  const explicit = GraphUtils.chooseOuterFaceFromEmbedding({
+  const explicit = PlanarGraphUtils.chooseOuterFaceFromEmbedding({
     outerFace: ['a', 'b', 'c'],
     edges: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['x', 'y'], ['y', 'z'], ['z', 'w'], ['w', 'x']],
     faces: [['x', 'y', 'z', 'w']]
   });
   assert.deepEqual(explicit, ['a', 'b', 'c']);
 
-  const fallback = GraphUtils.chooseOuterFaceFromEmbedding({
+  const fallback = PlanarGraphUtils.chooseOuterFaceFromEmbedding({
     edges: [
       ['1', '2'], ['2', '3'], ['3', '1'],
       ['4', '5'], ['5', '6'], ['6', '7'], ['7', '4'], ['4', '6'],
@@ -585,7 +594,7 @@ test('common outer-face helper prefers a chordless explicit outer face and other
 });
 
 test('common outer-face helper ignores an explicit outer face when it contains a chord', () => {
-  const chosen = GraphUtils.chooseOuterFaceFromEmbedding({
+  const chosen = PlanarGraphUtils.chooseOuterFaceFromEmbedding({
     outerFace: ['1', '2', '3', '4'],
     edges: [
       ['1', '2'], ['2', '3'], ['3', '4'], ['4', '1'], ['1', '3'],
@@ -601,8 +610,8 @@ test('outer-face helper recovers the visible outer face from a plane drawing', (
   const graph = parseEdgeListText(text);
   const pos = parseVertexPositionsFromEdgeList(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  const fromEmbedding = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
-  const outer = GraphUtils.chooseOuterFaceFromPositions(graph.nodeIds, graph.edgePairs, pos);
+  const fromEmbedding = PlanarGraphUtils.chooseOuterFaceFromEmbedding(embedding);
+  const outer = PlanarGraphUtils.chooseOuterFaceFromPositions(graph.nodeIds, graph.edgePairs, pos);
   assert.ok(Array.isArray(outer) && outer.length >= 3, 'expected a geometric outer face');
   assert.notEqual(faceCanonicalKeyForTest(outer || []), faceCanonicalKeyForTest(fromEmbedding || []));
 });
@@ -611,7 +620,7 @@ test('shared initializer prefers the current plane drawing when choosing the out
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);
   const pos = parseVertexPositionsFromEdgeList(text);
-  const outer = GraphUtils.chooseOuterFaceFromPositions(graph.nodeIds, graph.edgePairs, pos);
+  const outer = PlanarGraphUtils.chooseOuterFaceFromPositions(graph.nodeIds, graph.edgePairs, pos);
   const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
     failureLabel: 'test',
     currentPositions: pos
@@ -653,7 +662,7 @@ test('shared initializer builds a verified seed for grid2x20', () => {
   assert.ok(prepared && prepared.posById, 'expected initialized coordinates');
 
   const verify = LayoutPreprocessing.verifyEmbeddingWithPositions(prepared.augmented.embedding, prepared.posById, {
-    edgePairs: prepared.augmented.edgePairs,
+    edgePairs: prepared.augmented.graph.edgePairs,
     outerFace: prepared.augmentedOuterFace
   });
 
@@ -670,8 +679,7 @@ test('raw shared barycentric seed rejects an outer face that does not belong to 
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
 
   const seed = LayoutPreprocessing.computeSharedBarycentricSeed(
-    prepared.augmented.nodeIds,
-    prepared.augmented.edgePairs,
+    prepared.augmentedGraph,
     prepared.outerFace,
     prepared.augmented.embedding
   );
@@ -786,7 +794,7 @@ test('shared layout runner fits once from the prepared seed before progress upda
         onIteration: ctx.onProgress
       };
     },
-    compute: async function (_nodeIds, _edgePairs, options) {
+    compute: async function (_graph, options) {
       fitCountAtComputeStart = cy._fitCalls;
       await options.onIteration({
         iter: 1,
@@ -913,10 +921,11 @@ test('canonical ordering works on 10 random planar 3-trees (100 vertices)', () =
   for (let seed = 1; seed <= 10; seed += 1) {
     const text = Generator.maximalPlanar3Tree(100 + seed);
     const graph = parseEdgeListText(text);
-    const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+    const result = FPP.computeFPPPositions(graph);
+    const prepared = result.prepared;
+    const canonical = result.canonical;
+    assert.equal(result.ok, true, `FPP compute failed for seed=${seed}: ${result.message || result.reason || ''}`);
     assert.equal(prepared.ok, true, `prepare failed for seed=${seed}`);
-
-    const canonical = FPP.computeCanonicalOrdering(prepared);
     assert.equal(canonical.ok, true, `canonical ordering failed for seed=${seed}`);
     assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
     assert.equal(new Set(canonical.order).size, canonical.order.length);
@@ -930,10 +939,11 @@ test('canonical ordering works on 10 random planar 3-trees (100 vertices)', () =
 test('canonical ordering works on sample planar3tree10', () => {
   const text = Generator.getSample('planar3tree10');
   const graph = parseEdgeListText(text);
-  const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+  const result = FPP.computeFPPPositions(graph);
+  const prepared = result.prepared;
+  const canonical = result.canonical;
+  assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on planar3tree10');
   assert.equal(prepared.ok, true);
-
-  const canonical = FPP.computeCanonicalOrdering(prepared);
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on planar3tree10');
   assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
@@ -943,10 +953,11 @@ test('canonical ordering works on 10 random small planar 3-trees', () => {
   for (let seed = 1; seed <= 10; seed += 1) {
     const text = Generator.maximalPlanar3Tree(10 + seed);
     const graph = parseEdgeListText(text);
-    const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+    const result = FPP.computeFPPPositions(graph);
+    const prepared = result.prepared;
+    const canonical = result.canonical;
+    assert.equal(result.ok, true, `FPP compute failed for small seed=${seed}: ${result.message || result.reason || ''}`);
     assert.equal(prepared.ok, true, `prepare failed for small seed=${seed}`);
-
-    const canonical = FPP.computeCanonicalOrdering(prepared);
     assert.equal(canonical.ok, true, `canonical ordering failed for small seed=${seed}: ${canonical.reason || ''}`);
     assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
     assert.equal(new Set(canonical.order).size, canonical.order.length);
@@ -962,14 +973,15 @@ test('canonical ordering works on small triangulated planar non-3-tree (octahedr
   ].join('\n') + '\n';
 
   const graph = parseEdgeListText(text);
-  assert.equal(Planarity.isPlanar3Tree(graph.nodeIds, graph.edgePairs), false);
+  assert.equal(Planarity.isPlanar3Tree(graph), false);
 
-  const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+  const result = FPP.computeFPPPositions(graph);
+  const prepared = result.prepared;
+  const canonical = result.canonical;
+  assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on octahedron');
   assert.equal(prepared.ok, true);
   assert.equal(prepared.embedding.edges.length, 12);
   assert.equal(prepared.embedding.idByIndex.length, 6);
-
-  const canonical = FPP.computeCanonicalOrdering(prepared);
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on octahedron');
   assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
@@ -1054,7 +1066,7 @@ test('Schnyder layout produces non-crossing drawing on randomplanar3', () => {
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
   assertNoVertexOverlaps(cy, 'Schnyder randomplanar3');
-  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
+  assert.equal(GeometryUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('Schnyder layout produces non-crossing drawing on randomplanar2 (G(50, 130))', () => {
@@ -1072,7 +1084,7 @@ test('Schnyder layout produces non-crossing drawing on randomplanar2 (G(50, 130)
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
   assertNoVertexOverlaps(cy, 'Schnyder randomplanar2');
-  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
+  assert.equal(GeometryUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('FPP layout produces non-crossing drawings on 10 small planar 3-trees', () => {
@@ -1171,9 +1183,8 @@ test('triangulateByFaceStellation rejects embeddings with non-simple faces', () 
   const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   assert.equal(emb.ok, true);
 
-  const result = GraphUtils.triangulateByFaceStellation(
-    graph.nodeIds,
-    graph.edgePairs,
+  const result = PlanarGraphUtils.triangulateByFaceStellation(
+    graph,
     emb,
     emb.outerFace,
     { triangulateOuterFace: true }
@@ -1185,10 +1196,11 @@ test('triangulateByFaceStellation rejects embeddings with non-simple faces', () 
 test('canonical ordering works on random planar non-3-tree graph', () => {
   const text = Generator.planarStellationGraph(80, 10, 42);
   const graph = parseEdgeListText(text);
-  const prepared = FPP.prepareTriangulatedEmbedding(graph.nodeIds, graph.edgePairs);
+  const result = FPP.computeFPPPositions(graph);
+  const prepared = result.prepared;
+  const canonical = result.canonical;
+  assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on random non-3-tree');
   assert.equal(prepared.ok, true);
-
-  const canonical = FPP.computeCanonicalOrdering(prepared);
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on random non-3-tree');
   assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
@@ -1247,7 +1259,7 @@ test('ReweightTutte uses the same outer-face coordinates as Tutte', async () => 
   const graph = parseEdgeListText(text);
   const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
   assert.equal(emb && emb.ok, true);
-  const outer = GraphUtils.chooseOuterFaceFromEmbedding(emb);
+  const outer = PlanarGraphUtils.chooseOuterFaceFromEmbedding(emb);
 
   const cyTutte = buildMockCy(graph.nodeIds, graph.edgePairs);
   const tutte = Tutte.applyTutteLayout(cyTutte);
@@ -1377,13 +1389,13 @@ test('Air outer-ring face weight changes the outer-cycle solve without changing 
     e: { x: 3, y: 0 }
   };
 
-  const baseline = await Air.computeAirPositions(graph.nodeIds, graph.edgePairs, {
+  const baseline = await Air.computeAirPositions(graph, {
     augmentationMethod: 'outer-cycle',
     currentPositions: pos,
     maxSweeps: 3,
     outerRingFaceWeight: 1
   });
-  const reduced = await Air.computeAirPositions(graph.nodeIds, graph.edgePairs, {
+  const reduced = await Air.computeAirPositions(graph, {
     augmentationMethod: 'outer-cycle',
     currentPositions: pos,
     maxSweeps: 3,
@@ -1392,11 +1404,11 @@ test('Air outer-ring face weight changes the outer-cycle solve without changing 
 
   assert.equal(baseline && baseline.ok, true, baseline && baseline.message ? baseline.message : 'baseline Air solve failed');
   assert.equal(reduced && reduced.ok, true, reduced && reduced.message ? reduced.message : 'reweighted Air solve failed');
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(baseline.positions, graph.nodeIds)), false);
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(reduced.positions, graph.nodeIds)), false);
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GeometryUtils.filterPositionMap(baseline.positions, graph.nodeIds)), false);
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GeometryUtils.filterPositionMap(reduced.positions, graph.nodeIds)), false);
   assert.notEqual(
-    JSON.stringify(GraphUtils.filterPositions(baseline.positions, graph.nodeIds)),
-    JSON.stringify(GraphUtils.filterPositions(reduced.positions, graph.nodeIds))
+    JSON.stringify(GeometryUtils.filterPositionMap(baseline.positions, graph.nodeIds)),
+    JSON.stringify(GeometryUtils.filterPositionMap(reduced.positions, graph.nodeIds))
   );
 });
 
@@ -1590,7 +1602,7 @@ test('FaceBalancer awaits async iteration callbacks sequentially', async () => {
   let maxActiveCallbacks = 0;
   let callbackCount = 0;
 
-  const result = await FaceBalancer.computeFaceBalancerPositions(graph.nodeIds, graph.edgePairs, {
+  const result = await FaceBalancer.computeFaceBalancerPositions(graph, {
     maxIters: 5,
     onIteration: async function () {
       activeCallbacks += 1;
@@ -1674,7 +1686,7 @@ test('EdgeBalancer on grid2x20 with Aug+ improves edge metrics and exposes diagn
   const text = Generator.getSample('grid2x20');
   const graph = parseEdgeListText(text);
 
-  const baseline = await Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs, {
+  const baseline = await Tutte.computeTutteLayout(graph, {
     augmentationMethod: 'outer-cycle'
   });
   assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on grid2x20'));
@@ -1685,7 +1697,7 @@ test('EdgeBalancer on grid2x20 with Aug+ improves edge metrics and exposes diagn
   assert.equal(beforeRatio.ok, true, beforeRatio.reason || 'baseline edge ratio failed');
 
   var lastProgress = null;
-  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph, {
     augmentationMethod: 'outer-cycle',
     currentPositions: baseline.positions,
     maxIters: 80,
@@ -1715,7 +1727,7 @@ test('EdgeBalancer on grid2x20 with Aug+ improves edge metrics and exposes diagn
 test('EdgeBalancer respects the maxPositionStep cap during optimization', async () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
-  const baseline = await Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs, {
+  const baseline = await Tutte.computeTutteLayout(graph, {
     augmentationMethod: 'outer-cycle'
   });
   assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on sample1'));
@@ -1723,7 +1735,7 @@ test('EdgeBalancer respects the maxPositionStep cap during optimization', async 
   const stepCap = 5;
   let callbackCount = 0;
   let observedMaxMove = 0;
-  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph, {
     augmentationMethod: 'outer-cycle',
     currentPositions: baseline.positions,
     maxIters: 12,
@@ -1750,7 +1762,7 @@ test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {
   let maxActiveCallbacks = 0;
   let callbackCount = 0;
 
-  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
+  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph, {
     maxIters: 5,
     onIteration: async function () {
       activeCallbacks += 1;
@@ -1836,7 +1848,7 @@ test('CEG23-xy runs on G(50, 144) without crossings', () => {
     assert.equal(Number.isFinite(node._pos.y), true);
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
+  assert.equal(GeometryUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('ImPrEd layout applies on sample1 and assigns finite positions', async () => {
@@ -1877,7 +1889,7 @@ test('ImPrEd keeps planar G(50, 144) drawing without crossings', async () => {
   for (const node of cy.nodes()) {
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
+  assert.equal(GeometryUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('ImPrEd rebuilds a crossing start on xtree30 into a plane drawing', async () => {
@@ -1889,7 +1901,7 @@ test('ImPrEd rebuilds a crossing start on xtree30 into a plane drawing', async (
   for (const node of cy.nodes()) {
     before[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(before, graph.edgePairs), true, 'xtree30 mock start should be non-plane');
+  assert.equal(GeometryUtils.hasPositionCrossings(before, graph.edgePairs), true, 'xtree30 mock start should be non-plane');
 
   const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 120, delayMs: 0 });
   assert.equal(result.ok, true, result.message || 'ImPrEd failed on xtree30');
@@ -1898,7 +1910,7 @@ test('ImPrEd rebuilds a crossing start on xtree30 into a plane drawing', async (
   for (const node of cy.nodes()) {
     after[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(after, graph.edgePairs), false, 'ImPrEd should rebuild xtree30 to a plane drawing');
+  assert.equal(GeometryUtils.hasPositionCrossings(after, graph.edgePairs), false, 'ImPrEd should rebuild xtree30 to a plane drawing');
 });
 
 test('ImPrEd does not introduce crossings on sample1 with original coordinates', async () => {
@@ -1919,7 +1931,7 @@ test('ImPrEd does not introduce crossings on sample1 with original coordinates',
   for (const node of cy.nodes()) {
     before[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
+  assert.equal(GeometryUtils.hasPositionCrossings(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
 
   const result = await ImPrEd.applyImPrEdLayout(cy, { maxIters: 80, delayMs: -1 });
   assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
@@ -1928,7 +1940,7 @@ test('ImPrEd does not introduce crossings on sample1 with original coordinates',
   for (const node of cy.nodes()) {
     after[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(after, graph.edgePairs), false, 'ImPrEd introduced crossings on sample1');
+  assert.equal(GeometryUtils.hasPositionCrossings(after, graph.edgePairs), false, 'ImPrEd introduced crossings on sample1');
 });
 
 test('ImPrEd keeps drawing plane after every iteration on sample1 coordinates', async () => {
@@ -1949,7 +1961,7 @@ test('ImPrEd keeps drawing plane after every iteration on sample1 coordinates', 
   for (const node of cy.nodes()) {
     before[String(node.id())] = { x: node.position().x, y: node.position().y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
+  assert.equal(GeometryUtils.hasPositionCrossings(before, graph.edgePairs), false, 'sample1 initial coordinates should be plane');
 
   let seenIterations = 0;
   const result = await ImPrEd.applyImPrEdLayout(cy, {
@@ -2084,16 +2096,16 @@ test('Tutte rejects graphs with fewer than 3 vertices', () => {
 });
 
 test('3-connectivity helpers distinguish strict and internal 3-connectivity', () => {
-  const graph = {
-    nodeIds: ['1', '2', '3', '4'],
-    edgePairs: [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
-  };
+  const graph = GraphUtils.createGraph(
+    ['1', '2', '3', '4'],
+    [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
+  );
 
-  const strict = GraphUtils.analyzeThreeConnectivity(graph.nodeIds, graph.edgePairs);
+  const strict = GraphUtils.analyzeThreeConnectivity(graph);
   assert.equal(strict.ok, false);
   assert.match(String(strict.reason || ''), /3-connected/i);
 
-  const internal = GraphUtils.analyzeInternallyThreeConnected(graph.nodeIds, graph.edgePairs, ['1', '2', '3', '4']);
+  const internal = GraphUtils.analyzeInternallyThreeConnected(graph, ['1', '2', '3', '4']);
   assert.equal(internal.ok, true, internal.reason || 'cycle should be internally 3-connected with its outer cycle');
 });
 
@@ -2101,10 +2113,10 @@ test('Tutte uses the common outer face and succeeds on grid2x10 after augmentati
   const text = Generator.getSample('grid2x10');
   const graph = parseEdgeListText(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  const outer = GraphUtils.chooseOuterFaceFromEmbedding(embedding);
+  const outer = PlanarGraphUtils.chooseOuterFaceFromEmbedding(embedding);
   assert.equal(Array.isArray(outer), true);
   assert.equal(outer.length, 4);
-  assert.equal(GraphUtils.analyzeInternallyThreeConnected(graph.nodeIds, graph.edgePairs, outer).ok, false);
+  assert.equal(GraphUtils.analyzeInternallyThreeConnected(graph, outer).ok, false);
 
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
@@ -2151,7 +2163,7 @@ test('FD-uniform preserves planarity on randomplanar2 (G(50, 130))', async () =>
     assert.equal(node._pos !== null, true, `missing FD-uniform position for node ${node.id()}`);
     posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
   }
-  assert.equal(GraphUtils.hasPositionCrossings(posById, graph.edgePairs), false);
+  assert.equal(GeometryUtils.hasPositionCrossings(posById, graph.edgePairs), false);
 });
 
 test('P3T layout applies on planar3tree10 sample', () => {
