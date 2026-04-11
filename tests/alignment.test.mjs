@@ -78,10 +78,10 @@ test('alignToAxisGreedy preserves a jittered plane path when no safe group merge
 
   const before = Metrics.computeAxisAlignmentScore(nodeIds, posById, { tolerance: 0 });
   const result = Alignment.alignToAxisGreedy(nodeIds, edgePairs, posById);
-  const after = Metrics.computeAxisAlignmentScore(nodeIds, result.pos, { tolerance: 0 });
+  const after = Metrics.computeAxisAlignmentScore(nodeIds, result.positions, { tolerance: 0 });
 
   assert.equal(result.ok, true);
-  assert.equal(GraphUtils.hasPositionCrossings(result.pos, edgePairs), false);
+  assert.equal(GraphUtils.hasPositionCrossings(result.positions, edgePairs), false);
   assert.ok(after.score >= before.score - 1e-12);
 });
 
@@ -98,7 +98,7 @@ test('alignToAxisGreedy can improve both axes on a jittered rectangle', () => {
   const before = Metrics.computeAxisAlignmentScore(nodeIds, posById);
   const result = Alignment.alignToAxisGreedy(nodeIds, edgePairs, posById);
   assert.equal(result.ok, true);
-  assert.equal(GraphUtils.hasPositionCrossings(result.pos, edgePairs), false);
+  assert.equal(GraphUtils.hasPositionCrossings(result.positions, edgePairs), false);
   assert.ok(result.scoreAfter >= before.score - 1e-12 || result.changed === false);
 });
 
@@ -130,12 +130,12 @@ test('alignToAxisGreedy improves sample5 from its input coordinates', () => {
 
   const before = windowObj.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, parsed.positionsById);
   const result = windowObj.PlanarVibeAlignment.alignToAxisGreedy(nodeIds, edgePairs, parsed.positionsById);
-  const after = windowObj.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, result.pos);
+  const after = windowObj.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, result.positions);
 
   assert.equal(parsed.hasExplicitPositions, true);
   assert.equal(windowObj.GraphUtils.hasPositionCrossings(parsed.positionsById, edgePairs), false);
   assert.equal(result.ok, true);
-  assert.equal(windowObj.GraphUtils.hasPositionCrossings(result.pos, edgePairs), false);
+  assert.equal(windowObj.GraphUtils.hasPositionCrossings(result.positions, edgePairs), false);
   assert.ok(after.score > before.score, `expected sample5 alignment to improve score: ${before.score} -> ${after.score}`);
 });
 
@@ -179,14 +179,14 @@ test('alignToAxisGreedy avoids placing sample5 node 6 onto edge (2,3) after UI n
 
   const before = windowObj.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, normalizedPos);
   const result = windowObj.PlanarVibeAlignment.alignToAxisGreedy(nodeIds, edgePairs, normalizedPos);
-  const after = windowObj.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, result.pos);
-  const p2 = result.pos['2'];
-  const p3 = result.pos['3'];
-  const p6 = result.pos['6'];
+  const after = windowObj.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, result.positions);
+  const p2 = result.positions['2'];
+  const p3 = result.positions['3'];
+  const p6 = result.positions['6'];
   const area2 = (p3.x - p2.x) * (p6.y - p2.y) - (p3.y - p2.y) * (p6.x - p2.x);
 
   assert.equal(result.ok, true);
-  assert.equal(windowObj.GraphUtils.hasPositionCrossings(result.pos, edgePairs), false);
+  assert.equal(windowObj.GraphUtils.hasPositionCrossings(result.positions, edgePairs), false);
   assert.equal(windowObj.GraphUtils.pointOnSegmentInterior(p2, p3, p6, 1e-9) && Math.abs(area2) <= 1e-9, false);
   assert.ok(after.score > before.score, `expected normalized sample5 alignment to improve score: ${before.score} -> ${after.score}`);
 });

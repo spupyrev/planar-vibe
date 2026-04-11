@@ -27,9 +27,9 @@ function loadBrowserModules() {
     'static/js/geometry-utils.js',
     'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
-    'static/js/playground-utils.js',
+    'static/js/layout-preprocessing.js',
+    'static/js/cy-runtime.js',
     'static/js/layout-tutte.js',
-    'static/js/layout-tutte-explore.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
@@ -54,13 +54,9 @@ function loadBrowserModules() {
 
 const modules = loadBrowserModules();
 const GraphUtils = modules.GraphUtils;
+const LayoutPreprocessing = modules.LayoutPreprocessing;
 const Metrics = modules.PlanarVibeMetrics;
-const PlaygroundUtils = modules.PlaygroundUtils;
 const Tutte = modules.PlanarVibeTutte;
-const DistanceReweightedTutte = modules.PlanarVibeDistanceReweightedTutte;
-const TutteAntiSmooth = modules.PlanarVibeTutteAntiSmooth;
-const TutteFaceExpand = modules.PlanarVibeTutteFaceExpand;
-const DistanceReweightedTuttePlus = modules.PlanarVibeDistanceReweightedTuttePlus;
 const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
@@ -105,7 +101,7 @@ const OCTAHEDRON = {
 };
 
 function projectOriginalPositions(graph, result) {
-  const pos = result && (result.pos || result.posById);
+  const pos = result && (result.positions || result.posById);
   return GraphUtils.filterPositions(pos || {}, graph.nodeIds);
 }
 
@@ -132,7 +128,7 @@ function assertFaceScoreRange(graph, posById, label) {
 
 function assertNormalizedFailureResult(result, label) {
   assert.equal(result && result.ok, false, `${label}: expected failure result`);
-  assert.equal(Object.prototype.hasOwnProperty.call(result, 'pos'), true, `${label}: missing pos`);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'positions'), true, `${label}: missing positions`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'posById'), true, `${label}: missing posById`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'iters'), true, `${label}: missing iters`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'iterations'), true, `${label}: missing iterations`);
@@ -141,7 +137,8 @@ function assertNormalizedFailureResult(result, label) {
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'augmented'), true, `${label}: missing augmented`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'status'), true, `${label}: missing status`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'stopReason'), true, `${label}: missing stopReason`);
-  assert.equal(result.pos, null, `${label}: expected pos to be null`);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'pos'), false, `${label}: unexpected pos alias`);
+  assert.equal(result.positions, null, `${label}: expected positions to be null`);
   assert.equal(result.posById, null, `${label}: expected posById to be null`);
 }
 
@@ -154,9 +151,8 @@ test('GraphUtils.normalizeGraphInput normalizes ids and edge pairs once', () => 
 });
 
 test('shared barycentric seed helpers produce finite plane drawings', () => {
-  const prepared = PlaygroundUtils.prepareGraphAndLayoutData(CUBE, {
-    failureLabel: 'Shared seed test',
-    minNodeCount: 3
+  const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(CUBE, {
+    failureLabel: 'Shared seed test'
   });
   assert.equal(prepared && prepared.ok, true, prepared && (prepared.message || prepared.reason || 'shared seed prep failed'));
   const posById = GraphUtils.filterPositions(prepared.posById || {}, CUBE.nodeIds);
@@ -197,34 +193,6 @@ const layoutSpecs = [
     graph: CUBE,
     run(graph) {
       return Tutte.computeTutteLayout(graph.nodeIds, graph.edgePairs);
-    }
-  },
-  {
-    name: 'DistanceReweightedTutte compute',
-    graph: CUBE,
-    run(graph) {
-      return DistanceReweightedTutte.computeDistanceReweightedTuttePositions(graph.nodeIds, graph.edgePairs);
-    }
-  },
-  {
-    name: 'TutteAntiSmooth compute',
-    graph: CUBE,
-    run(graph) {
-      return TutteAntiSmooth.computeTutteAntiSmoothPositions(graph.nodeIds, graph.edgePairs);
-    }
-  },
-  {
-    name: 'TutteFaceExpand compute',
-    graph: CUBE,
-    run(graph) {
-      return TutteFaceExpand.computeTutteFaceExpandPositions(graph.nodeIds, graph.edgePairs);
-    }
-  },
-  {
-    name: 'DistanceReweightedTuttePlus compute',
-    graph: CUBE,
-    run(graph) {
-      return DistanceReweightedTuttePlus.computeDistanceReweightedTuttePlusPositions(graph.nodeIds, graph.edgePairs);
     }
   },
   {
@@ -365,22 +333,6 @@ test('normalized failure shape is preserved for exported compute functions', asy
     {
       name: 'Tutte compute',
       run: () => Tutte.computeTutteLayout(['1', '2'], [['1', '2']])
-    },
-    {
-      name: 'DistanceReweightedTutte compute',
-      run: () => DistanceReweightedTutte.computeDistanceReweightedTuttePositions(['1', '2'], [['1', '2']])
-    },
-    {
-      name: 'TutteAntiSmooth compute',
-      run: () => TutteAntiSmooth.computeTutteAntiSmoothPositions(['1', '2'], [['1', '2']])
-    },
-    {
-      name: 'TutteFaceExpand compute',
-      run: () => TutteFaceExpand.computeTutteFaceExpandPositions(['1', '2'], [['1', '2']])
-    },
-    {
-      name: 'DistanceReweightedTuttePlus compute',
-      run: () => DistanceReweightedTuttePlus.computeDistanceReweightedTuttePlusPositions(['1', '2'], [['1', '2']])
     },
     {
       name: 'CEG23-bfs compute',

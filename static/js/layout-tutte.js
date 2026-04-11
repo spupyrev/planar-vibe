@@ -1,7 +1,8 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
+  var CyRuntime = global.CyRuntime;
   var GraphUtils = global.GraphUtils;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var buildLayoutError = GraphUtils.buildLayoutError;
@@ -172,7 +173,7 @@
         ok: true,
         graph: graph,
         outerFace: face,
-        pos: pos,
+        positions: pos,
         iters: 1
       });
     }
@@ -247,7 +248,7 @@
       ok: true,
       graph: graph,
       outerFace: face,
-      pos: pos,
+      positions: pos,
       iters: 1
     });
   }
@@ -330,7 +331,7 @@
       ok: true,
       graph: graph,
       outerFace: face,
-      pos: pos,
+      positions: pos,
       iters: iters
     });
   }
@@ -349,12 +350,11 @@
       });
     }
 
-    var prepared = PlaygroundUtils.prepareGraphData({
+    var prepared = LayoutPreprocessing.prepareGraphData({
       nodeIds: ids,
       edgePairs: pairs
     }, {
       failureLabel: 'Tutte layout',
-      minNodeCount: 3,
       augmentationMethod: opts.augmentationMethod || null,
       augmentationOptions: opts.augmentationOptions || null
     });
@@ -390,12 +390,12 @@
       augmentedOuterFace,
       barycentricOptions
     );
-    if (!barycentric || !barycentric.ok || !barycentric.pos) {
+    if (!barycentric || !barycentric.ok || !barycentric.positions) {
       return buildLayoutError(barycentric || { message: 'Tutte failed' });
     }
 
     var alignedPosById = GraphUtils.alignOuterFaceEdgeHorizontally(
-      barycentric.pos,
+      barycentric.positions,
       augmentedOuterFace
     );
     var projected = filterPositions(alignedPosById, ids);
@@ -417,14 +417,14 @@
       embedding: prepared.baseEmbedding,
       augmented: prepared.augmented,
       graph: prepared.graph,
-      pos: projected,
+      positions: projected,
       posById: alignedPosById,
       iters: barycentric.iters
     });
   }
 
   function applyTutteLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options, {
       failureMessage: 'Tutte failed',
       compute: function (nodeIds, edgePairs, computeOptions) {
         return computeTutteLayout(nodeIds, edgePairs, computeOptions || {});
@@ -437,10 +437,9 @@
             outerFaceVertexCount: result.outerFace.length,
             iters: result.iters
           }),
-          debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-            ? PlaygroundUtils.createAugmentationDebugState(
+          debugState: typeof LayoutPreprocessing.createAugmentationDebugState === 'function'
+            ? LayoutPreprocessing.createAugmentationDebugState(
               result.graph,
-              result.outerFace,
               result.augmented,
               result.posById
             )

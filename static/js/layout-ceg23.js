@@ -1,7 +1,8 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
+  var CyRuntime = global.CyRuntime;
   var GraphUtils = global.GraphUtils;
   var Tutte = global.PlanarVibeTutteAlgorithm;
   var alignOuterFaceEdgeHorizontally = GraphUtils.alignOuterFaceEdgeHorizontally;
@@ -16,7 +17,7 @@
   var resolveGreaterThanOption = GraphUtils.resolveGreaterThanOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolvePositiveOption = GraphUtils.resolvePositiveOption;
-  var prepareGraphAndLayoutData = PlaygroundUtils.prepareGraphAndLayoutData;
+  var prepareGraphAndLayoutData = LayoutPreprocessing.prepareGraphAndLayoutData;
 
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
     var depth = {};
@@ -171,7 +172,6 @@
       edgePairs: pairs
     }, {
       failureLabel: failureLabel,
-      minNodeCount: 3,
       augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null
     });
     if (!prepared || !prepared.ok) {
@@ -238,7 +238,7 @@
       outerFace: state.outerFace,
       graph: state.prepared.graph,
       augmented: state.augmented,
-      pos: projectedResult.projected,
+      positions: projectedResult.projected,
       posById: posById,
       iters: iters,
       message: message
@@ -269,11 +269,11 @@
         augmented: state.augmented
       });
     }
-    out.pos = alignOuterFaceEdgeHorizontally(out.pos, state.augmentedOuterFace);
+    out.positions = alignOuterFaceEdgeHorizontally(out.positions, state.augmentedOuterFace);
 
     return buildCEG23SuccessResult(
       state,
-      out.pos,
+      out.positions,
       out.iters,
       'Applied CEG23-bfs (' + state.augmentedOuterFace.length + '-vertex outer face, depth=' + DEPTH_SOURCE + ', edgeDepth=' + EDGE_DEPTH_MODE + ', r=' + R +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
@@ -303,14 +303,14 @@
         augmented: state.augmented
       });
     }
-    base.pos = alignOuterFaceEdgeHorizontally(base.pos, state.augmentedOuterFace);
+    base.positions = alignOuterFaceEdgeHorizontally(base.positions, state.augmentedOuterFace);
 
-    var xRank = rankByAxis(state.augmentedIds, base.pos, 'x');
-    var yRank = rankByAxis(state.augmentedIds, base.pos, 'y');
+    var xRank = rankByAxis(state.augmentedIds, base.positions, 'x');
+    var yRank = rankByAxis(state.augmentedIds, base.positions, 'y');
     var wx = buildSpreadWeights(state.augmentedPairs, xRank, alpha, beta);
     var wy = buildSpreadWeights(state.augmentedPairs, yRank, alpha, beta);
     var wxy = combineWeights(state.augmentedPairs, wx, wy, lambdaX);
-    var xySolve = solveAugmentedWeightedLayout(state, wxy, maxIters, base.pos);
+    var xySolve = solveAugmentedWeightedLayout(state, wxy, maxIters, base.positions);
     if (!xySolve.ok) {
       return buildLayoutError({
         message: xySolve.message || 'CEG23-xy solve failed',
@@ -319,11 +319,11 @@
         augmented: state.augmented
       });
     }
-    xySolve.pos = alignOuterFaceEdgeHorizontally(xySolve.pos, state.augmentedOuterFace);
+    xySolve.positions = alignOuterFaceEdgeHorizontally(xySolve.positions, state.augmentedOuterFace);
 
     return buildCEG23SuccessResult(
       state,
-      xySolve.pos,
+      xySolve.positions,
       base.iters + xySolve.iters,
       'Applied CEG23-xy (' + state.augmentedOuterFace.length + '-vertex outer face, alpha=' + alpha + ', beta=' + beta + ', lambdaX=' + Math.max(0, Math.min(1, lambdaX)) +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
@@ -332,7 +332,7 @@
   }
 
   function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
-    return PlaygroundUtils.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options, {
       failureMessage: failureMessage,
       compute: function (nodeIds, edgePairs, computeOptions) {
         return computeLayout(nodeIds, edgePairs, computeOptions || {});

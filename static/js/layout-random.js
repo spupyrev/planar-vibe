@@ -2,7 +2,7 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var CyRuntime = global.CyRuntime;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var normalizedHash = GraphUtils.normalizedHash;
 
@@ -25,12 +25,12 @@
     return buildLayoutResult({
       ok: true,
       nodeIds: ids,
-      pos: posById
+      positions: posById
     });
   }
 
   function applyRandomLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options || {}, {
       fitPadding: 20,
       patchComputeOptions: function (context) {
         return {

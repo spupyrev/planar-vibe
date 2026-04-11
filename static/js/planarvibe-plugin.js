@@ -1,6 +1,9 @@
 (function (global) {
   'use strict';
 
+  // Browser application controller for the PlanarVibe UI, including input
+  // handling, visualization state, status reporting, and algorithm dispatch.
+
   function parseEdgeList(input) {
     var lines = String(input || '').split(/\r?\n/);
     var nodes = new Set();
@@ -110,10 +113,6 @@
     parseEdgeList: parseEdgeList,
     layoutOptions: layoutOptions
   };
-})(window);
-
-(function (global) {
-  'use strict';
 
   function cyLayoutOptionsByName(name, parsedGraph) {
     if (name === 'circle') {
@@ -172,7 +171,6 @@
           key === 'fd-uniform' ||
           key === 'impred') {
         base = {
-          interactive: true,
           delayMs: 0,
           renderEvery: 2,
           yieldEvery: 5
@@ -256,12 +254,6 @@
 
     function computeNodeFontSize(vertexSize) {
       return Math.max(6, Math.round(vertexSize * 0.45));
-    }
-
-    function undirectedEdgeKey(u, v) {
-      var a = String(u);
-      var b = String(v);
-      return a < b ? a + '::' + b : b + '::' + a;
     }
 
     var cy = null;
@@ -404,63 +396,8 @@
       return !!(node && typeof node.hasClass === 'function' && node.hasClass('debug-overlay'));
     }
 
-    function capturePositionsFromCy() {
-      if (!cy) {
-        return {};
-      }
-      var byId = {};
-      cy.nodes().forEach(function (node) {
-        if (isDebugOverlayNode(node)) {
-          return;
-        }
-        var p = node.position();
-        byId[String(node.id())] = { x: p.x, y: p.y };
-      });
-      return byId;
-    }
-
-    function captureViewportFromCy() {
-      if (!cy) {
-        return null;
-      }
-      return {
-        zoom: cy.zoom(),
-        pan: cy.pan(),
-        width: cy.width(),
-        height: cy.height()
-      };
-    }
-
     function saveViewportState(vp) {
       savedViewport = vp || null;
-    }
-
-    function applySavedViewportToCy() {
-      if (!cy || !savedViewport) {
-        return false;
-      }
-      if (!Number.isFinite(savedViewport.zoom) || !savedViewport.pan) {
-        return false;
-      }
-      cy.zoom(savedViewport.zoom);
-      cy.pan(savedViewport.pan);
-      return true;
-    }
-
-    function applySavedPositionsToCy() {
-      if (!cy || !savedPositions) {
-        return false;
-      }
-      var changed = false;
-      cy.nodes().forEach(function (node) {
-        var id = String(node.id());
-        var p = savedPositions[id];
-        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
-          node.position({ x: p.x, y: p.y });
-          changed = true;
-        }
-      });
-      return changed;
     }
 
     function assignDeterministicPositionsForParsed(parsed) {
@@ -487,60 +424,15 @@
       return byId;
     }
 
-    function copyPositionMap(posById) {
-      var out = {};
-      var ids = Object.keys(posById || {});
-      for (var i = 0; i < ids.length; i += 1) {
-        var id = ids[i];
-        var p = posById[id];
-        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-          continue;
-        }
-        out[id] = { x: p.x, y: p.y };
-      }
-      return out;
-    }
-
-    function currentPositionMap() {
-      if (cy) {
-        return capturePositionsFromCy();
-      }
-      if (savedPositions && Object.keys(savedPositions).length > 0) {
-        return copyPositionMap(savedPositions);
-      }
-      if (currentParsed && currentParsed.hasExplicitPositions && currentParsed.positionsById) {
-        return copyPositionMap(currentParsed.positionsById);
-      }
-      return assignDeterministicPositionsForParsed(currentParsed);
-    }
-
     function applyPositionMapToCurrentDrawing(posById) {
       if (cy) {
-        cy.batch(function () {
-          cy.nodes().forEach(function (node) {
-            if (isDebugOverlayNode(node)) {
-              return;
-            }
-            var id = String(node.id());
-            var p = posById[id];
-            if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
-              node.position({ x: p.x, y: p.y });
-            }
-          });
-        });
-        savedPositions = capturePositionsFromCy();
-        saveViewportState(captureViewportFromCy());
+        global.CyRuntime.applyPositionsToCy(cy, posById);
+        savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+        saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
         return;
       }
-      savedPositions = copyPositionMap(posById);
+      savedPositions = global.GraphUtils.copyPositions(posById);
       renderStaticSnapshot();
-    }
-
-    function clearDebugOverlayFromCy() {
-      if (!cy) {
-        return;
-      }
-      cy.elements('.debug-overlay').remove();
     }
 
     function buildDebugOverlayData() {
@@ -580,7 +472,7 @@
         var ru = renderIdByDummyId[u] || u;
         var rv = renderIdByDummyId[v] || v;
         edgePairs.push([ru, rv]);
-        edgeClassByKey[undirectedEdgeKey(ru, rv)] = 'debug-overlay';
+        edgeClassByKey[global.GraphUtils.edgeKey(ru, rv)] = 'debug-overlay';
       }
 
       return {
@@ -592,56 +484,10 @@
       };
     }
 
-    function syncDebugOverlayInCy() {
-      clearDebugOverlayFromCy();
-      if (!cy) {
-        return;
-      }
-      var overlay = buildDebugOverlayData();
-      if (!overlay) {
-        return;
-      }
-      var elements = [];
-      var nodeIds = Object.keys(overlay.positionsById);
-      for (var i = 0; i < nodeIds.length; i += 1) {
-        var id = nodeIds[i];
-        elements.push({
-          data: {
-            id: id,
-            label: overlay.labelsById[id] !== undefined ? overlay.labelsById[id] : id
-          },
-          classes: overlay.classesById[id] || 'debug-overlay'
-        });
-      }
-      for (i = 0; i < overlay.edgePairs.length; i += 1) {
-        var source = String(overlay.edgePairs[i][0]);
-        var target = String(overlay.edgePairs[i][1]);
-        var edgeId = '__dbg__e' + i + '__' + source + '__' + target;
-        elements.push({
-          data: {
-            id: edgeId,
-            source: source,
-            target: target
-          },
-          classes: overlay.edgeClassByKey[undirectedEdgeKey(source, target)] || 'debug-overlay'
-        });
-      }
-      if (elements.length === 0) {
-        return;
-      }
-      cy.add(elements);
-      cy.nodes('.debug-overlay').forEach(function (node) {
-        var p = overlay.positionsById[String(node.id())];
-        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
-          node.position({ x: p.x, y: p.y });
-        }
-      });
-    }
-
     function setCurrentDebugState(debugState) {
       currentDebugState = debugState || null;
       if (cy) {
-        syncDebugOverlayInCy();
+        global.CyRuntime.syncOverlayInCy(cy, buildDebugOverlayData());
       } else {
         renderStaticSnapshot();
       }
@@ -741,8 +587,8 @@
       }
       setStatus(message + graphSizeSuffix() + smallGraphCoordinatesSuffix(), false);
       if (cy) {
-        savedPositions = capturePositionsFromCy();
-        saveViewportState(captureViewportFromCy());
+        savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+        saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
         updateFaceAreaPlot();
         updateEdgeLengthPlot();
       }
@@ -843,7 +689,7 @@
         if (!pu || !pv) {
           continue;
         }
-        var edgeClass = String(edgeClassByKey[undirectedEdgeKey(u, v)] || '');
+        var edgeClass = String(edgeClassByKey[global.GraphUtils.edgeKey(u, v)] || '');
         var isDebugEdge = edgeClass.indexOf('debug-overlay') !== -1;
         svg.push(
           '<line x1="' + (pu.x + offsetX) + '" y1="' + (pu.y + offsetY) + '" x2="' + (pv.x + offsetX) + '" y2="' + (pv.y + offsetY) + '"' +
@@ -890,18 +736,6 @@
       return { width: w, height: h };
     }
 
-    function getFacePlotSize() {
-      return getPlotSize('stats-face-plot');
-    }
-
-    function getEdgePlotSize() {
-      return getPlotSize('stats-edge-plot');
-    }
-
-    function getAnglePlotSize() {
-      return getPlotSize('stats-angle-plot');
-    }
-
     function clearPlot(plotId, qualityId, text) {
       var label = text || 'No data';
       var size = getPlotSize(plotId);
@@ -929,25 +763,17 @@
       clearPlot('stats-angle-plot', 'stats-angle-quality', text);
     }
 
-    function clearSpacingUniformity() {
-      global.$('#stats-spacing-uniformity').text('--');
-    }
-
-    function clearAxisAlignment() {
-      global.$('#stats-axis-alignment').text('--');
-    }
-
     function clearDrawingStats(text) {
       clearFaceAreaPlot(text);
       clearEdgeLengthPlot(text);
       clearAngleResolutionPlot(text);
-      clearSpacingUniformity();
-      clearAxisAlignment();
+      global.$('#stats-spacing-uniformity').text('--');
+      global.$('#stats-axis-alignment').text('--');
       setAlignEnabled(false);
     }
 
     function renderFaceAreaPlot(values, idealValues, showLine) {
-      var size = getFacePlotSize();
+      var size = getPlotSize('stats-face-plot');
       var W = size.width;
       var H = size.height;
       var L = 36;
@@ -1004,7 +830,7 @@
     }
 
     function renderEdgeLengthPlot(values, ideal) {
-      var size = getEdgePlotSize();
+      var size = getPlotSize('stats-edge-plot');
       var W = size.width;
       var H = size.height;
       var L = 36;
@@ -1058,7 +884,7 @@
     }
 
     function renderAngleResolutionPlot(values, idealValues) {
-      var size = getAnglePlotSize();
+      var size = getPlotSize('stats-angle-plot');
       var W = size.width;
       var H = size.height;
       var L = 36;
@@ -1230,8 +1056,8 @@
     function updateEdgeLengthPlot() {
       if (!currentParsed || !currentParsed.elements) {
         clearEdgeLengthPlot('No graph');
-        clearSpacingUniformity();
-        clearAxisAlignment();
+        global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
       }
@@ -1252,23 +1078,23 @@
       }
       if (!nodeIds.length) {
         clearEdgeLengthPlot('No graph');
-        clearSpacingUniformity();
-        clearAxisAlignment();
+        global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
       }
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformEdgeLengthScore) {
         clearEdgeLengthPlot('Metrics unavailable');
-        clearSpacingUniformity();
-        clearAxisAlignment();
+        global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
       }
       var result = global.PlanarVibeMetrics.computeUniformEdgeLengthScore(edgePairs, posById);
       if (!result.ok) {
         clearEdgeLengthPlot(result.reason || 'No data');
-        clearSpacingUniformity();
-        clearAxisAlignment();
+        global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
       }
@@ -1296,12 +1122,12 @@
 
     function updateSpacingUniformity(nodeIds, posById) {
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeSpacingUniformityScore) {
-        clearSpacingUniformity();
+        global.$('#stats-spacing-uniformity').text('--');
         return;
       }
       var result = global.PlanarVibeMetrics.computeSpacingUniformityScore(nodeIds, posById);
       if (!result || !result.ok || !Number.isFinite(result.score)) {
-        clearSpacingUniformity();
+        global.$('#stats-spacing-uniformity').text('--');
         return;
       }
       global.$('#stats-spacing-uniformity').text(result.score.toFixed(3));
@@ -1309,12 +1135,12 @@
 
     function updateAxisAlignment(nodeIds, posById) {
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeAxisAlignmentScore) {
-        clearAxisAlignment();
+        global.$('#stats-axis-alignment').text('--');
         return;
       }
       var result = global.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, posById);
       if (!result || !result.ok || !Number.isFinite(result.score)) {
-        clearAxisAlignment();
+        global.$('#stats-axis-alignment').text('--');
         return;
       }
       global.$('#stats-axis-alignment').text(result.score.toFixed(3));
@@ -1340,7 +1166,12 @@
 
       var nodeIds = getNodeIdsFromParsed(currentParsed);
       var edgePairs = edgePairsFromParsed(currentParsed);
-      var posById = currentPositionMap();
+      var posById = global.CyRuntime.currentPositionMap({
+        cy: cy,
+        savedPositions: savedPositions,
+        currentParsed: currentParsed,
+        assignDeterministicPositionsForParsed: assignDeterministicPositionsForParsed
+      });
       if (!nodeIds.length) {
         setStatus('No graph', true);
         return;
@@ -1362,7 +1193,7 @@
         return;
       }
 
-      applyPositionMapToCurrentDrawing(result.pos);
+      applyPositionMapToCurrentDrawing(result.positions);
       updateFaceAreaPlot();
       updateEdgeLengthPlot();
 
@@ -1545,7 +1376,7 @@
       showDebugAugmentation = !!visible;
       global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
       if (cy) {
-        syncDebugOverlayInCy();
+        global.CyRuntime.syncOverlayInCy(cy, buildDebugOverlayData());
       } else {
         renderStaticSnapshot();
       }
@@ -1596,8 +1427,8 @@
 
       if (!isInteractive) {
         if (cy) {
-          savedPositions = capturePositionsFromCy();
-          saveViewportState(captureViewportFromCy());
+          savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+          saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
           cy.destroy();
           cy = null;
         }
@@ -1614,17 +1445,17 @@
       applyGraphAppearance();
       if (currentParsed && currentParsed.elements) {
         cy.add(currentParsed.elements);
-        if (!applySavedPositionsToCy()) {
+        if (!global.CyRuntime.restorePositionsToCy(cy, savedPositions)) {
           if (global.PlanarVibeRandom && typeof global.PlanarVibeRandom.applyRandomLayout === 'function') {
             global.PlanarVibeRandom.applyRandomLayout(cy);
           }
           normalizeLayoutScale();
-          saveViewportState(captureViewportFromCy());
-        } else if (!applySavedViewportToCy()) {
+          saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
+        } else if (!global.CyRuntime.applyViewportToCy(cy, savedViewport)) {
           cy.fit(undefined, 24);
-          saveViewportState(captureViewportFromCy());
+          saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
         }
-        syncDebugOverlayInCy();
+        global.CyRuntime.syncOverlayInCy(cy, buildDebugOverlayData());
       }
       updateStatistics(currentParsed);
       updateFaceAreaPlot();
@@ -1749,76 +1580,24 @@
       });
     }
 
-    function setTutteEnabled(isEnabled) {
-      setLayoutEnabled('tutte', isEnabled);
-    }
-
-    function setAirEnabled(isEnabled) {
-      setLayoutEnabled('air', isEnabled);
-    }
-
-    function setPPAGEnabled(isEnabled) {
-      setLayoutEnabled('ppag', isEnabled);
-    }
-
-    function setFaceBalancerEnabled(isEnabled) {
-      setLayoutEnabled('facebalancer', isEnabled);
-    }
-
-    function setEdgeBalancerEnabled(isEnabled) {
-      setLayoutEnabled('edgebalancer', isEnabled);
-    }
-
-    function setImPrEdEnabled(isEnabled) {
-      setLayoutEnabled('impred', isEnabled);
-    }
-
-    function setCEG23BfsEnabled(isEnabled) {
-      setLayoutEnabled('ceg23-bfs', isEnabled);
-    }
-
-    function setCEG23XyEnabled(isEnabled) {
-      setLayoutEnabled('ceg23-xy', isEnabled);
-    }
-
-    function setP3TEnabled(isEnabled) {
-      setLayoutEnabled('p3t', isEnabled);
-    }
-
-    function setFPPEnabled(isEnabled) {
-      setLayoutEnabled('fpp', isEnabled);
-    }
-
-    function setSchnyderEnabled(isEnabled) {
-      setLayoutEnabled('schnyder', isEnabled);
-    }
-
-    function setReweightTutteEnabled(isEnabled) {
-      setLayoutEnabled('reweighttutte', isEnabled);
-    }
-
-    function setFDUniformEnabled(isEnabled) {
-      setLayoutEnabled('fd-uniform', isEnabled);
-    }
-
     function setAlignEnabled(isEnabled) {
       global.$('#align-axis-btn').prop('disabled', !isEnabled);
     }
 
     function setPlanarButtonsDisabled() {
-      setTutteEnabled(false);
-      setAirEnabled(false);
-      setPPAGEnabled(false);
-      setFaceBalancerEnabled(false);
-      setEdgeBalancerEnabled(false);
-      setImPrEdEnabled(false);
-      setCEG23BfsEnabled(false);
-      setCEG23XyEnabled(false);
-      setP3TEnabled(false);
-      setFPPEnabled(false);
-      setSchnyderEnabled(false);
-      setReweightTutteEnabled(false);
-      setFDUniformEnabled(false);
+      setLayoutEnabled('tutte', false);
+      setLayoutEnabled('air', false);
+      setLayoutEnabled('ppag', false);
+      setLayoutEnabled('facebalancer', false);
+      setLayoutEnabled('edgebalancer', false);
+      setLayoutEnabled('impred', false);
+      setLayoutEnabled('ceg23-bfs', false);
+      setLayoutEnabled('ceg23-xy', false);
+      setLayoutEnabled('p3t', false);
+      setLayoutEnabled('fpp', false);
+      setLayoutEnabled('schnyder', false);
+      setLayoutEnabled('reweighttutte', false);
+      setLayoutEnabled('fd-uniform', false);
       setAlignEnabled(false);
     }
 
@@ -1858,19 +1637,19 @@
         isBipartite: isBipartite,
         isPlanar3Tree: isPlanar3Tree
       });
-      setTutteEnabled(isPlanar);
-      setAirEnabled(isPlanar);
-      setPPAGEnabled(isPlanar);
-      setFaceBalancerEnabled(isPlanar);
-      setEdgeBalancerEnabled(isPlanar);
-      setImPrEdEnabled(isPlanar);
-      setCEG23BfsEnabled(isPlanar);
-      setCEG23XyEnabled(isPlanar);
-      setP3TEnabled(isPlanar3Tree);
-      setFPPEnabled(isPlanar);
-      setSchnyderEnabled(isPlanar);
-      setReweightTutteEnabled(isPlanar);
-      setFDUniformEnabled(isPlanar);
+      setLayoutEnabled('tutte', isPlanar);
+      setLayoutEnabled('air', isPlanar);
+      setLayoutEnabled('ppag', isPlanar);
+      setLayoutEnabled('facebalancer', isPlanar);
+      setLayoutEnabled('edgebalancer', isPlanar);
+      setLayoutEnabled('impred', isPlanar);
+      setLayoutEnabled('ceg23-bfs', isPlanar);
+      setLayoutEnabled('ceg23-xy', isPlanar);
+      setLayoutEnabled('p3t', isPlanar3Tree);
+      setLayoutEnabled('fpp', isPlanar);
+      setLayoutEnabled('schnyder', isPlanar);
+      setLayoutEnabled('reweighttutte', isPlanar);
+      setLayoutEnabled('fd-uniform', isPlanar);
       setAlignEnabled(false);
     }
 
@@ -2028,7 +1807,7 @@
                 var debug = progressDebug(progress);
                 var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
                   ' | moved ' + progress.movedVertices +
-                  ' | actual move ' + progress.maxMove.toFixed(2) +
+                  ' | max move ' + progress.maxMove.toFixed(2) +
                   ' | cap ' + debug.moveCap.toFixed(2);
                 setStatus(msg, false);
               }
@@ -2394,9 +2173,13 @@
 
     function missingUtilitiesByGroup(groupName, methodNames) {
       var groups = {
-        playground: {
-          moduleLike: global.PlaygroundUtils,
-          message: 'Shared layout utilities are missing'
+        cyRuntime: {
+          moduleLike: global.CyRuntime,
+          message: 'Shared Cytoscape runtime utilities are missing'
+        },
+        preprocessing: {
+          moduleLike: global.LayoutPreprocessing,
+          message: 'Shared layout preprocessing utilities are missing'
         },
         graph: {
           moduleLike: global.GraphUtils,
@@ -2443,7 +2226,7 @@
           methodName: 'applyRandomLayout',
           missingMessage: 'Random layout module is missing',
           requires: {
-            playground: ['runLayout']
+            cyRuntime: ['runLayout']
           }
         },
         {
@@ -2452,7 +2235,7 @@
           methodName: 'applyImPrEdLayout',
           missingMessage: 'ImPrEd layout module is missing',
           requires: {
-            playground: ['graphFromCy', 'applyPositionsToCy', 'createLayoutRenderer']
+            cyRuntime: ['runLayout']
           }
         },
         {
@@ -2461,7 +2244,8 @@
           methodName: 'applyTutteLayout',
           missingMessage: 'Tutte layout module is missing',
           requires: {
-            playground: ['runLayout', 'prepareGraphData', 'createAugmentationDebugState'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             graph: ['buildAdjacencyArrays', 'embeddingHasFace', 'analyzeInternallyThreeConnected', 'normalizeNodeIds', 'normalizeEdgePairs', 'normalizeOuterFace', 'edgeKey'],
             planarity: ['computePlanarEmbedding']
           }
@@ -2472,7 +2256,8 @@
           methodName: 'applyAirLayout',
           missingMessage: 'Air layout module is missing',
           requires: {
-            playground: ['graphFromCy', 'applyPositionsToCy', 'createLayoutRenderer', 'prepareGraphAndLayoutData']
+            cyRuntime: ['runLayout', 'resolveLayoutTimingOptions'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState']
           }
         },
         {
@@ -2481,7 +2266,8 @@
           methodName: 'applyPPAGLayout',
           missingMessage: 'PPAG layout module is missing',
           requires: {
-            playground: ['graphFromCy', 'applyPositionsToCy', 'createLayoutRenderer', 'prepareGraphAndLayoutData']
+            cyRuntime: ['runLayout', 'resolveLayoutTimingOptions'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState']
           }
         },
         {
@@ -2490,7 +2276,8 @@
           methodName: 'applyFaceBalancerLayout',
           missingMessage: 'FaceBalancer layout module is missing',
           requires: {
-            playground: ['graphFromCy', 'applyPositionsToCy', 'createLayoutRenderer', 'prepareGraphAndLayoutData'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             tutte: ['defaultOuterPlacementOptions']
           }
         },
@@ -2500,7 +2287,8 @@
           methodName: 'applyEdgeBalancerLayout',
           missingMessage: 'EdgeBalancer layout module is missing',
           requires: {
-            playground: ['graphFromCy', 'applyPositionsToCy', 'createLayoutRenderer', 'prepareGraphAndLayoutData'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             tutte: ['defaultOuterPlacementOptions']
           }
         },
@@ -2510,7 +2298,8 @@
           methodName: 'applyCEG23BfsLayout',
           missingMessage: 'CEG23-bfs layout module is missing',
           requires: {
-            playground: ['runLayout', 'prepareGraphAndLayoutData'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData'],
             graph: ['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey'],
             tutte: ['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']
           }
@@ -2521,7 +2310,8 @@
           methodName: 'applyCEG23XyLayout',
           missingMessage: 'CEG23-xy layout module is missing',
           requires: {
-            playground: ['runLayout', 'prepareGraphAndLayoutData'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData'],
             graph: ['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'edgeKey'],
             tutte: ['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']
           }
@@ -2532,7 +2322,7 @@
           methodName: 'applyP3TLayout',
           missingMessage: 'P3T layout module is missing',
           requires: {
-            playground: ['runLayout'],
+            cyRuntime: ['runLayout'],
             planar3tree: ['analyzePlanar3Tree']
           }
         },
@@ -2542,7 +2332,8 @@
           methodName: 'applyFPPLayout',
           missingMessage: 'FPP layout module is missing',
           requires: {
-            playground: ['runLayout'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphData'],
             graph: ['buildAdjacencySets', 'chooseOuterFaceFromEmbedding', 'isTriangulatedEmbedding', 'triangulateByFaceStellation'],
             planarity: ['computePlanarEmbedding']
           }
@@ -2553,7 +2344,8 @@
           methodName: 'applySchnyderLayout',
           missingMessage: 'Schnyder layout module is missing',
           requires: {
-            playground: ['runLayout'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphData'],
             graph: ['buildAdjacencyArrays', 'copyPositions', 'triangulateByFaceStellation']
           }
         },
@@ -2563,7 +2355,8 @@
           methodName: 'applyReweightTutteLayout',
           missingMessage: 'ReweightTutte layout module is missing',
           requires: {
-            playground: ['graphFromCy', 'applyPositionsToCy', 'createLayoutRenderer', 'prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             graph: ['buildAdjacencyArrays', 'alignOuterFaceEdgeHorizontally', 'chooseOuterFaceFromEmbedding', 'collectMovableVertices', 'computeDrawingDiameter', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'findOuterFaceIndex', 'polygonAreaAbs'],
             tutte: ['placeOuterFaceVertices', 'defaultOuterPlacementOptions']
           }
@@ -2574,7 +2367,8 @@
           methodName: 'applyFDUniformLayout',
           missingMessage: 'FD-uniform layout module is missing',
           requires: {
-            playground: ['graphFromCy', 'applyAndFit', 'applyPositionsToCy', 'createLayoutRenderer', 'prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             graph: ['buildAdjacencyArrays', 'computeDrawingDiameter', 'copyPositions', 'segmentsIntersectOrTouch', 'computePositionMoveStats', 'createMovementConvergenceTracker']
           }
         }
@@ -2683,7 +2477,7 @@
       }
       cy.fit(undefined, 20);
       cy.center();
-      saveViewportState(captureViewportFromCy());
+      saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
       setStatus('Zoom reset', false);
     }
 
@@ -2919,8 +2713,8 @@
     pasteStaticGraph(global.PlanarVibeGraphGenerator.defaultSample);
 
     if (!isInteractive && cy) {
-      savedPositions = capturePositionsFromCy();
-      saveViewportState(captureViewportFromCy());
+      savedPositions = global.CyRuntime.currentPositionsFromCy(cy);
+      saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
       cy.destroy();
       cy = null;
       renderStaticSnapshot();

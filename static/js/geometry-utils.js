@@ -79,6 +79,15 @@
     return out;
   }
 
+  function createZeroVector(n) {
+    var length = Math.max(0, Math.floor(Number(n) || 0));
+    var out = new Array(length);
+    for (var i = 0; i < length; i += 1) {
+      out[i] = 0;
+    }
+    return out;
+  }
+
   function orientFaceCCW(face, posById) {
     var out = face.slice().map(String);
     if (polygonArea2(out, posById) < 0) {
@@ -351,6 +360,7 @@
     vecAddScaled: vecAddScaled,
     vecSub: vecSub,
     vecScale: vecScale,
+    createZeroVector: createZeroVector,
     orientFaceCCW: orientFaceCCW,
     outerFaceDiameter: outerFaceDiameter,
     triangleArea2: triangleArea2,

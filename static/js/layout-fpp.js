@@ -2,13 +2,14 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
+  var CyRuntime = global.CyRuntime;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var normalizeGraphInput = GraphUtils.normalizeGraphInput;
-  var PlaygroundUtils = global.PlaygroundUtils;
   var buildAdjacencySets = GraphUtils.buildAdjacencySets;
-  var prepareGraphData = PlaygroundUtils.prepareGraphData;
+  var prepareGraphData = LayoutPreprocessing.prepareGraphData;
 
   function prepareTriangulatedEmbedding(nodeIds, edgePairs) {
     var prepared = prepareGraphData({
@@ -16,7 +17,6 @@
       edgePairs: edgePairs
     }, {
       failureLabel: 'FPP',
-      minNodeCount: 3,
       augmentationOptions: {
         triangulateOuterFace: true
       }
@@ -506,7 +506,7 @@
       ok: true,
       order: order.slice(),
       outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
-      pos: screenPos
+      positions: screenPos
     });
   }
 
@@ -544,12 +544,12 @@
       augmentedDummyCount: prepared.augmentedDummyCount || 0,
       prepared: prepared,
       canonical: canonical,
-      pos: result.pos
+      positions: result.positions
     });
   }
 
   function applyFPPLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options || {}, {
       failureMessage: 'FPP failed',
       compute: function (nodeIds, edgePairs) {
         return computeFPPPositions(nodeIds, edgePairs);

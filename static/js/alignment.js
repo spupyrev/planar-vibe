@@ -307,7 +307,7 @@
 
     return {
       ok: true,
-      pos: working,
+      positions: working,
       changed: xResult.mergedCount + yResult.mergedCount > 0,
       mergedCountX: xResult.mergedCount,
       mergedCountY: yResult.mergedCount,

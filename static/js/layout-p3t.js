@@ -6,7 +6,7 @@
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var normalizeGraphInput = global.GraphUtils.normalizeGraphInput;
   var PlanarityTest = global.PlanarVibePlanarityTest;
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var CyRuntime = global.CyRuntime;
 
   function cliqueKey(a, b, c, indexById) {
     var arr = [a, b, c];
@@ -109,12 +109,12 @@
         edgePairs: pairs
       },
       embedding: emb,
-      pos: coord
+      positions: coord
     });
   }
 
   function applyP3TLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options || {}, {
       failureMessage: 'P3T failed',
       compute: function (nodeIds, edgePairs) {
         return computeP3TPositions(nodeIds, edgePairs);

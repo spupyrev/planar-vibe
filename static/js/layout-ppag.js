@@ -2,8 +2,9 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
   var Metrics = global.PlanarVibeMetrics;
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var CyRuntime = global.CyRuntime;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
@@ -246,13 +247,12 @@
 
   function normalizePPAGOptions(options) {
     var opts = options || {};
-    var timing = PlaygroundUtils.resolveLayoutTimingOptions(opts, {
+    var timing = CyRuntime.resolveLayoutTimingOptions(opts, {
       delayMs: 0,
       renderEvery: 2,
       yieldEvery: 5
     });
     return {
-      interactive: opts.interactive !== false,
       augmentationMethod: opts.augmentationMethod || null,
       maxIters: resolveIntOption(opts.maxIters, 200, 1),
       maxVertexMoveRel: resolvePositiveOption(opts.maxVertexMoveRel, 0.08),
@@ -270,9 +270,8 @@
 
   function preparePPAGState(graph, options) {
     var opts = normalizePPAGOptions(options);
-    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'PPAG layout',
-      minNodeCount: 3,
       augmentationMethod: opts.augmentationMethod,
       currentPositions: opts.currentPositions || null
     });
@@ -440,7 +439,7 @@
     return {
       ok: !hasCrossings,
       status: status,
-      pos: posById,
+      positions: posById,
       stats: state,
       moveStats: lastMoveStats,
       iters: Math.min(opts.maxIters, Math.max(0, iter - (status === 'max_iters' ? 1 : 0))),
@@ -461,7 +460,7 @@
       return buildLayoutResult({
         ok: true,
         status: 'realized',
-        pos: prepared.posById,
+        positions: prepared.posById,
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
@@ -503,7 +502,7 @@
     return buildLayoutResult({
       ok: true,
       status: result.status,
-      pos: prepared.posById,
+      positions: prepared.posById,
       graph: prepared.graph,
       outerFace: prepared.outerFace,
       augmented: prepared.augmented,
@@ -517,19 +516,10 @@
   }
 
   async function applyPPAGLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'PPAG layout',
       compute: computePPAGPositions,
-      patchComputeOptions: function (ctx) {
-        return {
-          onIteration: ctx.onProgress,
-          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
-        };
-      },
-      getPositions: function (result) {
-        return result.pos;
-      },
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('PPAG', {
@@ -548,12 +538,11 @@
           maxRelError: result.maxRelError,
           boundedFaceCount: result.boundedFaceCount,
           dummyCount: result.dummyCount,
-          debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-            ? PlaygroundUtils.createAugmentationDebugState(
+          debugState: typeof LayoutPreprocessing.createAugmentationDebugState === 'function'
+            ? LayoutPreprocessing.createAugmentationDebugState(
               result.graph,
-              result.outerFace,
               result.augmented,
-              result.pos
+              result.positions
             )
             : null
         };

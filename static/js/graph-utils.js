@@ -135,7 +135,6 @@
     return typeof value === 'function' ? value : fallback;
   }
 
-  var cloneMatrix = LinearAlgebraUtils.cloneMatrix;
   var luFactorize = LinearAlgebraUtils.luFactorize;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
   var solveTransposeLUWithTwoRhs = LinearAlgebraUtils.solveTransposeLUWithTwoRhs;
@@ -174,6 +173,7 @@
   var vecAddScaled = GraphGeometryUtils.vecAddScaled;
   var vecSub = GraphGeometryUtils.vecSub;
   var vecScale = GraphGeometryUtils.vecScale;
+  var createZeroVector = GraphGeometryUtils.createZeroVector;
   var orientFaceCCW = GraphGeometryUtils.orientFaceCCW;
   var outerFaceDiameter = GraphGeometryUtils.outerFaceDiameter;
   var triangleArea2 = GraphGeometryUtils.triangleArea2;
@@ -528,16 +528,20 @@
 
   function buildLayoutResult(fields) {
     var base = fields || {};
-    var pos = base.pos !== undefined ? base.pos : (base.posById !== undefined ? base.posById : null);
-    var posById = base.posById !== undefined ? base.posById : pos;
+    var out = Object.assign({}, base);
+    delete out.pos;
+    var positions = base.positions !== undefined
+      ? base.positions
+      : (base.posById !== undefined ? base.posById : null);
+    var posById = base.posById !== undefined ? base.posById : positions;
     var iters = Number.isFinite(base.iters) ? base.iters : (Number.isFinite(base.iterations) ? base.iterations : null);
     var iterations = Number.isFinite(base.iterations) ? base.iterations : iters;
     var status = base.status !== undefined ? base.status : (base.stopReason !== undefined ? base.stopReason : null);
     var stopReason = base.stopReason !== undefined ? base.stopReason : (base.status !== undefined ? base.status : null);
 
-    return Object.assign({}, base, {
+    return Object.assign(out, {
       ok: base.ok !== false,
-      pos: pos,
+      positions: positions,
       posById: posById,
       iters: iters,
       iterations: iterations,
@@ -552,7 +556,7 @@
   function buildLayoutError(fields) {
     return buildLayoutResult(Object.assign({
       ok: false,
-      pos: null,
+      positions: null,
       posById: null,
       iters: null,
       iterations: null,
@@ -743,6 +747,7 @@
     vecAddScaled: vecAddScaled,
     vecSub: vecSub,
     vecScale: vecScale,
+    createZeroVector: createZeroVector,
     orientFaceCCW: orientFaceCCW,
     outerFaceDiameter: outerFaceDiameter,
     edgeKey: edgeKey,

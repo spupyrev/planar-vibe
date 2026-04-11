@@ -89,7 +89,8 @@ function loadBrowserModules() {
     'static/js/geometry-utils.js',
     'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
-    'static/js/playground-utils.js',
+    'static/js/layout-preprocessing.js',
+    'static/js/cy-runtime.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
@@ -116,6 +117,7 @@ function loadBrowserModules() {
 
 const modules = loadBrowserModules();
 const Generator = modules.PlanarVibeGraphGenerator;
+const LayoutPreprocessing = modules.LayoutPreprocessing;
 const Planarity = modules.PlanarVibePlanarityTest;
 const GraphUtils = modules.GraphUtils;
 const Metrics = modules.PlanarVibeMetrics;
@@ -132,7 +134,7 @@ const Schnyder = modules.PlanarVibeSchnyder;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
 const FDUniform = modules.PlanarVibeFDUniform;
-const PlaygroundUtils = modules.PlaygroundUtils;
+const CyRuntime = modules.CyRuntime;
 
 function buildMockCy(nodeIds, edgePairs) {
   const nodeMap = new Map();
@@ -610,7 +612,7 @@ test('shared initializer prefers the current plane drawing when choosing the out
   const graph = parseEdgeListText(text);
   const pos = parseVertexPositionsFromEdgeList(text);
   const outer = GraphUtils.chooseOuterFaceFromPositions(graph.nodeIds, graph.edgePairs, pos);
-  const prepared = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+  const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
     failureLabel: 'test',
     currentPositions: pos
   });
@@ -635,57 +637,51 @@ test('shared embedding-position verifier rejects degenerate faces', () => {
     '3': { x: 2, y: 0 }
   };
 
-  const verify = PlaygroundUtils.verifyEmbeddingWithPositions(embedding, pos);
+  const verify = LayoutPreprocessing.verifyEmbeddingWithPositions(embedding, pos);
   assert.equal(verify.ok, false);
   assert.match(String(verify.message || ''), /degenerate/i);
 });
 
-test('shared initializer rejects grid2x20 when the chosen embedding outer face yields a degenerate seed', () => {
+test('shared initializer builds a verified seed for grid2x20', () => {
   const text = Generator.getSample('grid2x20');
   const graph = parseEdgeListText(text);
-  const prepared = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+  const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
     failureLabel: 'Shared seed test'
   });
 
-  assert.equal(prepared && prepared.ok, false);
-  assert.match(String(prepared && prepared.message || ''), /verification|crossings|degenerate/i);
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'shared initialization failed');
+  assert.ok(prepared && prepared.posById, 'expected initialized coordinates');
+
+  const verify = LayoutPreprocessing.verifyEmbeddingWithPositions(prepared.augmented.embedding, prepared.posById, {
+    edgePairs: prepared.augmented.edgePairs,
+    outerFace: prepared.augmentedOuterFace
+  });
+
+  assert.equal(verify.ok, true, verify && verify.message ? verify.message : 'expected verified seed drawing');
 });
 
-test('raw shared barycentric seed on grid2x20 returns coordinates that fail embedding verification', () => {
+test('raw shared barycentric seed rejects an outer face that does not belong to the embedding', () => {
   const text = Generator.getSample('grid2x20');
   const graph = parseEdgeListText(text);
-  const prepared = PlaygroundUtils.prepareGraphData(graph, {
+  const prepared = LayoutPreprocessing.prepareGraphData(graph, {
     failureLabel: 'Shared seed test'
   });
 
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
 
-  const seed = PlaygroundUtils.computeSharedBarycentricSeed(
+  const seed = LayoutPreprocessing.computeSharedBarycentricSeed(
     prepared.augmented.nodeIds,
     prepared.augmented.edgePairs,
     prepared.outerFace,
-    {
-      graph: prepared.graph,
-      baseEmbedding: prepared.baseEmbedding,
-      augmented: prepared.augmented,
-      outerFace: prepared.outerFace
-    }
+    prepared.augmented.embedding
   );
 
-  assert.equal(seed && seed.ok, true, seed && seed.message ? seed.message : 'shared seed failed');
-  assert.ok(seed && seed.pos, 'expected raw seed coordinates');
-
-  const verify = PlaygroundUtils.verifyEmbeddingWithPositions(prepared.augmented.embedding, seed.pos, {
-    edgePairs: prepared.augmented.edgePairs,
-    outerFace: prepared.outerFace
-  });
-
-  assert.equal(verify.ok, false);
-  assert.match(String(verify.message || ''), /crossings|degenerate/i);
+  assert.equal(seed && seed.ok, false);
+  assert.match(String(seed && seed.message || ''), /outer face is not a face of the embedding/i);
 });
 
 test('prepareGraphData defaults to outer-cycle triangulation', () => {
-  const prepared = PlaygroundUtils.prepareGraphData({
+  const prepared = LayoutPreprocessing.prepareGraphData({
     nodeIds: ['1', '2', '3', '4'],
     edgePairs: [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
   }, {
@@ -710,7 +706,7 @@ test('prepareGraphData can use the outer-cycle augmentation on a drawing with re
     e: { x: 3, y: 0 }
   };
 
-  const prepared = PlaygroundUtils.prepareGraphData(graph, {
+  const prepared = LayoutPreprocessing.prepareGraphData(graph, {
     failureLabel: 'Outer cycle test',
     augmentationMethod: 'outer-cycle',
     currentPositions: pos
@@ -726,7 +722,7 @@ test('prepareGraphData can use the outer-cycle augmentation on a drawing with re
 });
 
 test('prepareGraphData rejects unknown augmentation methods', () => {
-  const prepared = PlaygroundUtils.prepareGraphData({
+  const prepared = LayoutPreprocessing.prepareGraphData({
     nodeIds: ['1', '2', '3'],
     edgePairs: [['1', '2'], ['2', '3'], ['3', '1']]
   }, {
@@ -763,7 +759,7 @@ test('shared layout runner fits once from the prepared seed before progress upda
     const p = pos[String(id)];
     finalPos[String(id)] = { x: p.x + 50, y: p.y - 30 };
   }
-  const preparedSeed = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+  const preparedSeed = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
     failureLabel: 'PPAG layout',
     currentPositions: pos,
     augmentationMethod: 'outer-cycle'
@@ -778,7 +774,7 @@ test('shared layout runner fits once from the prepared seed before progress upda
   };
 
   let fitCountAtComputeStart = -1;
-  const result = await PlaygroundUtils.runLayout(cy, {
+  const result = await CyRuntime.runLayout(cy, {
     delayMs: 0,
     yieldEvery: 50,
     augmentationMethod: 'outer-cycle'
@@ -804,11 +800,11 @@ test('shared layout runner fits once from the prepared seed before progress upda
       });
       return {
         ok: true,
-        pos: finalPos
+        positions: finalPos
       };
     },
     getPositions: function (runResult) {
-      return runResult.pos;
+      return runResult.positions;
     },
     failureMessage: 'layout seed test failed'
   });
@@ -838,7 +834,7 @@ test('shared layout runner emits one final progress step synchronously for one-s
   };
   const events = [];
 
-  const result = PlaygroundUtils.runLayout(cy, {
+  const result = CyRuntime.runLayout(cy, {
     onIteration: function (progress) {
       events.push(progress);
     }
@@ -846,7 +842,7 @@ test('shared layout runner emits one final progress step synchronously for one-s
     compute: function () {
       return {
         ok: true,
-        pos: finalPos
+        positions: finalPos
       };
     },
     failureMessage: 'one-shot layout failed'
@@ -1396,11 +1392,11 @@ test('Air outer-ring face weight changes the outer-cycle solve without changing 
 
   assert.equal(baseline && baseline.ok, true, baseline && baseline.message ? baseline.message : 'baseline Air solve failed');
   assert.equal(reduced && reduced.ok, true, reduced && reduced.message ? reduced.message : 'reweighted Air solve failed');
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(baseline.pos, graph.nodeIds)), false);
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(reduced.pos, graph.nodeIds)), false);
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(baseline.positions, graph.nodeIds)), false);
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GraphUtils.filterPositions(reduced.positions, graph.nodeIds)), false);
   assert.notEqual(
-    JSON.stringify(GraphUtils.filterPositions(baseline.pos, graph.nodeIds)),
-    JSON.stringify(GraphUtils.filterPositions(reduced.pos, graph.nodeIds))
+    JSON.stringify(GraphUtils.filterPositions(baseline.positions, graph.nodeIds)),
+    JSON.stringify(GraphUtils.filterPositions(reduced.positions, graph.nodeIds))
   );
 });
 
@@ -1683,15 +1679,15 @@ test('EdgeBalancer on grid2x20 with Aug+ improves edge metrics and exposes diagn
   });
   assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on grid2x20'));
 
-  const before = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, baseline.pos);
-  const beforeRatio = Metrics.computeEdgeLengthRatio(graph.edgePairs, baseline.pos);
+  const before = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, baseline.positions);
+  const beforeRatio = Metrics.computeEdgeLengthRatio(graph.edgePairs, baseline.positions);
   assert.equal(before.ok, true, before.reason || 'baseline edge quality failed');
   assert.equal(beforeRatio.ok, true, beforeRatio.reason || 'baseline edge ratio failed');
 
   var lastProgress = null;
   const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
     augmentationMethod: 'outer-cycle',
-    currentPositions: baseline.pos,
+    currentPositions: baseline.positions,
     maxIters: 80,
     onIteration: async function (progress) {
       lastProgress = progress;
@@ -1699,14 +1695,14 @@ test('EdgeBalancer on grid2x20 with Aug+ improves edge metrics and exposes diagn
   });
   assert.equal(result && result.ok, true, result && (result.message || result.reason || 'EdgeBalancer failed on grid2x20'));
 
-  const after = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, result.pos);
-  const afterRatio = Metrics.computeEdgeLengthRatio(graph.edgePairs, result.pos);
+  const after = Metrics.computeUniformEdgeLengthScore(graph.edgePairs, result.positions);
+  const afterRatio = Metrics.computeEdgeLengthRatio(graph.edgePairs, result.positions);
   assert.equal(after.ok, true, after.reason || 'EdgeBalancer edge quality failed on grid2x20');
   assert.equal(afterRatio.ok, true, afterRatio.reason || 'EdgeBalancer edge ratio failed on grid2x20');
   assert.ok(after.quality >= before.quality + 0.06, `expected strong edge-score improvement on grid2x20: before=${before.quality}, after=${after.quality}`);
   assert.ok(afterRatio.ratio >= beforeRatio.ratio + 0.2, `expected strong edge-ratio improvement on grid2x20: before=${beforeRatio.ratio}, after=${afterRatio.ratio}`);
   assert.notEqual(result.stopReason, 'line-search-failed', 'EdgeBalancer should no longer fail line search on grid2x20');
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, result.pos), false, 'EdgeBalancer introduced crossings on grid2x20');
+  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, result.positions), false, 'EdgeBalancer introduced crossings on grid2x20');
 
   assert.ok(result.objectiveTerms && Number.isFinite(result.objectiveTerms.edgeVariance), 'missing EdgeBalancer objective-term diagnostics');
   assert.equal(result.objectiveTerms.edgeBarrier, 0, 'EdgeBalancer should not apply an edge barrier by default on grid2x20');
@@ -1729,7 +1725,7 @@ test('EdgeBalancer respects the maxPositionStep cap during optimization', async 
   let observedMaxMove = 0;
   const result = await EdgeBalancer.computeEdgeBalancerPositions(graph.nodeIds, graph.edgePairs, {
     augmentationMethod: 'outer-cycle',
-    currentPositions: baseline.pos,
+    currentPositions: baseline.positions,
     maxIters: 12,
     maxPositionStep: stepCap,
     onIteration: async function (progress) {
@@ -2116,12 +2112,12 @@ test('Tutte uses the common outer face and succeeds on grid2x10 after augmentati
   assert.equal(result.ok, true, result.message || 'Tutte should succeed on grid2x10 after augmentation');
 });
 
-test('FD-uniform applies on planar sample and assigns finite positions', () => {
+test('FD-uniform applies on planar sample and assigns finite positions', async () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = FDUniform.applyFDUniformLayout(cy, { maxIters: 120 });
+  const result = await FDUniform.applyFDUniformLayout(cy, { maxIters: 120 });
   assert.equal(result.ok, true, result.message || 'FD-uniform failed');
   assert.equal(cy._fitCalls > 0, true);
 
@@ -2132,22 +2128,22 @@ test('FD-uniform applies on planar sample and assigns finite positions', () => {
   }
 });
 
-test('FD-uniform rejects non-planar graphs', () => {
+test('FD-uniform rejects non-planar graphs', async () => {
   const text = Generator.getSample('nonplanar1');
   const graph = parseEdgeListText(text);
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = FDUniform.applyFDUniformLayout(cy);
+  const result = await FDUniform.applyFDUniformLayout(cy);
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /planar graph/i);
 });
 
-test('FD-uniform preserves planarity on randomplanar2 (G(50, 130))', () => {
+test('FD-uniform preserves planarity on randomplanar2 (G(50, 130))', async () => {
   const text = Generator.getSample('randomplanar2');
   const graph = parseEdgeListText(text);
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = FDUniform.applyFDUniformLayout(cy, { maxIters: 160 });
+  const result = await FDUniform.applyFDUniformLayout(cy, { maxIters: 160 });
   assert.equal(result.ok, true, result.message || 'FD-uniform failed on randomplanar2');
 
   const posById = {};

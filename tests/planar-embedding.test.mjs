@@ -72,7 +72,8 @@ function loadBrowserModules() {
     'static/js/geometry-utils.js',
     'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
-    'static/js/playground-utils.js',
+    'static/js/layout-preprocessing.js',
+    'static/js/cy-runtime.js',
     'static/js/layout-tutte.js',
     'static/js/layout-fpp.js'
   ];

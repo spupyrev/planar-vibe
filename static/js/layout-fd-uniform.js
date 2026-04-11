@@ -2,7 +2,8 @@
   'use strict';
 
   var Metrics = global.PlanarVibeMetrics;
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
+  var CyRuntime = global.CyRuntime;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
@@ -290,7 +291,7 @@
       outerFace: state.outerFace,
       graph: state.graph,
       augmented: context.augmented,
-      pos: finalPos,
+      positions: finalPos,
       stopReason: state.stopReason,
       iters: state.performedIters,
       accepted: state.acceptedTotal,
@@ -416,9 +417,8 @@
       return buildLayoutError({ message: 'FD-uniform requires at least 3 edges', graph: graph });
     }
 
-    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FD-uniform',
-      minNodeCount: 3,
       augmentationMethod: opts.augmentationMethod || null,
       currentPositions: opts.currentPositions || null
     });
@@ -487,7 +487,7 @@
       nodeIds: ids,
       edgePairs: pairs,
       outerFace: outerFace,
-      pos: pos,
+      positions: pos,
       adjOrig: adjOrig,
       movable: movable,
       incidentEdges: incidentEdges,
@@ -510,85 +510,30 @@
   }
 
   function applyFDUniformLayout(cy, options) {
-    var opts = options || {};
-    var interactive = !!opts.interactive;
-    var timing = PlaygroundUtils.resolveLayoutTimingOptions(opts, {
-      delayMs: 0,
-      renderEvery: 2,
-      yieldEvery: 5
+    return CyRuntime.runLayout(cy, options || {}, {
+      useSharedPreparedSeed: true,
+      sharedSeedFailureLabel: 'FD-uniform layout',
+      compute: computeFDUniformPositions,
+      buildResult: function (ctx) {
+        var result = ctx.result;
+        return {
+          ok: true,
+          stopReason: result.stopReason,
+          message: buildLayoutStatusMessage('FD-uniform', {
+            iters: result.iters,
+            accepted: result.accepted,
+            rejected: result.rejected,
+            stopReason: result.stopReason
+          }),
+          debugState: LayoutPreprocessing.createAugmentationDebugState(
+            result.graph,
+            result.augmented,
+            result.positions
+          )
+        };
+      },
+      failureMessage: 'FD-uniform failed'
     });
-    var delayMs = timing.delayMs;
-    var renderEvery = timing.renderEvery;
-    var yieldEvery = timing.yieldEvery;
-    var graph = PlaygroundUtils.graphFromCy(cy);
-    if (!interactive) {
-      var syncResult = computeFDUniformPositions(graph.nodeIds, graph.edgePairs, opts);
-      if (!syncResult || !syncResult.ok) {
-        return buildLayoutError(syncResult || {
-          message: 'FD-uniform failed',
-          graph: graph
-        });
-      }
-      PlaygroundUtils.applyAndFit(cy, syncResult.pos);
-      return {
-        ok: true,
-        stopReason: syncResult.stopReason,
-        message: buildLayoutStatusMessage('FD-uniform', {
-          iters: syncResult.iters,
-          accepted: syncResult.accepted,
-          rejected: syncResult.rejected,
-          stopReason: syncResult.stopReason
-        }),
-        debugState: PlaygroundUtils.createAugmentationDebugState(
-          syncResult.graph,
-          syncResult.outerFace,
-          syncResult.augmented,
-          syncResult.pos
-        )
-      };
-    }
-
-    return (async function () {
-      return PlaygroundUtils.runLayout(cy, Object.assign({}, opts, {
-        interactive: interactive,
-        delayMs: delayMs,
-        renderEvery: renderEvery,
-        yieldEvery: yieldEvery
-      }), {
-        useSharedPreparedSeed: true,
-        sharedSeedFailureLabel: 'FD-uniform layout',
-        compute: computeFDUniformPositions,
-        patchComputeOptions: function (ctx) {
-          return {
-            onIteration: ctx.onProgress,
-            currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
-          };
-        },
-        getPositions: function (result) {
-          return result.pos;
-        },
-        buildResult: function (ctx) {
-          var result = ctx.result;
-          return {
-            ok: true,
-            stopReason: result.stopReason,
-            message: buildLayoutStatusMessage('FD-uniform', {
-              iters: result.iters,
-              accepted: result.accepted,
-              rejected: result.rejected,
-              stopReason: result.stopReason
-            }),
-            debugState: PlaygroundUtils.createAugmentationDebugState(
-              result.graph,
-              result.outerFace,
-              result.augmented,
-              result.pos
-            )
-          };
-        },
-        failureMessage: 'FD-uniform failed'
-      });
-    })();
   }
 
   global.PlanarVibeFDUniform = {

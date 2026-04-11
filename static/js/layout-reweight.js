@@ -2,8 +2,9 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
   var Metrics = global.PlanarVibeMetrics;
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var CyRuntime = global.CyRuntime;
   var Tutte = global.PlanarVibeTutteAlgorithm;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
@@ -13,7 +14,7 @@
   var computeDrawingDiameter = GraphUtils.computeDrawingDiameter;
   var computeDistributionQuality = Metrics && Metrics.computeDistributionQuality;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
-  var createAugmentationDebugState = PlaygroundUtils.createAugmentationDebugState;
+  var createAugmentationDebugState = LayoutPreprocessing.createAugmentationDebugState;
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
   var edgeKey = GraphUtils.edgeKey;
   var findOuterFaceIndex = GraphUtils.findOuterFaceIndex;
@@ -237,9 +238,8 @@
   function prepareReweightState(graph, options) {
     var opts = normalizeReweightOptions(options);
     graph = normalizeGraphInput(graph && graph.nodeIds, graph && graph.edgePairs);
-    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'ReweightTutte',
-      minNodeCount: 3,
       augmentationMethod: opts.augmentationMethod,
       currentPositions: opts.currentPositions || null
     });
@@ -354,7 +354,7 @@
       totalInnerIters += inner.iters;
       performedOuterIters = iter + 1;
 
-      var pos = inner.pos;
+      var pos = inner.positions;
       currentPos = pos;
       var moveStats = computePositionMoveStats(movableVertices, prevPos, pos, { moveTol: 1e-9 });
       var movementStatus = movementTracker.update({
@@ -421,7 +421,7 @@
       graph: g,
       outerFace: outer,
       augmented: augmented,
-      pos: finalLayout.pos,
+      positions: finalLayout.positions,
       iters: totalInnerIters,
       stopReason: stopReason,
       totalInnerIters: totalInnerIters,
@@ -445,19 +445,10 @@
   }
 
   async function applyReweightTutteLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'ReweightTutte layout',
       compute: computeReweightTuttePositions,
-      patchComputeOptions: function (ctx) {
-        return {
-          onIteration: ctx.onProgress,
-          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
-        };
-      },
-      getPositions: function (result) {
-        return result.pos;
-      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -476,9 +467,8 @@
           boundedFaceCount: result.boundedFaceCount,
           debugState: createAugmentationDebugState(
             result.graph,
-            result.outerFace,
             result.augmented,
-            result.pos
+            result.positions
           )
         };
       },

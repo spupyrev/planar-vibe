@@ -2,8 +2,9 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
   var Metrics = global.PlanarVibeMetrics;
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var CyRuntime = global.CyRuntime;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
@@ -404,7 +405,7 @@
         initSource: 'current-plane'
       };
     } else {
-      seed = PlaygroundUtils.prepareGraphAndLayoutData(g, {
+      seed = LayoutPreprocessing.prepareGraphAndLayoutData(g, {
         failureLabel: 'ImPrEd layout',
         augmentationMethod: opts.augmentationMethod || null,
         currentPositions: currentCount === g.nodeIds.length ? currentPositions : null
@@ -447,7 +448,7 @@
     var fullRollbackVelocityDamp = resolveFloatOption(opts.fullRollbackVelocityDamp, 0.5, 0, 1);
     var iter;
     var stopReason = 'max-iters';
-    var lastStats = { movedNodes: 0, totalMove: 0, avgActualMove: 0, maxActualMove: 0 };
+    var lastStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
     var movementTracker = createMovementConvergenceTracker({
       minItersBeforeStop: minItersBeforeStop,
       stableIterLimit: stableIterLimit,
@@ -567,14 +568,14 @@
 
       var rawMoveStats = computePositionMoveStats(g.nodeIds, prevPosById, posById, { moveTol: 1e-6 });
       lastStats = {
-        movedNodes: rawMoveStats.movedVertices,
+        movedVertices: rawMoveStats.movedVertices,
         totalMove: rawMoveStats.totalMove,
-        avgActualMove: rawMoveStats.avgMove,
-        maxActualMove: rawMoveStats.maxMove
+        avgMove: rawMoveStats.avgMove,
+        maxMove: rawMoveStats.maxMove
       };
       var movementStatus = movementTracker ? movementTracker.update({
-        maxMove: lastStats.maxActualMove,
-        avgMove: lastStats.avgActualMove
+        maxMove: lastStats.maxMove,
+        avgMove: lastStats.avgMove
       }, iter + 1) : { stableIterations: 0, stableIterLimit: stableIterLimit, converged: false };
 
       if (typeof opts.onIteration === 'function') {
@@ -582,19 +583,19 @@
           iter: iter + 1,
           maxIters: maxIters,
           positions: posById,
-          movedVertices: lastStats.movedNodes,
-          maxMove: lastStats.maxActualMove,
-          avgMove: lastStats.avgActualMove,
+          movedVertices: lastStats.movedVertices,
+          totalMove: lastStats.totalMove,
+          maxMove: lastStats.maxMove,
+          avgMove: lastStats.avgMove,
           debug: {
             moveCap: maxMove,
-            totalMove: lastStats.totalMove,
             hasCrossings: hasCrossings,
             stableIterCount: movementStatus.stableIterations,
             stableIterLimit: movementStatus.stableIterLimit
           }
         });
       }
-      if (lastStats.movedNodes === 0) {
+      if (lastStats.movedVertices === 0) {
         stopReason = 'no-movement';
         break;
       }
@@ -611,34 +612,27 @@
       graph: g,
       outerFace: seed.outerFace ? seed.outerFace.slice() : (emb && emb.outerFace ? emb.outerFace.slice() : null),
       embedding: emb,
-      pos: posById,
+      positions: posById,
       iterations: iter + 1,
       stopReason: stopReason,
-      maxActualMove: lastStats.maxActualMove,
-      avgActualMove: lastStats.avgActualMove
+      totalMove: lastStats.totalMove,
+      maxMove: lastStats.maxMove,
+      avgMove: lastStats.avgMove
     });
   }
 
   async function applyImPrEdLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options, {
       compute: computeImPrEdPositions,
-      patchComputeOptions: function (ctx) {
-        return {
-          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy),
-          onIteration: ctx.onProgress
-        };
-      },
-      getPositions: function (result) {
-        return result.pos;
-      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
           ok: true,
           iterations: result.iterations,
           stopReason: result.stopReason,
-          maxActualMove: result.maxActualMove,
-          avgActualMove: result.avgActualMove,
+          totalMove: result.totalMove,
+          maxMove: result.maxMove,
+          avgMove: result.avgMove,
           message: buildLayoutStatusMessage('ImPrEd', {
             vertexCount: result.nodeIds.length,
             iters: result.iterations,

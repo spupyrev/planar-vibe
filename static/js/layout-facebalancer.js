@@ -1,7 +1,8 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
+  var CyRuntime = global.CyRuntime;
   var Metrics = global.PlanarVibeMetrics;
   var faceKey = global.GraphUtils.faceKey;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
@@ -22,6 +23,7 @@
   var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
   var resolveIntOption = global.GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
+  var createZeroVector = global.GraphUtils.createZeroVector;
   var vecAddScaled = global.GraphUtils.vecAddScaled;
   var vecDot = global.GraphUtils.vecDot;
   var vecNorm = global.GraphUtils.vecNorm;
@@ -187,12 +189,6 @@
       minFaceArea: Number.isFinite(input.minFaceArea) ? Math.max(0, input.minFaceArea) : 0,
       minEdgeLength2: Number.isFinite(input.minEdgeLength2) ? Math.max(0, input.minEdgeLength2) : 0
     });
-  }
-
-  function createZeroVector(n) {
-    var out = new Array(n);
-    for (var i = 0; i < n; i += 1) out[i] = 0;
-    return out;
   }
 
   function buildPositionMap(data, x, y) {
@@ -673,7 +669,7 @@
     return buildLayoutResult({
       ok: true,
       q: bestQ,
-      pos: buildPositionMap(data, best.x, best.y),
+      positions: buildPositionMap(data, best.x, best.y),
       E: best.E,
       gradNorm: best.gradNorm,
       faceAreas: buildFaceAreaMap(data, best.faceAreas),
@@ -687,9 +683,8 @@
     var maxIters = resolveIntOption(opts.maxIters, 80, 1);
     var graph = normalizeGraphInput(nodeIds, edgePairs);
 
-    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FaceBalancer layout',
-      minNodeCount: 3,
       augmentationMethod: opts.augmentationMethod || null,
       currentPositions: opts.currentPositions || null
     });
@@ -746,7 +741,7 @@
         outerFace: outerFace,
         graph: g,
         augmented: augmented,
-        pos: initPos,
+        positions: initPos,
         stopReason: 'no-bounded-faces',
         iters: 0,
         objective: 0,
@@ -786,7 +781,7 @@
         augmented: augmented
       });
     }
-    var hasCrossings = hasPositionCrossings(result.pos, g.edgePairs);
+    var hasCrossings = hasPositionCrossings(result.positions, g.edgePairs);
     if (hasCrossings) {
       return buildLayoutError({
         stopReason: result.stopReason,
@@ -796,7 +791,7 @@
         message: 'FaceBalancer produced a non-plane drawing'
       });
     }
-    var faceScore = Metrics.computeUniformFaceAreaScore(g.nodeIds, g.edgePairs, result.pos);
+    var faceScore = Metrics.computeUniformFaceAreaScore(g.nodeIds, g.edgePairs, result.positions);
     return buildLayoutResult({
       ok: true,
       nodeIds: g.nodeIds,
@@ -804,7 +799,7 @@
       outerFace: outerFace,
       graph: g,
       augmented: augmented,
-      pos: result.pos,
+      positions: result.positions,
       stopReason: result.stopReason,
       iters: iterationCount,
       objective: result.E,
@@ -814,24 +809,10 @@
   }
 
   async function applyFaceBalancerLayout(cy, options) {
-    var opts = options || {};
-    var iterationCount = 0;
-    return PlaygroundUtils.runLayout(cy, opts, {
+    return CyRuntime.runLayout(cy, options || {}, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'FaceBalancer layout',
       compute: computeFaceBalancerPositions,
-      patchComputeOptions: function (ctx) {
-        return {
-          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy),
-          onIteration: async function (progress) {
-            iterationCount = progress.iter;
-            await ctx.onProgress(progress);
-          }
-        };
-      },
-      getPositions: function (result) {
-        return result.pos;
-      },
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = result.boundedFaceCount === 0
@@ -839,7 +820,7 @@
           : buildLayoutStatusMessage('FaceBalancer', {
             boundedFaceCount: result.boundedFaceCount,
             dummyCount: result.augmented.dummyCount,
-            iters: iterationCount,
+            iters: result.iters,
             stopReason: result.stopReason,
             extraParts: [Number.isFinite(result.objective) ? 'obj ' + result.objective.toFixed(3) : null]
           });
@@ -848,11 +829,10 @@
           stopReason: result.stopReason,
           faceAreaScore: result.faceAreaScore,
           message: message,
-          debugState: PlaygroundUtils.createAugmentationDebugState(
+          debugState: LayoutPreprocessing.createAugmentationDebugState(
             result.graph,
-            result.outerFace,
             result.augmented,
-            result.pos
+            result.positions
           )
         };
       },

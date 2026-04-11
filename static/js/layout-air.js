@@ -1,7 +1,8 @@
 (function (global) {
   'use strict';
 
-  var PlaygroundUtils = global.PlaygroundUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
+  var CyRuntime = global.CyRuntime;
   var Metrics = global.PlanarVibeMetrics;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
@@ -289,13 +290,12 @@
 
   function normalizeAirOptions(options) {
     var opts = options || {};
-    var timing = PlaygroundUtils.resolveLayoutTimingOptions(opts, {
+    var timing = CyRuntime.resolveLayoutTimingOptions(opts, {
       delayMs: 0,
       renderEvery: 2,
       yieldEvery: 5
     });
     return {
-      interactive: opts.interactive !== false,
       augmentationMethod: opts.augmentationMethod || null,
       augmentationOptions: opts && typeof opts.augmentationOptions === 'object' && opts.augmentationOptions
         ? Object.assign({}, opts.augmentationOptions)
@@ -329,9 +329,8 @@
 
   function prepareAirState(graph, options) {
     var opts = normalizeAirOptions(options);
-    var context = PlaygroundUtils.prepareGraphAndLayoutData(graph, {
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'Air layout',
-      minNodeCount: 3,
       augmentationMethod: opts.augmentationMethod,
       augmentationOptions: opts.augmentationOptions,
       currentPositions: opts.currentPositions || null
@@ -426,7 +425,7 @@
       return {
         ok: !hasPositionCrossings(posById, g.edgePairs),
         status: 'realized',
-        pos: posById,
+        positions: posById,
         stats: lastStats,
         moveStats: lastMoveStats,
         boundedFaceCount: airData.triangles.length,
@@ -594,7 +593,7 @@
     return {
       ok: !hasPositionCrossings(posById, g.edgePairs),
       status: status,
-      pos: posById,
+      positions: posById,
       stats: lastStats,
       moveStats: lastMoveStats,
       boundedFaceCount: airData.triangles.length,
@@ -614,7 +613,7 @@
       return buildLayoutResult({
         ok: true,
         status: 'realized',
-        pos: prepared.posById,
+        positions: prepared.posById,
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
@@ -656,7 +655,7 @@
     return buildLayoutResult({
       ok: true,
       status: status,
-      pos: prepared.posById,
+      positions: prepared.posById,
       graph: prepared.graph,
       outerFace: prepared.outerFace,
       augmented: prepared.augmented,
@@ -671,19 +670,10 @@
   }
 
   async function applyAirLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'Air layout',
       compute: computeAirPositions,
-      patchComputeOptions: function (ctx) {
-        return {
-          onIteration: ctx.onProgress,
-          currentPositions: PlaygroundUtils.currentPositionsFromCy(ctx.cy)
-        };
-      },
-      getPositions: function (result) {
-        return result.pos;
-      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -695,12 +685,11 @@
           boundedFaceCount: result.boundedFaceCount,
           dummyCount: result.dummyCount,
           iters: result.iters,
-          debugState: typeof PlaygroundUtils.createAugmentationDebugState === 'function'
-            ? PlaygroundUtils.createAugmentationDebugState(
+          debugState: typeof LayoutPreprocessing.createAugmentationDebugState === 'function'
+            ? LayoutPreprocessing.createAugmentationDebugState(
               result.graph,
-              result.outerFace,
               result.augmented,
-              result.pos
+              result.positions
             )
             : null
         };

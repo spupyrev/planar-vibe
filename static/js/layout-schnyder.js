@@ -2,15 +2,16 @@
   'use strict';
 
   var GraphUtils = global.GraphUtils;
+  var LayoutPreprocessing = global.LayoutPreprocessing;
+  var CyRuntime = global.CyRuntime;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
-  var PlaygroundUtils = global.PlaygroundUtils;
   var buildAdjacencyArrays = GraphUtils.buildAdjacencyArrays;
   var copyPositions = GraphUtils.copyPositions;
   var hasPositionCrossings = GraphUtils.hasPositionCrossings;
   var normalizeGraphInput = GraphUtils.normalizeGraphInput;
-  var prepareGraphData = PlaygroundUtils.prepareGraphData;
+  var prepareGraphData = LayoutPreprocessing.prepareGraphData;
 
   function buildRotationById(embedding) {
     var byId = {};
@@ -474,13 +475,12 @@
         nodeIds: g.nodeIds,
         edgePairs: g.edgePairs,
         graph: g,
-        pos: smallPos
+        positions: smallPos
       });
     }
 
     var prepared = prepareGraphData(g, {
       failureLabel: 'Schnyder',
-      minNodeCount: 3,
       augmentationOptions: {
         triangulateOuterFace: true
       }
@@ -552,12 +552,12 @@
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
       graph: g,
-      pos: bestPos
+      positions: bestPos
     });
   }
 
   function applySchnyderLayout(cy, options) {
-    return PlaygroundUtils.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options || {}, {
       failureMessage: 'Schnyder failed',
       compute: function (nodeIds, edgePairs) {
         return computeSchnyderPositions(nodeIds, edgePairs);

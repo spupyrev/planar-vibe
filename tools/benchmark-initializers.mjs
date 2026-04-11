@@ -66,7 +66,8 @@ function loadBrowserModules() {
     'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
     'static/js/graph-generator.js',
-    'static/js/playground-utils.js',
+    'static/js/layout-preprocessing.js',
+    'static/js/cy-runtime.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
     'static/js/layout-ppag.js',
@@ -103,7 +104,7 @@ async function measureAsync(fn) {
 }
 
 function projectOriginalPositions(GraphUtils, graph, result) {
-  return GraphUtils.filterPositions((result && (result.pos || result.posById)) || {}, graph.nodeIds);
+  return GraphUtils.filterPositions((result && (result.positions || result.posById)) || {}, graph.nodeIds);
 }
 
 function validateSeedContext(modules, nodeIds, edgePairs, outerFace, context) {
@@ -170,7 +171,7 @@ function computeExactSeedForBenchmark(modules, nodeIds, edgePairs, outerFace, co
     }
   }
   if (interiorIds.length === 0) {
-    return { ok: true, pos, iters: 0 };
+    return { ok: true, positions: pos, iters: 0 };
   }
 
   const L = new Array(interiorIds.length);
@@ -258,13 +259,13 @@ function computeExactSeedForBenchmark(modules, nodeIds, edgePairs, outerFace, co
   for (let i = 0; i < interiorIds.length; i += 1) {
     pos[interiorIds[i]] = { x: x1[i], y: x2[i] };
   }
-  return { ok: true, pos, iters: 1 };
+  return { ok: true, positions: pos, iters: 1 };
 }
 
 function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
-  const PlaygroundUtils = modules.PlaygroundUtils;
+  const LayoutPreprocessing = modules.LayoutPreprocessing;
   const GraphUtils = modules.GraphUtils;
-  const prepared = PlaygroundUtils.prepareGraphData(graph, cfg);
+  const prepared = LayoutPreprocessing.prepareGraphData(graph, cfg);
   if (!prepared || !prepared.ok) {
     return prepared || { ok: false, message: 'prepareGraphData failed' };
   }
@@ -287,7 +288,7 @@ function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
     },
     iterativeOptions
   );
-  if (!init || !init.ok || !init.pos) {
+  if (!init || !init.ok || !init.positions) {
     return init || { ok: false, message: 'seed initializer failed' };
   }
 
@@ -297,22 +298,22 @@ function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
     baseEmbedding: prepared.baseEmbedding,
     outerFace: prepared.outerFace,
     augmented: prepared.augmented,
-    posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.pos, prepared.outerFace),
+    posById: GraphUtils.alignOuterFaceEdgeHorizontally(init.positions, prepared.outerFace),
     movableVertices: GraphUtils.collectMovableVertices(prepared.augmented.nodeIds, prepared.outerFace),
     initResult: init
   };
 }
 
 async function withSeedMethod(modules, seedName, fn) {
-  const PlaygroundUtils = modules.PlaygroundUtils;
-  const original = PlaygroundUtils.prepareGraphAndLayoutData;
-  PlaygroundUtils.prepareGraphAndLayoutData = function patchedPrepareGraphAndLayoutData(graph, config) {
+  const LayoutPreprocessing = modules.LayoutPreprocessing;
+  const original = LayoutPreprocessing.prepareGraphAndLayoutData;
+  LayoutPreprocessing.prepareGraphAndLayoutData = function patchedPrepareGraphAndLayoutData(graph, config) {
     return buildPreparedContext(modules, graph, config || {}, seedName);
   };
   try {
     return await fn();
   } finally {
-    PlaygroundUtils.prepareGraphAndLayoutData = original;
+    LayoutPreprocessing.prepareGraphAndLayoutData = original;
   }
 }
 
@@ -364,7 +365,6 @@ async function main() {
   const GraphUtils = modules.GraphUtils;
   const Metrics = modules.PlanarVibeMetrics;
   const Generator = modules.PlanarVibeGraphGenerator;
-  const PlaygroundUtils = modules.PlaygroundUtils;
   const Air = modules.PlanarVibeAir;
   const PPAG = modules.PlanarVibePPAG;
   const FaceBalancer = modules.PlanarVibeFaceBalancer;
@@ -379,8 +379,7 @@ async function main() {
   }));
 
   const seedBenchConfig = {
-    failureLabel: 'Benchmark seed',
-    minNodeCount: 3
+    failureLabel: 'Benchmark seed'
   };
   const iterativeSeedOptions = {
     maxIters: 2000,
