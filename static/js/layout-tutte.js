@@ -436,13 +436,10 @@
   }
 
   global.PlanarVibeTutteAlgorithm = {
-    buildSoftAugmentationWeights: buildSoftAugmentationWeights,
     buildUniformWeights: buildUniformWeights,
     defaultOuterPlacementOptions: defaultOuterPlacementOptions,
     placeOuterFaceVertices: placeOuterFaceVertices,
-    computeBarycentricPositions: computeBarycentricPositions,
-    solveBarycentricPositionsExact: solveBarycentricPositionsExact,
-    computeTutteLayout: computeTutteLayout
+    computeBarycentricPositions: computeBarycentricPositions
   };
 
   global.PlanarVibeTutte = {
