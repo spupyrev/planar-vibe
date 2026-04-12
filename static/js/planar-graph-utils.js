@@ -384,9 +384,8 @@
       pe.addFaceDummy(nextFace, dummyId);
     }
 
-    var outerDummyId;
     if (opts.triangulateOuterFace && selectedOuterFace.length > 3) {
-      outerDummyId = pe._nextDummyId('@outerDummy');
+      var outerDummyId = pe._nextDummyId('@outerDummy');
       dummyFaceVerticesById[outerDummyId] = selectedOuterFace.slice().map(String);
       pe.addFaceDummy(selectedOuterFace, outerDummyId, {
         newOuterFace: [outerDummyId, selectedOuterFace[0], selectedOuterFace[1]]
@@ -399,7 +398,6 @@
       ok: true,
       graph: finalGraph,
       dummyCount: Object.keys(dummyFaceVerticesById).length,
-      outerDummyId: outerDummyId,
       dummyFaceVerticesById: dummyFaceVerticesById,
       embedding: finalEmbedding
     };
@@ -422,13 +420,13 @@
     }
 
     var pe = PlanarEmbedding.fromEmbeddingObject(graph, emb, selectedOuterFace);
+    var opts = options || {};
     var dummyFaceVerticesById = {};
     var outerDummyIds;
-    var dummyCount = 0;
     var i;
 
     try {
-      outerDummyIds = pe.addOuterFaceCycle(selectedOuterFace, options || null);
+      outerDummyIds = pe.addOuterFaceCycle(selectedOuterFace, opts);
     } catch (err) {
       return {
         ok: false,
@@ -439,7 +437,6 @@
     for (i = 0; i < outerDummyIds.length; i += 1) {
       dummyFaceVerticesById[String(outerDummyIds[i])] = selectedOuterFace.slice().map(String);
     }
-    dummyCount += outerDummyIds.length;
 
     var faces = pe.faces.slice();
     for (i = 0; i < faces.length; i += 1) {
@@ -454,7 +451,6 @@
         var dummyId = pe._nextDummyId('@dummy');
         dummyFaceVerticesById[dummyId] = face.slice().map(String);
         pe.addFaceDummy(face, dummyId);
-        dummyCount += 1;
       } catch (err) {
         return {
           ok: false,
@@ -463,13 +459,21 @@
       }
     }
 
+    selectedOuterFace = pe.outerFace ? pe.outerFace.slice().map(String) : selectedOuterFace;
+    if (opts.triangulateOuterFace && selectedOuterFace.length > 3) {
+      var outerDummyId = pe._nextDummyId('@outerDummy');
+      dummyFaceVerticesById[outerDummyId] = selectedOuterFace.slice().map(String);
+      pe.addFaceDummy(selectedOuterFace, outerDummyId, {
+        newOuterFace: [outerDummyId, selectedOuterFace[0], selectedOuterFace[1]]
+      });
+    }
+
     var finalEmbedding = pe.toEmbeddingObject();
     var finalGraph = pe.toGraph();
     return {
       ok: true,
       graph: finalGraph,
-      dummyCount: dummyCount,
-      outerDummyIds: outerDummyIds.slice().map(String),
+      dummyCount: Object.keys(dummyFaceVerticesById).length,
       dummyFaceVerticesById: dummyFaceVerticesById,
       embedding: finalEmbedding
     };

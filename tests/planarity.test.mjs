@@ -128,8 +128,6 @@ const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
-const CEG23 = modules.PlanarVibeCEG23Bfs;
-const CEG23XY = modules.PlanarVibeCEG23Xy;
 const ImPrEd = modules.PlanarVibeImPrEd;
 const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
@@ -343,14 +341,6 @@ function edgeLengthRatio(edgePairs, positionsById) {
     return null;
   }
   return minLen / maxLen;
-}
-
-function seedGridPositions(cy, nodeIds) {
-  for (let i = 0; i < nodeIds.length; i += 1) {
-    const id = nodeIds[i];
-    const node = cy.nodes().find((n) => n.id() === id);
-    node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
-  }
 }
 
 function assertNoVertexOverlaps(cy, messagePrefix = 'vertex overlap') {
@@ -980,8 +970,9 @@ test('canonical ordering works on small triangulated planar non-3-tree (octahedr
   const canonical = result.canonical;
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on octahedron');
   assert.equal(prepared.ok, true);
-  assert.equal(prepared.embedding.edges.length, 12);
-  assert.equal(prepared.embedding.idByIndex.length, 6);
+  assert.equal(prepared.baseEmbedding.edges.length, 12);
+  assert.equal(prepared.baseEmbedding.idByIndex.length, 6);
+  assert.equal(prepared.embedding.outerFace.length, 3);
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on octahedron');
   assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
@@ -1206,31 +1197,19 @@ test('canonical ordering works on random planar non-3-tree graph', () => {
   assert.equal(new Set(canonical.order).size, canonical.order.length);
 });
 
-test('ReweightTutte keeps outer-face coordinates fixed across iterations', async () => {
+test('ReweightTutte keeps augmented outer-face coordinates fixed across iterations', async () => {
   const text = Generator.planarStellationGraph(40, 8, 7);
   const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+    failureLabel: 'ReweightTutte'
+  });
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'ReweightTutte setup failed');
 
-  // Seed an initial position set so Reweight has a viewport-relative frame.
-  for (let i = 0; i < graph.nodeIds.length; i += 1) {
-    const id = graph.nodeIds[i];
-    const node = cy.nodes().find((n) => n.id() === id);
-    node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
-  }
-
-  const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  assert.equal(emb && emb.ok, true);
-  let outer = emb.faces[0];
-  for (let i = 1; i < emb.faces.length; i += 1) {
-    if (emb.faces[i].length > outer.length) {
-      outer = emb.faces[i];
-    }
-  }
-  outer = outer.map(String);
-
+  const outer = prepared.augmentedOuterFace.slice();
   const snapshots = [];
-  const result = await Reweight.applyReweightTutteLayout(cy, {
+  const result = await Reweight.computeReweightTuttePositions(graph, {
     onIteration(step) {
+      assert.deepEqual(step.debug.outerFace, outer);
       const snap = {};
       for (const v of outer) {
         const p = step.positions[v];
@@ -1241,6 +1220,7 @@ test('ReweightTutte keeps outer-face coordinates fixed across iterations', async
   });
 
   assert.equal(result.ok, true, result.message || 'Reweight failed');
+  assert.deepEqual(result.outerFace, outer);
   assert.ok(snapshots.length >= 2, 'expected multiple iterations');
 
   const first = snapshots[0];
@@ -1254,31 +1234,24 @@ test('ReweightTutte keeps outer-face coordinates fixed across iterations', async
   }
 });
 
-test('ReweightTutte uses the same outer-face coordinates as Tutte', async () => {
+test('ReweightTutte preserves the shared augmented outer-face seed coordinates', async () => {
   const text = Generator.planarStellationGraph(40, 8, 7);
   const graph = parseEdgeListText(text);
-  const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  assert.equal(emb && emb.ok, true);
-  const outer = PlanarGraphUtils.chooseOuterFaceFromEmbedding(emb);
+  const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+    failureLabel: 'ReweightTutte'
+  });
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'ReweightTutte setup failed');
 
-  const cyTutte = buildMockCy(graph.nodeIds, graph.edgePairs);
-  const tutte = Tutte.applyTutteLayout(cyTutte);
-  assert.equal(tutte.ok, true, tutte.message || 'Tutte failed');
-
-  const cyReweight = buildMockCy(graph.nodeIds, graph.edgePairs);
-  for (let i = 0; i < graph.nodeIds.length; i += 1) {
-    const id = graph.nodeIds[i];
-    const node = cyReweight.nodes().find((n) => n.id() === id);
-    node.position({ x: (i % 10) * 40, y: Math.floor(i / 10) * 40 });
-  }
-  const reweight = await Reweight.applyReweightTutteLayout(cyReweight, { delayMs: 0 });
+  const outer = prepared.augmentedOuterFace.slice();
+  const reweight = await Reweight.computeReweightTuttePositions(graph);
   assert.equal(reweight.ok, true, reweight.message || 'Reweight failed');
+  assert.deepEqual(reweight.outerFace, outer);
 
   for (const v of outer) {
-    const pT = cyTutte.nodes().find((n) => n.id() === String(v))._pos;
-    const pR = cyReweight.nodes().find((n) => n.id() === String(v))._pos;
-    assert.ok(Math.abs(pT.x - pR.x) < 1e-9, `outer x mismatch for vertex ${v}`);
-    assert.ok(Math.abs(pT.y - pR.y) < 1e-9, `outer y mismatch for vertex ${v}`);
+    const seedPos = prepared.posById[v];
+    const finalPos = reweight.positions[v];
+    assert.ok(Math.abs(seedPos.x - finalPos.x) < 1e-9, `outer x mismatch for vertex ${v}`);
+    assert.ok(Math.abs(seedPos.y - finalPos.y) < 1e-9, `outer y mismatch for vertex ${v}`);
   }
 });
 
@@ -1552,7 +1525,7 @@ test('FaceBalancer rejects randomplanar4 because augmentation sees a non-simple 
 
   const result = await FaceBalancer.applyFaceBalancerLayout(cy, { delayMs: 0, maxIters: 20 });
   assert.equal(result.ok, false);
-  assert.match(String(result.message || ''), /simple face boundaries/i);
+  assert.match(String(result.message || ''), /simple boundary/i);
 });
 
 test('FaceBalancer preserves a plane drawing on planar3tree100', async () => {
@@ -1780,77 +1753,6 @@ test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {
   assert.equal(maxActiveCallbacks, 1, 'EdgeBalancer progress callbacks should not overlap');
 });
 
-test('CEG23-bfs layout applies on planar sample and assigns finite positions', () => {
-  const text = Generator.getSample('sample1');
-  const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-
-  const result = CEG23.applyCEG23BfsLayout(cy);
-  assert.equal(result.ok, true, result.message || 'CEG23-bfs failed');
-  assert.equal(cy._fitCalls > 0, true);
-
-  for (const node of cy.nodes()) {
-    assert.equal(node._pos !== null, true, `missing CEG23-bfs position for node ${node.id()}`);
-    assert.equal(Number.isFinite(node._pos.x), true);
-    assert.equal(Number.isFinite(node._pos.y), true);
-  }
-});
-
-test('CEG23-bfs rejects non-planar graphs', () => {
-  const text = Generator.getSample('nonplanar1');
-  const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-
-  const result = CEG23.applyCEG23BfsLayout(cy);
-  assert.equal(result.ok, false);
-  assert.match(String(result.message || ''), /planar graph/i);
-});
-
-test('CEG23-xy layout applies on planar sample and assigns finite positions', () => {
-  const text = Generator.getSample('sample1');
-  const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-
-  const result = CEG23XY.applyCEG23XyLayout(cy);
-  assert.equal(result.ok, true, result.message || 'CEG23-xy failed');
-  assert.equal(cy._fitCalls > 0, true);
-
-  for (const node of cy.nodes()) {
-    assert.equal(node._pos !== null, true, `missing CEG23-xy position for node ${node.id()}`);
-    assert.equal(Number.isFinite(node._pos.x), true);
-    assert.equal(Number.isFinite(node._pos.y), true);
-  }
-});
-
-test('CEG23-xy rejects non-planar graphs', () => {
-  const text = Generator.getSample('nonplanar1');
-  const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-
-  const result = CEG23XY.applyCEG23XyLayout(cy);
-  assert.equal(result.ok, false);
-  assert.match(String(result.message || ''), /planar graph/i);
-});
-
-test('CEG23-xy runs on G(50, 144) without crossings', () => {
-  const text = Generator.getSample('randomplanar3'); // G(50, 144)
-  const graph = parseEdgeListText(text);
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-
-  const result = CEG23XY.applyCEG23XyLayout(cy);
-  assert.equal(result.ok, true, result.message || 'CEG23-xy failed on G(50,144)');
-  assert.equal(cy._fitCalls > 0, true);
-
-  const posById = {};
-  for (const node of cy.nodes()) {
-    assert.equal(node._pos !== null, true, `missing CEG23-xy position for node ${node.id()}`);
-    assert.equal(Number.isFinite(node._pos.x), true);
-    assert.equal(Number.isFinite(node._pos.y), true);
-    posById[String(node.id())] = { x: node._pos.x, y: node._pos.y };
-  }
-  assert.equal(GeometryUtils.hasPositionCrossings(posById, graph.edgePairs), false);
-});
-
 test('ImPrEd layout applies on sample1 and assigns finite positions', async () => {
   const text = Generator.getSample('sample1');
   const graph = parseEdgeListText(text);
@@ -2010,78 +1912,6 @@ test('ImPrEd stops early when movements become insignificant', async () => {
   assert.equal(result.ok, true, result.message || 'ImPrEd failed on sample1');
   assert.notEqual(result.stopReason, 'max-iters');
   assert.ok(result.iterations < 500, `expected early convergence stop, got ${result.iterations} iterations`);
-});
-
-test('CEG23-bfs parameter sweep on sample1/sample2 tunes Face Areas score', () => {
-  const samples = ['sample1', 'sample2'];
-  const depthSources = ['outer-multi', 'outer-single'];
-  const edgeDepthModes = ['min', 'avg', 'max'];
-  const decayR = [1.10, 1.20, 1.30, 1.45, 1.60, 1.80];
-  const scaleA = [0.5, 1.0, 2.0];
-  const maxIters = 800;
-
-  for (const sampleName of samples) {
-    const text = Generator.getSample(sampleName);
-    const graph = parseEdgeListText(text);
-
-    const baselineCy = buildMockCy(graph.nodeIds, graph.edgePairs);
-    seedGridPositions(baselineCy, graph.nodeIds);
-    const baselineRes = CEG23.applyCEG23BfsLayout(baselineCy, {
-      depthSource: 'outer-multi',
-      edgeDepthMode: 'min',
-      a: 1.0,
-      r: 1.35,
-      maxIters
-    });
-    assert.equal(baselineRes.ok, true, `baseline CEG23-bfs failed on ${sampleName}`);
-    const baselineFace = Metrics.computeUniformFaceAreaScoreFromCy(baselineCy, graph.edgePairs);
-    assert.equal(baselineFace.ok, true, `baseline face metric failed on ${sampleName}: ${baselineFace.reason || ''}`);
-
-    let bestScore = baselineFace.quality;
-    let bestParams = {
-      depthSource: 'outer-multi',
-      edgeDepthMode: 'min',
-      a: 1.0,
-      r: 1.35
-    };
-
-    const t0 = Date.now();
-    let runs = 0;
-    for (const depthSource of depthSources) {
-      for (const edgeDepthMode of edgeDepthModes) {
-        for (const r of decayR) {
-          for (const a of scaleA) {
-            const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-            seedGridPositions(cy, graph.nodeIds);
-            const result = CEG23.applyCEG23BfsLayout(cy, {
-              depthSource: depthSource,
-              edgeDepthMode: edgeDepthMode,
-              a: a,
-              r: r,
-              maxIters: maxIters
-            });
-            assert.equal(result.ok, true, `CEG23-bfs failed on ${sampleName} with ${depthSource}/${edgeDepthMode}/a=${a}/r=${r}`);
-            const face = Metrics.computeUniformFaceAreaScoreFromCy(cy, graph.edgePairs);
-            assert.equal(face.ok, true, `face metric failed on ${sampleName}: ${face.reason || ''}`);
-            runs += 1;
-            if (face.quality > bestScore) {
-              bestScore = face.quality;
-              bestParams = { depthSource, edgeDepthMode, a, r };
-            }
-          }
-        }
-      }
-    }
-    const elapsedMs = Date.now() - t0;
-    // eslint-disable-next-line no-console
-    console.log(
-      `[CEG23-bfs sweep] ${sampleName}: baseline=${baselineFace.quality.toFixed(4)} best=${bestScore.toFixed(4)} ` +
-      `params=${JSON.stringify(bestParams)} runs=${runs} time_ms=${elapsedMs}`
-    );
-
-    assert.ok(Number.isFinite(bestScore), `best score is not finite for ${sampleName}`);
-    assert.ok(bestScore >= baselineFace.quality - 1e-12, `sweep regressed ${sampleName}`);
-  }
 });
 
 test('Tutte rejects graphs with fewer than 3 vertices', () => {
