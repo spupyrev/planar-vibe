@@ -34,6 +34,7 @@ function loadAlignmentModules() {
     'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
     'static/js/metrics.js',
+    'static/js/rotation.js',
     'static/js/alignment.js'
   ];
 

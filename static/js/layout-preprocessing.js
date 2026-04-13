@@ -363,7 +363,7 @@
       augmentedOuterFace: augmentedOuterFace,
       augmented: augmented,
       augmentedGraph: prepared.augmentedGraph,
-      posById: GeometryUtils.alignOuterFaceEdgeHorizontally(init.positions, augmentedOuterFace),
+      posById: init.positions,
       movableVertices: GraphUtils.collectMovableVertices(augmented.graph.nodeIds, augmentedOuterFace),
       initResult: init
     };

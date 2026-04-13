@@ -482,10 +482,25 @@ body {
   border-color: #c9d7ea;
 }
 
-.align-axis-btn {
+.rotate-graph-btn {
   position: absolute;
   top: 10px;
   right: 300px;
+  z-index: 5;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #9fb4cf;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.align-axis-btn {
+  position: absolute;
+  top: 10px;
+  right: 338px;
   z-index: 5;
   width: 34px;
   height: 34px;
@@ -568,7 +583,8 @@ body {
 }
 
 .reset-zoom-btn img,
-.interactive-toggle-btn img {
+.interactive-toggle-btn img,
+.rotate-graph-btn img {
   width: 100%;
   height: 100%;
   padding: 3px;
@@ -862,6 +878,7 @@ body {
   .augmentation-mode-toggle,
   .debug-augmentation-toggle,
   .reset-zoom-btn,
+  .rotate-graph-btn,
   .align-axis-btn {
     height: 32px;
     top: 8px;
@@ -894,8 +911,13 @@ body {
     height: 32px;
   }
 
-  .align-axis-btn {
+  .rotate-graph-btn {
     right: 82px;
+    width: 32px;
+  }
+
+  .align-axis-btn {
+    right: 118px;
     width: 32px;
   }
 

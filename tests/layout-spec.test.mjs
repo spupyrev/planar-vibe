@@ -179,6 +179,15 @@ test('shared barycentric seed helpers produce finite plane drawings', () => {
   assertFaceScoreRange(CUBE, posById, `shared seed on ${CUBE.name}`);
 });
 
+test('placeOuterFaceVertices places the first outer-face edge horizontally by construction', () => {
+  const face = ['a', 'b', 'c', 'd', 'e'];
+  const pos = Tutte.placeOuterFaceVertices(face, face, Tutte.defaultOuterPlacementOptions());
+  const a = pos.a;
+  const b = pos.b;
+  assert.ok(a && b, 'expected outer-face vertices to be placed');
+  assert.ok(Math.abs(a.y - b.y) < 1e-9, `expected first edge to be horizontal, got dy=${b.y - a.y}`);
+});
+
 async function assertComputeSpec(spec) {
   const result = await spec.run(spec.graph);
   assert.equal(result && result.ok, true, `${spec.name} failed on ${spec.graph.name}: ${result && (result.message || result.reason || result.stopReason || result.status)}`);

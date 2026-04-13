@@ -64,7 +64,8 @@
     var out = {
       defaultCenterX: 450,
       defaultCenterY: 310,
-      defaultRadius: 300
+      defaultRadius: 300,
+      outerRotation: null
     };
     var extra = overrides || {};
     var keys = Object.keys(extra);
@@ -89,19 +90,23 @@
     var R = opts.defaultRadius;
 
     var gamma = 2 * Math.PI / face.length;
+    var startAngle = Number.isFinite(opts.outerRotation)
+      ? opts.outerRotation
+      : (Math.PI / 2 - gamma / 2);
     for (i = 0; i < face.length; i += 1) {
-      var v = face[face.length - i - 1];
+      var v = face[i];
+      var angle = startAngle + gamma * i;
       pos[v] = {
-        x: cx + R * Math.cos(gamma * i),
-        y: cy + R * Math.sin(gamma * i)
+        x: cx + R * Math.cos(angle),
+        y: cy + R * Math.sin(angle)
       };
     }
     if (opts.fixedOuterPos) {
       for (i = 0; i < face.length; i += 1) {
-        v = face[i];
-        var fp = opts.fixedOuterPos[v];
+        var fpVertex = face[i];
+        var fp = opts.fixedOuterPos[fpVertex];
         if (fp && Number.isFinite(fp.x) && Number.isFinite(fp.y)) {
-          pos[v] = { x: fp.x, y: fp.y };
+          pos[fpVertex] = { x: fp.x, y: fp.y };
         }
       }
     }
@@ -268,11 +273,7 @@
       return buildLayoutError(barycentric || { message: 'Tutte failed' });
     }
 
-    var alignedPosById = GeometryUtils.alignOuterFaceEdgeHorizontally(
-      barycentric.positions,
-      augmentedOuterFace
-    );
-    var projected = filterPositions(alignedPosById, ids);
+    var projected = filterPositions(barycentric.positions, ids);
     var hasCrossings = hasPositionCrossings(projected, pairs);
     if (hasCrossings) {
       return buildLayoutError({
@@ -292,7 +293,7 @@
       augmented: prepared.augmented,
       graph: prepared.graph,
       positions: projected,
-      posById: alignedPosById,
+      posById: projected,
       iters: barycentric.iters
     });
   }

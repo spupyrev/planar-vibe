@@ -21,12 +21,14 @@ function loadMetricsModules() {
   });
 
   const files = [
+    'static/js/graph-generator.js',
     'static/js/planarity-test.js',
     'static/js/linear-algebra.js',
     'static/js/geometry-utils.js',
     'static/js/planar-graph-utils.js',
     'static/js/graph-utils.js',
-    'static/js/metrics.js'
+    'static/js/metrics.js',
+    'static/js/rotation.js'
   ];
 
   for (const rel of files) {
@@ -37,18 +39,73 @@ function loadMetricsModules() {
   }
 
   return {
+    GraphGenerator: window.PlanarVibeGraphGenerator,
     GeometryUtils: window.GeometryUtils,
     GraphUtils: window.GraphUtils,
     Metrics: window.PlanarVibeMetrics,
+    Rotation: window.PlanarVibeRotation,
     PlanarityTest: window.PlanarVibePlanarityTest
   };
 }
 
 const loaded = loadMetricsModules();
+const GraphGenerator = loaded.GraphGenerator;
 const GeometryUtils = loaded.GeometryUtils;
 const GraphUtils = loaded.GraphUtils;
 const Metrics = loaded.Metrics;
+const Rotation = loaded.Rotation;
 const PlanarityTest = loaded.PlanarityTest;
+
+function parseSampleWithCoordinates(text) {
+  const nodeIds = [];
+  const nodeSet = new Set();
+  const posById = {};
+  const edgePairs = [];
+  const lines = String(text || '').split(/\r?\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const parts = line.split(/\s+/);
+    if (parts[0] === 'v' || parts[0] === 'V') {
+      if (parts.length < 4) continue;
+      const id = String(parts[1]);
+      posById[id] = { x: Number(parts[2]), y: Number(parts[3]) };
+      if (!nodeSet.has(id)) {
+        nodeSet.add(id);
+        nodeIds.push(id);
+      }
+      continue;
+    }
+    if (parts.length < 2) continue;
+    const u = String(parts[0]);
+    const v = String(parts[1]);
+    edgePairs.push([u, v]);
+    if (!nodeSet.has(u)) {
+      nodeSet.add(u);
+      nodeIds.push(u);
+    }
+    if (!nodeSet.has(v)) {
+      nodeSet.add(v);
+      nodeIds.push(v);
+    }
+  }
+  return { nodeIds, edgePairs, posById };
+}
+
+function computePositionMapCenter(posById) {
+  const ids = Object.keys(posById || {});
+  let sx = 0;
+  let sy = 0;
+  let count = 0;
+  for (const id of ids) {
+    const p = posById[id];
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    sx += p.x;
+    sy += p.y;
+    count += 1;
+  }
+  return count > 0 ? { x: sx / count, y: sy / count } : { x: 0, y: 0 };
+}
 
 test('GraphUtils.createGraph rejects duplicate and non-simple edges', () => {
   const nodeIds = ['1', '2', '3'];
@@ -340,6 +397,151 @@ test('computeSpacingUniformityScore returns no-data for insufficient valid dista
   const result = Metrics.computeSpacingUniformityScore(nodeIds, posById);
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'Not enough valid nearest-neighbor distances');
+});
+
+test('computeUnweightedEdgeHorizontalityScore is 1 when all edges are horizontal', () => {
+  const edgePairs = [['1', '2'], ['2', '3']];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 5, y: 0 }
+  };
+  const result = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.score - 1) < 1e-12);
+  assert.ok(Math.abs(result.penalty) < 1e-12);
+});
+
+test('computeUnweightedEdgeHorizontalityScore prefers an equilateral triangle with one side horizontal', () => {
+  const sqrt3 = Math.sqrt(3);
+  const edgePairs = [['1', '2'], ['2', '3'], ['3', '1']];
+  const flatPosById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 1, y: sqrt3 }
+  };
+  const rotatedPosById = GeometryUtils.rotatePositionMap(flatPosById, { x: 1, y: sqrt3 / 3 }, Math.PI / 6);
+
+  const flat = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, flatPosById);
+  const rotated = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, rotatedPosById);
+
+  assert.equal(flat.ok, true);
+  assert.equal(rotated.ok, true);
+  assert.ok(flat.score > rotated.score + 1e-6);
+});
+
+test('computeWeightedEdgeHorizontalityScore weights longer edges more strongly', () => {
+  const edgePairs = [['1', '2'], ['3', '4']];
+  const mostlyFlat = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 10, y: 0 },
+    '3': { x: 0, y: 1 },
+    '4': { x: 1, y: 2 }
+  };
+  const mostlySteep = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 0, y: 10 },
+    '3': { x: 0, y: 1 },
+    '4': { x: 1, y: 1 }
+  };
+
+  const flat = Metrics.computeWeightedEdgeHorizontalityScore(edgePairs, mostlyFlat);
+  const steep = Metrics.computeWeightedEdgeHorizontalityScore(edgePairs, mostlySteep);
+
+  assert.equal(flat.ok, true);
+  assert.equal(steep.ok, true);
+  assert.ok(flat.score > steep.score + 0.4);
+});
+
+test('computeUnweightedEdgeHorizontalityScore ignores edge stretching across drawings', () => {
+  const edgePairs = [['1', '2'], ['3', '4']];
+  const base = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 1, y: 0 },
+    '3': { x: 0, y: 1 },
+    '4': { x: 1, y: 2 }
+  };
+  const stretched = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 100, y: 0 },
+    '3': { x: 0, y: 1 },
+    '4': { x: 1, y: 2 }
+  };
+
+  const a = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, base);
+  const b = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, stretched);
+
+  assert.equal(a.ok, true);
+  assert.equal(b.ok, true);
+  assert.ok(Math.abs(a.score - b.score) < 1e-12);
+});
+
+test('computeOptimalWeightedEdgeRotation prefers an equilateral triangle with one side horizontal', () => {
+  const sqrt3 = Math.sqrt(3);
+  const edgePairs = [['1', '2'], ['2', '3'], ['3', '1']];
+  const flatPosById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 1, y: sqrt3 }
+  };
+  const rotatedPosById = GeometryUtils.rotatePositionMap(flatPosById, { x: 1, y: sqrt3 / 3 }, Math.PI / 6);
+
+  const result = Rotation.computeOptimalWeightedEdgeRotation(edgePairs, rotatedPosById);
+  assert.equal(result.ok, true);
+  assert.ok(result.improved);
+  assert.ok(result.scoreAfter > result.scoreBefore + 1e-6 ||
+    result.matchedCountAfter1 > result.matchedCountBefore1 ||
+    result.matchedCountAfter3 > result.matchedCountBefore3 ||
+    result.matchedCountAfter5 > result.matchedCountBefore5);
+});
+
+test('computeOptimalWeightedEdgeRotation returns no improvement when already optimal', () => {
+  const edgePairs = [['1', '2'], ['2', '3']];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 5, y: 0 }
+  };
+  const result = Rotation.computeOptimalWeightedEdgeRotation(edgePairs, posById);
+  assert.equal(result.ok, true);
+  assert.equal(result.improved, false);
+  assert.ok(Math.abs(result.scoreAfter - result.scoreBefore) < 1e-12);
+});
+
+test('sample5 input coordinates stay put under the exact-horizontal bonus objective', () => {
+  const parsed = parseSampleWithCoordinates(GraphGenerator.getSample('sample5'));
+  const rotation = Rotation.computeOptimalWeightedEdgeRotation(parsed.edgePairs, parsed.posById);
+
+  assert.equal(rotation.ok, true);
+  assert.equal(rotation.improved, false);
+  assert.equal(rotation.angle, 0);
+  assert.equal(rotation.matchedCountBefore0, 6);
+  assert.equal(rotation.matchedCountAfter0, 6);
+  assert.equal(rotation.matchedCountBefore1, 7);
+  assert.equal(rotation.matchedCountAfter1, 7);
+  assert.equal(rotation.matchedCountBefore3, 7);
+  assert.equal(rotation.matchedCountAfter3, 7);
+  assert.equal(rotation.matchedCountBefore5, 7);
+  assert.equal(rotation.matchedCountAfter5, 7);
+  assert.ok(Math.abs(rotation.scoreAfter - rotation.scoreBefore) < 1e-12);
+});
+
+test('sample6 input coordinates rotate to make one long edge exactly horizontal under the exact-horizontal bonus objective', () => {
+  const parsed = parseSampleWithCoordinates(GraphGenerator.getSample('sample6'));
+  const rotation = Rotation.computeOptimalWeightedEdgeRotation(parsed.edgePairs, parsed.posById);
+
+  assert.equal(rotation.ok, true);
+  assert.equal(rotation.improved, true);
+  assert.ok(Math.abs((rotation.angle * 180 / Math.PI) + 59.94) < 0.2);
+  assert.equal(rotation.matchedCountBefore0, 0);
+  assert.equal(rotation.matchedCountAfter0, 1);
+  assert.equal(rotation.matchedCountBefore1, 1);
+  assert.equal(rotation.matchedCountAfter1, 1);
+  assert.equal(rotation.matchedCountBefore3, 1);
+  assert.equal(rotation.matchedCountAfter3, 1);
+  assert.equal(rotation.matchedCountBefore5, 2);
+  assert.equal(rotation.matchedCountAfter5, 2);
+  assert.ok(rotation.scoreAfter > rotation.scoreBefore);
 });
 
 test('hasCrossingsFromPositions rejects a vertex on a non-incident edge', () => {

@@ -150,6 +150,7 @@
     var DEFAULT_EDGE_WIDTH = 0.75;
     var DEFAULT_WORLD_WIDTH = 900;
     var DEFAULT_WORLD_HEIGHT = 620;
+    var DRAWING_TOP_CLEARANCE_PX = 28;
     var PREF_VERTEX_SIZE_KEY = 'planarvibe_vertex_size';
     var PREF_EDGE_WIDTH_KEY = 'planarvibe_edge_width';
     var PREF_INTERACTIVE_KEY = 'planarvibe_interactive_mode';
@@ -786,6 +787,7 @@
       clearEdgeLengthPlot(text);
       clearAngleResolutionPlot(text);
       global.$('#stats-spacing-uniformity').text('--');
+      global.$('#stats-edge-horizontality').text('--');
       global.$('#stats-axis-alignment').text('--');
       setAlignEnabled(false);
     }
@@ -1064,6 +1066,7 @@
       if (!currentParsed || !currentParsed.elements) {
         clearEdgeLengthPlot('No graph');
         global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-edge-horizontality').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
@@ -1074,6 +1077,7 @@
       if (!nodeIds.length) {
         clearEdgeLengthPlot('No graph');
         global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-edge-horizontality').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
@@ -1081,6 +1085,7 @@
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformEdgeLengthScore) {
         clearEdgeLengthPlot('Metrics unavailable');
         global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-edge-horizontality').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
@@ -1089,6 +1094,7 @@
       if (!result.ok) {
         clearEdgeLengthPlot(result.reason || 'No data');
         global.$('#stats-spacing-uniformity').text('--');
+        global.$('#stats-edge-horizontality').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
@@ -1099,6 +1105,7 @@
       );
       updateEdgeLengthRatio(edgePairs, posById);
       updateSpacingUniformity(nodeIds, posById);
+      updateEdgeHorizontality(edgePairs, posById);
       updateAxisAlignment(nodeIds, posById);
     }
 
@@ -1128,6 +1135,19 @@
       global.$('#stats-spacing-uniformity').text(result.score.toFixed(3));
     }
 
+    function updateEdgeHorizontality(edgePairs, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUnweightedEdgeHorizontalityScore) {
+        global.$('#stats-edge-horizontality').text('--');
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeUnweightedEdgeHorizontalityScore(edgePairs, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score)) {
+        global.$('#stats-edge-horizontality').text('--');
+        return;
+      }
+      global.$('#stats-edge-horizontality').text(result.score.toFixed(3));
+    }
+
     function updateAxisAlignment(nodeIds, posById) {
       if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeAxisAlignmentScore) {
         global.$('#stats-axis-alignment').text('--');
@@ -1139,6 +1159,88 @@
         return;
       }
       global.$('#stats-axis-alignment').text(result.score.toFixed(3));
+    }
+
+    function computeDrawingCenter(posById) {
+      var keys = Object.keys(posById || {});
+      var sx = 0;
+      var sy = 0;
+      var count = 0;
+      for (var i = 0; i < keys.length; i += 1) {
+        var p = posById[keys[i]];
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          continue;
+        }
+        sx += p.x;
+        sy += p.y;
+        count += 1;
+      }
+      if (count < 1) {
+        return { x: 0, y: 0 };
+      }
+      return { x: sx / count, y: sy / count };
+    }
+
+    function runAutoRotation() {
+      if (layoutBusyState) {
+        setStatus('Wait for the current layout to finish first', true);
+        return;
+      }
+      if (!currentParsed || !currentParsed.elements) {
+        setStatus('Load a graph first', true);
+        return;
+      }
+      if (!global.PlanarVibeRotation || typeof global.PlanarVibeRotation.computeOptimalWeightedEdgeRotation !== 'function') {
+        setStatus('Rotation module is missing', true);
+        return;
+      }
+      if (!global.GeometryUtils || typeof global.GeometryUtils.rotatePositionMap !== 'function') {
+        setStatus('Planar graph utilities are missing', true);
+        return;
+      }
+
+      var edgePairs = edgePairsFromParsed(currentParsed);
+      var posById = getCurrentPositions();
+      var center = computeDrawingCenter(posById);
+      var result = global.PlanarVibeRotation.computeOptimalWeightedEdgeRotation(edgePairs, posById);
+      if (!result || !result.ok || !Number.isFinite(result.angle)) {
+        setStatus((result && result.reason) ? result.reason : 'Rotate failed', true);
+        return;
+      }
+      if (!result.improved) {
+        var noChangeMessage = 'Rotate made no changes';
+        if (Number.isFinite(result.matchedCountBefore0) &&
+            Number.isFinite(result.matchedCountBefore1) &&
+            Number.isFinite(result.matchedCountBefore3) &&
+            Number.isFinite(result.matchedCountBefore5)) {
+          noChangeMessage += ' | edges <=0/1/' + result.thresholdDeg3 + '/' + result.thresholdDeg5 + 'deg: ' +
+            result.matchedCountBefore0 + '/' + result.matchedCountBefore1 + '/' + result.matchedCountBefore3 + '/' + result.matchedCountBefore5;
+        }
+        setStatus(noChangeMessage + graphSizeSuffix() + smallGraphCoordinatesSuffix(), false);
+        return;
+      }
+
+      var rotated = global.GeometryUtils.rotatePositionMap(posById, center, result.angle);
+      applyPositionMapToCurrentDrawing(rotated);
+      fitCurrentDrawingViewport();
+      updateFaceAreaPlot();
+      updateEdgeLengthPlot();
+
+      var degrees = result.angle * 180 / Math.PI;
+      var message = 'Rotated drawing by ' + degrees.toFixed(1) + ' deg';
+      if (Number.isFinite(result.scoreBefore) && Number.isFinite(result.scoreAfter)) {
+        message += ' | weighted near-horizontal bands score ' + result.scoreBefore.toFixed(3) + ' -> ' + result.scoreAfter.toFixed(3);
+      }
+      if (Number.isFinite(result.matchedCountBefore0) && Number.isFinite(result.matchedCountAfter0) &&
+          Number.isFinite(result.matchedCountBefore1) && Number.isFinite(result.matchedCountAfter1) &&
+          Number.isFinite(result.matchedCountBefore3) && Number.isFinite(result.matchedCountAfter3) &&
+          Number.isFinite(result.matchedCountBefore5) && Number.isFinite(result.matchedCountAfter5)) {
+        message += ' | edges <=0/1/' + result.thresholdDeg3 + '/' + result.thresholdDeg5 + 'deg ' +
+          result.matchedCountBefore0 + '/' + result.matchedCountBefore1 + '/' + result.matchedCountBefore3 + '/' + result.matchedCountBefore5 +
+          ' -> ' +
+          result.matchedCountAfter0 + '/' + result.matchedCountAfter1 + '/' + result.matchedCountAfter3 + '/' + result.matchedCountAfter5;
+      }
+      setStatus(message + graphSizeSuffix() + smallGraphCoordinatesSuffix(), false);
     }
 
     function runAxisAlignment() {
@@ -1251,6 +1353,7 @@
 
       var radius = graphStylePrefs.vertexSize / 2;
       var margin = Math.max(24, radius + 8);
+      var topMargin = margin + DRAWING_TOP_CLEARANCE_PX;
       var minX = Infinity;
       var minY = Infinity;
       var maxX = -Infinity;
@@ -1261,7 +1364,7 @@
           continue;
         }
         minX = Math.min(minX, p.x - radius - margin);
-        minY = Math.min(minY, p.y - radius - margin);
+        minY = Math.min(minY, p.y - radius - topMargin);
         maxX = Math.max(maxX, p.x + radius + margin);
         maxY = Math.max(maxY, p.y + radius + margin);
       }
@@ -1286,6 +1389,31 @@
         width: width,
         height: height
       };
+    }
+
+    function computeCurrentDrawingFitBounds(posById, nodeIds) {
+      var ids = Array.isArray(nodeIds) ? nodeIds : [];
+      var radius = graphStylePrefs.vertexSize / 2;
+      var margin = Math.max(24, radius + 8);
+      var topMargin = margin + DRAWING_TOP_CLEARANCE_PX;
+      var minX = Infinity;
+      var minY = Infinity;
+      var maxX = -Infinity;
+      var maxY = -Infinity;
+      for (var i = 0; i < ids.length; i += 1) {
+        var p = posById ? posById[String(ids[i])] : null;
+        if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+          continue;
+        }
+        minX = Math.min(minX, p.x - radius - margin);
+        minY = Math.min(minY, p.y - radius - topMargin);
+        maxX = Math.max(maxX, p.x + radius + margin);
+        maxY = Math.max(maxY, p.y + radius + margin);
+      }
+      if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY)) {
+        return null;
+      }
+      return { x1: minX, y1: minY, x2: maxX, y2: maxY };
     }
 
     function renderStaticSnapshot() {
@@ -1442,8 +1570,7 @@
           normalizeLayoutScale();
           saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
         } else if (!global.CyRuntime.applyViewportToCy(cy, savedViewport)) {
-          cy.fit(undefined, 24);
-          saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
+          fitCurrentDrawingViewport();
         }
         global.CyRuntime.syncOverlayInCy(cy, buildDebugOverlayData());
       }
@@ -1511,7 +1638,7 @@
             debugState.dummyPositionsById[singleKeys[si]] = { x: targetWidth / 2, y: targetHeight / 2 };
           }
         }
-        cy.fit(undefined, 24);
+        fitCurrentDrawingViewport();
         return;
       }
       nodes.forEach(function (node) {
@@ -1535,7 +1662,7 @@
           debugState.dummyPositionsById[dummyId] = transformPoint(dp);
         }
       }
-      cy.fit(undefined, 24);
+      fitCurrentDrawingViewport();
     }
 
     function setStatistics(stats) {
@@ -2516,10 +2643,31 @@
       if (cy.nodes().length === 0) {
         return;
       }
-      cy.fit(undefined, 20);
-      cy.center();
-      saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
+      fitCurrentDrawingViewport();
       setStatus('Zoom reset', false);
+    }
+
+    function fitCurrentDrawingViewport() {
+      if (!cy) {
+        if (!currentParsed || !currentParsed.elements) {
+          return;
+        }
+        saveViewportState(computeStaticFitViewport());
+        renderStaticSnapshot();
+        return;
+      }
+      if (cy.nodes().length === 0) {
+        return;
+      }
+      var nodeIds = currentParsed ? getNodeIdsFromParsed(currentParsed) : [];
+      var bounds = computeCurrentDrawingFitBounds(getCurrentPositions(), nodeIds);
+      if (bounds) {
+        cy.fit(bounds, 0);
+      } else {
+        cy.fit(undefined, 20);
+        cy.center();
+      }
+      saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
     }
 
     function exportSvg() {
@@ -2722,6 +2870,10 @@
 
       global.$('#interactive-toggle-btn').on('click', function () {
         setInteractiveMode(!isInteractive);
+      });
+
+      global.$('#rotate-graph-btn').on('click', function () {
+        runAutoRotation();
       });
 
       global.$('#align-axis-btn').on('click', function () {

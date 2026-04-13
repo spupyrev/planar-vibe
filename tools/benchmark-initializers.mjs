@@ -195,7 +195,7 @@ function buildPreparedContext(modules, graph, cfg, seedName, iterativeOptions) {
     outerFace: prepared.outerFace,
     augmented: prepared.augmented,
     augmentedGraph: prepared.augmentedGraph,
-    posById: modules.GeometryUtils.alignOuterFaceEdgeHorizontally(init.positions, prepared.augmentedOuterFace),
+    posById: init.positions,
     movableVertices: GraphUtils.collectMovableVertices(prepared.augmented.graph.nodeIds, prepared.augmentedOuterFace),
     initResult: init
   };

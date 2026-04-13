@@ -170,6 +170,12 @@
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
+                  <span title="Unweighted score in [0,1] that rewards edges being close to horizontal and penalizes angular deviation quadratically">Edge Horizontality:</span>
+                  <span id="stats-edge-horizontality" title="Unweighted score in [0,1] that rewards edges being close to horizontal and penalizes angular deviation quadratically">--</span>
+                </div>
+              </div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
                   <span title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">Axis Alignment:</span>
                   <span id="stats-axis-alignment" title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">--</span>
                 </div>
@@ -201,6 +207,9 @@
           </label>
           <button id="interactive-toggle-btn" type="button" class="btn btn-light btn-sm interactive-toggle-btn" title="Toggle Cytoscape interactivity" aria-label="Toggle Cytoscape interactivity" aria-pressed="true">
             <img src="static/img/interactive.svg" alt="">
+          </button>
+          <button id="rotate-graph-btn" type="button" class="btn btn-light btn-sm rotate-graph-btn" title="Rotate graph" aria-label="Rotate graph">
+            <img src="static/img/rotate.svg" alt="">
           </button>
           <button id="align-axis-btn" type="button" class="btn btn-light btn-sm align-axis-btn" title="Align to grid" aria-label="Align to grid" disabled>
             <img src="static/img/align.svg" alt="">
@@ -276,6 +285,7 @@
   <script src="static/js/graph-utils.js"></script>
   <script src="static/js/planarity-test.js"></script>
   <script src="static/js/metrics.js"></script>
+  <script src="static/js/rotation.js"></script>
   <script src="static/js/alignment.js"></script>
   <script src="static/js/layout-preprocessing.js"></script>
   <script src="static/js/cy-runtime.js"></script>

@@ -430,6 +430,82 @@
     };
   }
 
+  function wrapAngleToPi(angle) {
+    var wrapped = Number(angle) || 0;
+    var PI = Math.PI;
+    var TWO_PI = 2 * PI;
+    wrapped = wrapped % TWO_PI;
+    if (wrapped <= -PI) {
+      wrapped += TWO_PI;
+    } else if (wrapped > PI) {
+      wrapped -= TWO_PI;
+    }
+    return wrapped;
+  }
+
+  function angleToNearestHorizontal(angle) {
+    var wrapped = wrapAngleToPi(angle);
+    var absAngle = Math.abs(wrapped);
+    return Math.min(absAngle, Math.abs(Math.PI - absAngle));
+  }
+
+  function computeGenericEdgeHorizontalityScore(edgePairs, posById, options) {
+    if (!edgePairs || edgePairs.length === 0) {
+      return { ok: false, reason: 'No edges' };
+    }
+    var opts = options || {};
+    var useLengthWeights = opts.useLengthWeights === true;
+    var angleOffset = Number.isFinite(opts.angleOffset) ? opts.angleOffset : 0;
+    var totalWeight = 0;
+    var weightedPenalty = 0;
+    var usedEdgeCount = 0;
+    var maxDeviation = Math.PI / 2;
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var u = String(edgePairs[i][0]);
+      var v = String(edgePairs[i][1]);
+      var pu = posById[u];
+      var pv = posById[v];
+      if (!pu || !pv || !Number.isFinite(pu.x) || !Number.isFinite(pu.y) || !Number.isFinite(pv.x) || !Number.isFinite(pv.y)) {
+        return { ok: false, reason: 'Metrics unavailable' };
+      }
+      var dx = pv.x - pu.x;
+      var dy = pv.y - pu.y;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (!(len > 1e-12)) {
+        continue;
+      }
+      var deviation = angleToNearestHorizontal(Math.atan2(dy, dx) + angleOffset);
+      var normalizedDeviation = deviation / maxDeviation;
+      var weight = useLengthWeights ? len : 1;
+      totalWeight += weight;
+      weightedPenalty += weight * normalizedDeviation * normalizedDeviation;
+      usedEdgeCount += 1;
+    }
+    if (!(totalWeight > 0) || usedEdgeCount === 0) {
+      return { ok: false, reason: 'No edge lengths available' };
+    }
+    var meanPenalty = weightedPenalty / totalWeight;
+    return {
+      ok: true,
+      score: Math.max(0, Math.min(1, 1 - meanPenalty)),
+      penalty: Math.max(0, meanPenalty),
+      weightedPenalty: weightedPenalty,
+      totalWeight: totalWeight,
+      usedEdgeCount: usedEdgeCount,
+      weighting: useLengthWeights ? 'length' : 'uniform'
+    };
+  }
+
+  function computeUnweightedEdgeHorizontalityScore(edgePairs, posById, options) {
+    var opts = Object.assign({}, options || {}, { useLengthWeights: false });
+    return computeGenericEdgeHorizontalityScore(edgePairs, posById, opts);
+  }
+
+  function computeWeightedEdgeHorizontalityScore(edgePairs, posById, options) {
+    var opts = Object.assign({}, options || {}, { useLengthWeights: true });
+    return computeGenericEdgeHorizontalityScore(edgePairs, posById, opts);
+  }
+
   function computeSpacingUniformityScore(nodeIds, posById, options) {
     var opts = options || {};
     var trimQuantile = Number.isFinite(opts.boundaryTrimQuantile)
@@ -693,6 +769,8 @@
     computeUniformFaceAreaScoreFromCy: computeUniformFaceAreaScoreFromCy,
     computeUniformEdgeLengthScore: computeUniformEdgeLengthScore,
     computeEdgeLengthRatio: computeEdgeLengthRatio,
+    computeUnweightedEdgeHorizontalityScore: computeUnweightedEdgeHorizontalityScore,
+    computeWeightedEdgeHorizontalityScore: computeWeightedEdgeHorizontalityScore,
     computeAxisAlignmentScore: computeAxisAlignmentScore,
     computeSpacingUniformityScore: computeSpacingUniformityScore,
     computeUniformAngleResolutionScore: computeUniformAngleResolutionScore,
