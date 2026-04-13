@@ -58,7 +58,7 @@ const GeometryUtils = modules.GeometryUtils;
 const LayoutPreprocessing = modules.LayoutPreprocessing;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
-const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
+const TutteAlgorithm = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
@@ -198,8 +198,7 @@ const layoutSpecs = [
         graph,
         ['1', '2', '3'],
         {
-          maxIters: 500,
-          tolerance: 1e-8,
+          weights: TutteAlgorithm.buildTutteWeights(graph, graph),
           initOptions: TutteAlgorithm.defaultOuterPlacementOptions()
         }
       );
@@ -347,7 +346,9 @@ test('normalized failure shape is preserved for exported compute functions', asy
   const failureCases = [
     {
       name: 'Tutte barycentric primitive',
-      run: () => TutteAlgorithm.computeBarycentricPositions(emptyGraph, [])
+      run: () => TutteAlgorithm.computeBarycentricPositions(emptyGraph, [], {
+        weights: TutteAlgorithm.buildTutteWeights(emptyGraph, emptyGraph)
+      })
     },
     {
       name: 'Tutte compute',

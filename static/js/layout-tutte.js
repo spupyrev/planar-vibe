@@ -9,27 +9,12 @@
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
-  var createGraph = GraphUtils.createGraph;
   var edgeKey = GraphUtils.edgeKey;
   var filterPositions = GeometryUtils.filterPositionMap;
   var luFactorize = LinearAlgebraUtils.luFactorize;
-  var resolveFloatOption = GraphUtils.resolveFloatOption;
-  var resolveIntOption = GraphUtils.resolveIntOption;
   var normalizeOuterFace = GraphUtils.normalizeOuterFace;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
-
-  function buildUniformWeights(edgePairs, value) {
-    var pairs = edgePairs;
-    var weights = {};
-    var w = Number.isFinite(value) && value > 0 ? value : 1;
-    for (var i = 0; i < pairs.length; i += 1) {
-      var u = pairs[i][0];
-      var v = pairs[i][1];
-      weights[edgeKey(u, v)] = w;
-    }
-    return weights;
-  }
 
   function buildDegreeMap(graph) {
     var ids = graph.nodeIds;
@@ -47,16 +32,14 @@
     return degreeById;
   }
 
-  function buildSoftAugmentationWeights(graph, augmentedGraph, options) {
-    var opts = options || {};
+  function buildTutteWeights(graph, augmentedGraph) {
     var originalPairs = graph.edgePairs;
     var augmentedPairs = augmentedGraph.edgePairs;
     var degreeById = buildDegreeMap(augmentedGraph);
     var originalEdgeSet = {};
     var weights = {};
-    var useDegreeNormalization = opts.normalizeByDegree !== false;
-    var originalWeight = resolveFloatOption(opts.originalEdgeWeight, 1, 1e-9);
-    var augmentationWeight = resolveFloatOption(opts.augmentationEdgeWeight, 0.245, 1e-9);
+    var originalWeight = 1;
+    var augmentationWeight = 0.245;
     var i;
 
     for (i = 0; i < originalPairs.length; i += 1) {
@@ -68,11 +51,9 @@
       var v = augmentedPairs[i][1];
       var key = edgeKey(u, v);
       var baseWeight = originalEdgeSet[key] ? originalWeight : augmentationWeight;
-      if (useDegreeNormalization) {
-        var du = Math.max(1, degreeById[u] || 0);
-        var dv = Math.max(1, degreeById[v] || 0);
-        baseWeight /= Math.sqrt(du * dv);
-      }
+      var du = Math.max(1, degreeById[u] || 0);
+      var dv = Math.max(1, degreeById[v] || 0);
+      baseWeight /= Math.sqrt(du * dv);
       weights[key] = baseWeight;
     }
 
@@ -127,14 +108,12 @@
     return pos;
   }
 
-  function solveBarycentricPositionsExact(graph, outerFace, options) {
+  function computeBarycentricPositions(graph, outerFace, options) {
     var opts = options || {};
     var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
     var face = normalizeOuterFace(outerFace);
     var adjacency = opts.adjacency || graph.adjacency;
-    var weights = opts.weights || buildUniformWeights(pairs, 1);
-    var rowWeights = opts.rowWeights || null;
+    var weights = opts.weights || null;
     var initOptions = opts.initOptions || defaultOuterPlacementOptions();
     var pos = placeOuterFaceVertices(ids, face, initOptions);
     var outerSet = new Set(face);
@@ -153,6 +132,13 @@
     if (face.length < 3) {
       return buildLayoutError({
         message: 'Outer face is invalid',
+        graph: graph,
+        outerFace: face
+      });
+    }
+    if (!weights || typeof weights !== 'object') {
+      return buildLayoutError({
+        message: 'Barycentric weights are required',
         graph: graph,
         outerFace: face
       });
@@ -193,10 +179,7 @@
       var weightSum = 0;
       for (j = 0; j < neighbors.length; j += 1) {
         var u = String(neighbors[j]);
-        var w = rowWeights && rowWeights[v] ? rowWeights[v][u] : undefined;
-        if (!Number.isFinite(w) || w <= 0) {
-          w = weights[edgeKey(v, u)];
-        }
+        var w = weights[edgeKey(v, u)];
         if (!Number.isFinite(w) || w <= 0) {
           w = 1;
         }
@@ -250,93 +233,10 @@
     });
   }
 
-  function computeBarycentricPositions(graph, outerFace, options) {
-    var opts = options || {};
-    var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
-    var face = normalizeOuterFace(outerFace);
-    var adjacency = opts.adjacency || graph.adjacency;
-    var weights = opts.weights || buildUniformWeights(pairs, 1);
-    var rowWeights = opts.rowWeights || null;
-    var maxIters = resolveIntOption(opts.maxIters, 1000, 1);
-    var tol = resolveFloatOption(opts.tolerance, 1e-7, 0);
-    var initOptions = opts.initOptions || defaultOuterPlacementOptions();
-
-    if (ids.length < 1) {
-      return buildLayoutError({
-        message: 'No vertices',
-        graph: graph,
-        outerFace: face
-      });
-    }
-    if (face.length < 3) {
-      return buildLayoutError({
-        message: 'Outer face is invalid',
-        graph: graph,
-        outerFace: face
-      });
-    }
-
-    var pos = placeOuterFaceVertices(ids, face, initOptions);
-    var outerSet = new Set(face);
-    var iters = 0;
-    var converged = false;
-
-    while (!converged && iters < maxIters) {
-      converged = true;
-      iters += 1;
-      for (var i = 0; i < ids.length; i += 1) {
-        var v = ids[i];
-        if (outerSet.has(v)) {
-          continue;
-        }
-        var ngh = adjacency[v] || [];
-        if (ngh.length === 0) {
-          continue;
-        }
-
-        var sx = 0;
-        var sy = 0;
-        var sw = 0;
-        for (var j = 0; j < ngh.length; j += 1) {
-          var u = ngh[j];
-          var w = rowWeights && rowWeights[v] ? rowWeights[v][u] : undefined;
-          if (!Number.isFinite(w) || w <= 0) {
-            w = weights[edgeKey(v, u)];
-          }
-          if (!Number.isFinite(w) || w <= 0) {
-            w = 1;
-          }
-          sx += w * pos[u].x;
-          sy += w * pos[u].y;
-          sw += w;
-        }
-        if (!(sw > 0)) {
-          continue;
-        }
-        var nx = sx / sw;
-        var ny = sy / sw;
-        if (Math.abs(pos[v].x - nx) > tol || Math.abs(pos[v].y - ny) > tol) {
-          pos[v] = { x: nx, y: ny };
-          converged = false;
-        }
-      }
-    }
-
-    return buildLayoutResult({
-      ok: true,
-      graph: graph,
-      outerFace: face,
-      positions: pos,
-      iters: iters
-    });
-  }
-
   function computeTutteLayout(graph, options) {
     var opts = options || {};
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
-    var weightMode = String(opts.weightMode || 'soft-augmentation').toLowerCase();
 
     if (ids.length < 3) {
       return buildLayoutError({
@@ -354,29 +254,15 @@
       return buildLayoutError(prepared || { message: 'Tutte failed' });
     }
 
-    var augmentedGraph = prepared.augmentedGraph || createGraph(
-      prepared.augmented && prepared.augmented.graph && prepared.augmented.graph.nodeIds ? prepared.augmented.graph.nodeIds : ids,
-      prepared.augmented && prepared.augmented.graph && prepared.augmented.graph.edgePairs ? prepared.augmented.graph.edgePairs : pairs
-    );
+    var augmentedGraph = prepared.augmentedGraph;
     var augmentedOuterFace = prepared.augmentedOuterFace || prepared.outerFace;
-    var barycentricOptions = {
-      initOptions: defaultOuterPlacementOptions()
-    };
-    if (weightMode !== 'uniform') {
-      barycentricOptions.weights = buildSoftAugmentationWeights(
-        prepared.graph,
-        augmentedGraph,
-        {
-          normalizeByDegree: opts.normalizeByDegree,
-          originalEdgeWeight: opts.originalEdgeWeight,
-          augmentationEdgeWeight: opts.augmentationEdgeWeight
-        }
-      );
-    }
-    var barycentric = solveBarycentricPositionsExact(
+    var barycentric = computeBarycentricPositions(
       augmentedGraph,
       augmentedOuterFace,
-      barycentricOptions
+      {
+        initOptions: defaultOuterPlacementOptions(),
+        weights: buildTutteWeights(prepared.graph, augmentedGraph)
+      }
     );
     if (!barycentric || !barycentric.ok || !barycentric.positions) {
       return buildLayoutError(barycentric || { message: 'Tutte failed' });
@@ -435,14 +321,11 @@
     });
   }
 
-  global.PlanarVibeTutteAlgorithm = {
-    buildUniformWeights: buildUniformWeights,
+  global.PlanarVibeTutte = {
+    buildTutteWeights: buildTutteWeights,
     defaultOuterPlacementOptions: defaultOuterPlacementOptions,
     placeOuterFaceVertices: placeOuterFaceVertices,
-    computeBarycentricPositions: computeBarycentricPositions
-  };
-
-  global.PlanarVibeTutte = {
+    computeBarycentricPositions: computeBarycentricPositions,
     computeTutteLayout: computeTutteLayout,
     applyTutteLayout: applyTutteLayout
   };

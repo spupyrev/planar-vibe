@@ -6,7 +6,7 @@
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var Metrics = global.PlanarVibeMetrics;
   var CyRuntime = global.CyRuntime;
-  var Tutte = global.PlanarVibeTutteAlgorithm;
+  var Tutte = global.PlanarVibeTutte;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
@@ -29,8 +29,6 @@
     return Tutte.computeBarycentricPositions(createGraph(nodeIds, []), outerFace, {
       adjacency: adj,
       weights: weights,
-      maxIters: maxIters,
-      tolerance: 1e-8,
       initOptions: Tutte.defaultOuterPlacementOptions({
         fixedOuterPos: fixedOuterPos || null
       })

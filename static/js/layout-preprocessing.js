@@ -3,7 +3,6 @@
 
   var GraphUtils = global.GraphUtils;
   var GeometryUtils = global.GeometryUtils;
-  var LinearAlgebraUtils = global.LinearAlgebraUtils;
   var PlanarGraphUtils = global.PlanarGraphUtils;
 
   function normalizePreparedAugmentationResult(augmented, failureLabel) {
@@ -231,7 +230,7 @@
     };
   }
 
-  function validateBarycentricSeedContext(embedding, graph, outerFace) {
+  function computeInitialPositions(graph, outerFace, embedding, originalGraph) {
     if (!embedding || !embedding.ok) {
       return { ok: false, message: 'Barycentric initialization requires a planar embedding' };
     }
@@ -245,73 +244,22 @@
         message: (connectivity && connectivity.reason) || 'Barycentric layout requires an internally 3-connected planar graph'
       };
     }
-    return { ok: true };
-  }
-
-  function computeSharedBarycentricSeed(graph, outerFace, embedding) {
-    var validation = validateBarycentricSeedContext(embedding, graph, outerFace);
-    if (!validation.ok) {
-      return validation;
-    }
-    var ids = Array.isArray(graph && graph.nodeIds) ? graph.nodeIds.map(String) : [];
-    var adjacency = graph.adjacency;
-    var pos = global.PlanarVibeTutteAlgorithm.placeOuterFaceVertices(
-      ids,
+    var initialPositions = global.PlanarVibeTutte.computeBarycentricPositions(
+      graph,
       outerFace,
-      global.PlanarVibeTutteAlgorithm.defaultOuterPlacementOptions()
+      {
+        initOptions: global.PlanarVibeTutte.defaultOuterPlacementOptions(),
+        weights: global.PlanarVibeTutte.buildTutteWeights(originalGraph || graph, graph)
+      }
     );
-    var outerSet = new Set((outerFace || []).map(String));
-    var interiorIds = [];
-    var interiorIndexById = {};
-    var i;
-    var j;
-
-    for (i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      if (!outerSet.has(id)) {
-        interiorIndexById[id] = interiorIds.length;
-        interiorIds.push(id);
-      }
+    if (!initialPositions || !initialPositions.ok || !initialPositions.positions) {
+      return { ok: false, message: (initialPositions && initialPositions.message) || 'Exact barycentric solve failed' };
     }
-    if (interiorIds.length === 0) {
-      return { ok: true, positions: pos, iters: 0 };
-    }
-
-    var L = new Array(interiorIds.length);
-    var bx = GeometryUtils.createZeroVector(interiorIds.length);
-    var by = GeometryUtils.createZeroVector(interiorIds.length);
-    for (i = 0; i < interiorIds.length; i += 1) {
-      L[i] = GeometryUtils.createZeroVector(interiorIds.length);
-      L[i][i] = 1;
-      var neighbors = adjacency[interiorIds[i]] || [];
-      if (neighbors.length === 0) {
-        continue;
-      }
-      var weight = 1 / neighbors.length;
-      for (j = 0; j < neighbors.length; j += 1) {
-        var neighborId = String(neighbors[j]);
-        var interiorIdx = interiorIndexById[neighborId];
-        if (interiorIdx === undefined) {
-          bx[i] += weight * pos[neighborId].x;
-          by[i] += weight * pos[neighborId].y;
-        } else {
-          L[i][interiorIdx] -= weight;
-        }
-      }
-    }
-
-    var factor = LinearAlgebraUtils.luFactorize(L);
-    if (!factor) {
-      return { ok: false, message: 'Exact barycentric solve failed' };
-    }
-    var solved = LinearAlgebraUtils.solveLUWithTwoRhs(factor, bx, by);
-    if (!solved) {
-      return { ok: false, message: 'Exact barycentric solve failed' };
-    }
-    for (i = 0; i < interiorIds.length; i += 1) {
-      pos[interiorIds[i]] = { x: solved.x1[i], y: solved.x2[i] };
-    }
-    return { ok: true, positions: pos, iters: 1 };
+    return {
+      ok: true,
+      positions: initialPositions.positions,
+      iters: initialPositions.iters
+    };
   }
 
   function verifyEmbeddingWithPositions(embedding, posById, options) {
@@ -381,10 +329,11 @@
     var augmentedOuterFace = prepared.augmentedOuterFace || prepared.outerFace;
     var augmented = prepared.augmented;
 
-    var init = computeSharedBarycentricSeed(
+    var init = computeInitialPositions(
       prepared.augmentedGraph,
       augmentedOuterFace,
-      augmented.embedding
+      augmented.embedding,
+      prepared.graph
     );
     if (!init || !init.ok || !init.positions) {
       return { ok: false, message: (init && init.message) || (label + ' initialization failed') };
@@ -413,7 +362,7 @@
 
   global.LayoutPreprocessing = {
     createAugmentationDebugState: createAugmentationDebugState,
-    computeSharedBarycentricSeed: computeSharedBarycentricSeed,
+    computeInitialPositions: computeInitialPositions,
     verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
     prepareGraphData: prepareGraphData,
     prepareGraphAndLayoutData: prepareGraphAndLayoutData

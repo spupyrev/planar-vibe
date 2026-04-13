@@ -132,15 +132,17 @@ function computeIterativeSeedForBenchmark(modules, graph, outerFace, context, op
   if (!validation.ok) {
     return validation;
   }
-  const TutteAlgorithm = modules.PlanarVibeTutteAlgorithm;
-  const opts = options || {};
-  return TutteAlgorithm.computeBarycentricPositions(
+  const Tutte = modules.PlanarVibeTutte;
+  const weights = Tutte.buildTutteWeights(
+    context && context.graph ? context.graph : graph,
+    graph
+  );
+  return Tutte.computeBarycentricPositions(
     graph,
     outerFace,
     {
-      maxIters: Number.isFinite(opts.maxIters) ? Math.max(1, Math.floor(opts.maxIters)) : 1000,
-      tolerance: Number.isFinite(opts.tolerance) ? Math.max(0, opts.tolerance) : 1e-7,
-      initOptions: TutteAlgorithm.defaultOuterPlacementOptions({ useSeedOuter: false })
+      weights,
+      initOptions: Tutte.defaultOuterPlacementOptions({ useSeedOuter: false })
     }
   );
 }
@@ -150,7 +152,7 @@ function computeExactSeedForBenchmark(modules, graph, outerFace, context) {
   if (!validation.ok) {
     return validation;
   }
-  return modules.LayoutPreprocessing.computeSharedBarycentricSeed(
+  return modules.LayoutPreprocessing.computeInitialPositions(
     graph,
     outerFace,
     context && context.augmented ? context.augmented.embedding : null

@@ -2197,7 +2197,7 @@
           message: 'Planarity utilities are missing'
         },
         tutte: {
-          moduleLike: global.PlanarVibeTutteAlgorithm,
+          moduleLike: global.PlanarVibeTutte,
           message: 'Tutte algorithm is missing'
         }
       };
@@ -2332,7 +2332,7 @@
             graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
-            tutte: ['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']
+            tutte: ['computeBarycentricPositions', 'defaultOuterPlacementOptions']
           }
         },
         {
@@ -2347,7 +2347,7 @@
             graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
-            tutte: ['computeBarycentricPositions', 'buildUniformWeights', 'defaultOuterPlacementOptions']
+            tutte: ['computeBarycentricPositions', 'defaultOuterPlacementOptions']
           }
         },
         {

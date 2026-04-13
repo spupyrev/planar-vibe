@@ -219,26 +219,33 @@
     return sum;
   }
 
-  function polygonHasSelfIntersection(faceIndices, x, y, eps) {
-    if (!faceIndices || faceIndices.length < 4) return false;
-    var n = faceIndices.length;
+  function polygonHasSelfIntersection(vertexIds, getPoint, eps) {
+    if (typeof getPoint !== 'function') {
+      throw new Error('polygonHasSelfIntersection requires a point lookup function');
+    }
+    if (!vertexIds || vertexIds.length < 4) return false;
+    var n = vertexIds.length;
     for (var i = 0; i < n; i += 1) {
-      var a0 = faceIndices[i];
-      var a1 = faceIndices[(i + 1) % n];
+      var a0 = vertexIds[i];
+      var a1 = vertexIds[(i + 1) % n];
+      var pa0 = getPoint(a0);
+      var pa1 = getPoint(a1);
+      if (!pa0 || !pa1) {
+        throw new Error('polygonHasSelfIntersection found a missing polygon point');
+      }
       for (var j = i + 1; j < n; j += 1) {
         var nextI = (i + 1) % n;
         var nextJ = (j + 1) % n;
         if (i === j || i === nextJ || nextI === j) continue;
         if (i === 0 && nextJ === 0) continue;
-        var b0 = faceIndices[j];
-        var b1 = faceIndices[nextJ];
-        if (segmentsIntersectStrict(
-          { x: x[a0], y: y[a0] },
-          { x: x[a1], y: y[a1] },
-          { x: x[b0], y: y[b0] },
-          { x: x[b1], y: y[b1] },
-          eps
-        )) {
+        var b0 = vertexIds[j];
+        var b1 = vertexIds[nextJ];
+        var pb0 = getPoint(b0);
+        var pb1 = getPoint(b1);
+        if (!pb0 || !pb1) {
+          throw new Error('polygonHasSelfIntersection found a missing polygon point');
+        }
+        if (segmentsIntersectStrict(pa0, pa1, pb0, pb1, eps)) {
           return true;
         }
       }
@@ -246,31 +253,34 @@
     return false;
   }
 
-  function graphHasEdgeCrossings(edgePairs, x, y, eps) {
+  function hasIndexedEdgeCrossings(edgePairs, getPoint, eps) {
+    if (typeof getPoint !== 'function') {
+      throw new Error('hasIndexedEdgeCrossings requires a point lookup function');
+    }
     if (!edgePairs || edgePairs.length < 2) return false;
+    var tol = Number.isFinite(eps) ? Math.max(0, eps) : 1e-9;
     for (var i = 0; i < edgePairs.length; i += 1) {
       var e1 = edgePairs[i];
       var a = e1[0];
       var b = e1[1];
+      var pa = getPoint(a);
+      var pb = getPoint(b);
+      if (!pa || !pb) {
+        throw new Error('hasIndexedEdgeCrossings found a missing edge endpoint');
+      }
       for (var j = i + 1; j < edgePairs.length; j += 1) {
         var e2 = edgePairs[j];
         var c = e2[0];
         var d = e2[1];
         if (a === c || a === d || b === c || b === d) continue;
-        var pa = { x: x[a], y: y[a] };
-        var pb = { x: x[b], y: y[b] };
-        var pc = { x: x[c], y: y[c] };
-        var pd = { x: x[d], y: y[d] };
-        if (segmentsIntersectStrict(
-          pa,
-          pb,
-          pc,
-          pd,
-          eps
-        )) {
+        var pc = getPoint(c);
+        var pd = getPoint(d);
+        if (!pc || !pd) {
+          throw new Error('hasIndexedEdgeCrossings found a missing edge endpoint');
+        }
+        if (segmentsIntersectStrict(pa, pb, pc, pd, eps)) {
           return true;
         }
-        var tol = Number.isFinite(eps) ? Math.max(0, eps) : 1e-9;
         if (Math.abs(triangleArea2(pa, pb, pc)) <= tol &&
             pointOnSegmentInterior(pa, pb, pc, tol)) {
           return true;
@@ -290,6 +300,12 @@
       }
     }
     return false;
+  }
+
+  function getIndexedPoint(x, y) {
+    return function (index) {
+      return { x: x[index], y: y[index] };
+    };
   }
 
   function evaluateObjectiveAndGradient(q, data) {
@@ -331,6 +347,7 @@
       x[aug] = primal.x1[i];
       y[aug] = primal.x2[i];
     }
+    var getPoint = getIndexedPoint(x, y);
 
     var faceAreas = createZeroVector(data.boundedFaceKeys.length);
     var totalArea = 0;
@@ -352,7 +369,7 @@
     }
     for (i = 0; i < data.boundedFaces.length; i += 1) {
       var boundary = data.boundedFaces[i];
-      if (polygonHasSelfIntersection(boundary, x, y, 1e-9)) {
+      if (polygonHasSelfIntersection(boundary, getPoint, 1e-9)) {
         return buildLayoutError({ reason: 'invalid-face-step' });
       }
       if (!(polygonArea2FromArrays(boundary, x, y) > 2 * data.areaTol)) {
@@ -497,7 +514,7 @@
         }
       }
     }
-    if (graphHasEdgeCrossings(data.edges, x, y, 1e-9)) {
+    if (hasIndexedEdgeCrossings(data.edges, getPoint, 1e-9)) {
       return buildLayoutError({ reason: 'invalid-face-step' });
     }
 

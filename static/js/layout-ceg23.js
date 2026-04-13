@@ -5,7 +5,7 @@
   var CyRuntime = global.CyRuntime;
   var GeometryUtils = global.GeometryUtils;
   var GraphUtils = global.GraphUtils;
-  var Tutte = global.PlanarVibeTutteAlgorithm;
+  var Tutte = global.PlanarVibeTutte;
   var alignOuterFaceEdgeHorizontally = GeometryUtils.alignOuterFaceEdgeHorizontally;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
@@ -17,6 +17,18 @@
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolvePositiveOption = GraphUtils.resolvePositiveOption;
   var prepareGraphAndLayoutData = LayoutPreprocessing.prepareGraphAndLayoutData;
+
+  function buildUniformWeights(edgePairs, value) {
+    var pairs = edgePairs;
+    var weights = {};
+    var w = Number.isFinite(value) && value > 0 ? value : 1;
+    for (var i = 0; i < pairs.length; i += 1) {
+      var u = pairs[i][0];
+      var v = pairs[i][1];
+      weights[edgeKey(u, v)] = w;
+    }
+    return weights;
+  }
 
   function bfsDepthFromOuter(nodeIds, adjacency, outerFace, depthSource) {
     var depth = {};
@@ -193,8 +205,6 @@
       {
         adjacency: state.adjacency,
         weights: weights,
-        maxIters: maxIters,
-        tolerance: 1e-8,
         initOptions: Tutte.defaultOuterPlacementOptions()
       }
     );
@@ -281,7 +291,7 @@
     var beta = resolveFiniteOption(opts.beta, 1.0);
     var lambdaX = resolveFiniteOption(opts.lambdaX, 0.5);
 
-    var uniformWeights = Tutte.buildUniformWeights(state.augmentedPairs, 1);
+    var uniformWeights = buildUniformWeights(state.augmentedPairs, 1);
     var base = solveAugmentedWeightedLayout(state, uniformWeights, maxIters);
     if (!base.ok) {
       return buildLayoutError({
