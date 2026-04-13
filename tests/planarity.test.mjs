@@ -496,15 +496,21 @@ test('triangulateByFaceStellation adds one dummy vertex for every non-triangular
     outerFace,
     { triangulateOuterFace: true }
   );
-  const dummyIds = Object.keys(augmented.dummyFaceVerticesById || {});
+  const originalNodeSet = new Set(graph.nodeIds.map(String));
+  const dummyIds = augmented.graph.nodeIds
+    .map(String)
+    .filter((id) => !originalNodeSet.has(id));
 
   assert.equal(augmented.ok, true, augmented.reason || 'triangulation failed');
   assert.equal(augmented.dummyCount, 2);
   assert.equal(dummyIds.length, 2);
   for (const dummyId of dummyIds) {
-    const face = augmented.dummyFaceVerticesById[dummyId];
-    assert.equal(face.length, 8);
-    for (const v of face) {
+    assert.equal(
+      augmented.graph.edgePairs.filter(([a, b]) => String(a) === String(dummyId) || String(b) === String(dummyId)).length,
+      8,
+      `expected 8 stellation edges around ${dummyId}`
+    );
+    for (const v of outerFace) {
       assert.equal(
         augmented.graph.edgePairs.some(([a, b]) =>
           (String(a) === String(dummyId) && String(b) === String(v)) ||
@@ -539,7 +545,10 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
     degreeById[String(b)] += 1;
   }
 
-  const dummyIds = Object.keys(prepared.dummyFaceVerticesById || {});
+  const originalNodeSet = new Set(graph.nodeIds.map(String));
+  const dummyIds = prepared.graph.nodeIds
+    .map(String)
+    .filter((id) => !originalNodeSet.has(id));
   const degreeThreeDummies = dummyIds.filter((dummyId) => degreeById[String(dummyId)] === 3);
 
   assert.equal(degreeThreeDummies.length, 0);
@@ -978,7 +987,7 @@ test('canonical ordering works on small triangulated planar non-3-tree (octahedr
   assert.equal(new Set(canonical.order).size, canonical.order.length);
 });
 
-test('triangulateByFaceStellation rejects embeddings with non-simple faces', () => {
+test('triangulateByFaceStellation triangulates embeddings with non-simple faces', () => {
   const text = Generator.getSample('randomplanar4');
   const graph = parseEdgeListText(text);
   const emb = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
@@ -990,8 +999,10 @@ test('triangulateByFaceStellation rejects embeddings with non-simple faces', () 
     emb.outerFace,
     { triangulateOuterFace: true }
   );
-  assert.equal(result.ok, false);
-  assert.equal(result.reason, 'triangulateByFaceStellation requires simple face boundaries');
+  assert.equal(result.ok, true, result.reason || 'triangulation failed');
+  for (const face of result.embedding.faces) {
+    assert.equal(face.length, 3);
+  }
 });
 
 test('canonical ordering works on random planar non-3-tree graph', () => {

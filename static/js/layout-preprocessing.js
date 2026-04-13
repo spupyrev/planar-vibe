@@ -186,11 +186,16 @@
 
   function createAugmentationDebugState(graph, augmented, posById) {
     var baseGraph = graph || { nodeIds: [], edgePairs: [] };
-    var aug = augmented || { graph: { nodeIds: [], edgePairs: [] }, dummyFaceVerticesById: {} };
+    var aug = augmented || { graph: { nodeIds: [], edgePairs: [] } };
     var augmentedGraph = aug.graph || { nodeIds: [], edgePairs: [] };
     var positions = posById || {};
     var originalEdgeSet = {};
+    var originalNodeSet = {};
     var i;
+
+    for (i = 0; i < baseGraph.nodeIds.length; i += 1) {
+      originalNodeSet[String(baseGraph.nodeIds[i])] = true;
+    }
 
     for (i = 0; i < baseGraph.edgePairs.length; i += 1) {
       var a = String(baseGraph.edgePairs[i][0]);
@@ -199,8 +204,13 @@
       originalEdgeSet[key] = true;
     }
 
-    var dummyFaceVerticesById = aug.dummyFaceVerticesById || {};
-    var dummyIds = Object.keys(dummyFaceVerticesById).map(String);
+    var dummyIds = [];
+    for (i = 0; i < augmentedGraph.nodeIds.length; i += 1) {
+      var augmentedId = String(augmentedGraph.nodeIds[i]);
+      if (!originalNodeSet[augmentedId]) {
+        dummyIds.push(augmentedId);
+      }
+    }
     var dummyLabelById = {};
     var dummyPositionsById = {};
     for (i = 0; i < dummyIds.length; i += 1) {
@@ -225,8 +235,7 @@
       addedEdgePairs: addedEdgePairs,
       dummyIds: dummyIds,
       dummyLabelById: dummyLabelById,
-      dummyPositionsById: dummyPositionsById,
-      dummyFaceVerticesById: dummyFaceVerticesById
+      dummyPositionsById: dummyPositionsById
     };
   }
 
