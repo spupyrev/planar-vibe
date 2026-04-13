@@ -2454,7 +2454,7 @@
           missingMessage: 'CEG23-bfs layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['alignOuterFaceEdgeHorizontally', 'hasPositionCrossings'],
             graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
@@ -2469,7 +2469,7 @@
           missingMessage: 'CEG23-xy layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['alignOuterFaceEdgeHorizontally', 'hasPositionCrossings'],
             graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
