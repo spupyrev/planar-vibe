@@ -1025,12 +1025,11 @@
   }
 
   async function computeEdgeBalancerPositions(graph, options) {
-    var opts = options || {};
-    var maxIters = resolveIntOption(opts.maxIters, 80, 1);
+    var maxIters = resolveIntOption(options.maxIters, 80, 1);
     var context = LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'EdgeBalancer layout',
-      augmentationMethod: opts.augmentationMethod || null,
-      currentPositions: opts.currentPositions || null
+      augmentationMethod: options.augmentationMethod || null,
+      currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'EdgeBalancer setup failed' });
@@ -1067,26 +1066,26 @@
     }
     var initPos = GeometryUtils.alignOuterFaceEdgeHorizontally(initialResult.positions, outerFace);
     var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
-    var hasExplicitMinFaceArea = Number.isFinite(opts.minFaceArea) && opts.minFaceArea >= 0;
-    var hasExplicitMinEdgeLength2 = Number.isFinite(opts.minEdgeLength2) && opts.minEdgeLength2 >= 0;
-    var areaTol = resolveNonNegativeOption(opts.areaTol, 1e-15);
+    var hasExplicitMinFaceArea = Number.isFinite(options.minFaceArea) && options.minFaceArea >= 0;
+    var hasExplicitMinEdgeLength2 = Number.isFinite(options.minEdgeLength2) && options.minEdgeLength2 >= 0;
+    var areaTol = resolveNonNegativeOption(options.areaTol, 1e-15);
     var data = buildEdgeBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
       objectiveEdgePairs: g.edgePairs,
-      augmentedEdgeWeight: resolveFloatOption(opts.augmentedEdgeWeight, 0.25, 0),
-      edgeObjective: opts.edgeObjective,
-      rangeWeight: resolveFloatOption(opts.rangeWeight, 0.05, 0),
-      rangeBeta: resolveFloatOption(opts.rangeBeta, 6, 1e-3),
-      logAbsWeight: resolveFloatOption(opts.logAbsWeight, 0.5, 0),
-      logAbsEpsilon: resolveFloatOption(opts.logAbsEpsilon, 0.25, 1e-6),
+      augmentedEdgeWeight: resolveFloatOption(options.augmentedEdgeWeight, 0.25, 0),
+      edgeObjective: options.edgeObjective,
+      rangeWeight: resolveFloatOption(options.rangeWeight, 0.05, 0),
+      rangeBeta: resolveFloatOption(options.rangeBeta, 6, 1e-3),
+      logAbsWeight: resolveFloatOption(options.logAbsWeight, 0.5, 0),
+      logAbsEpsilon: resolveFloatOption(options.logAbsEpsilon, 0.25, 1e-6),
       outerFace: outerFace,
       initPos: initPos,
       areaTol: areaTol,
-      faceBarrierWeight: resolveFloatOption(opts.faceBarrierWeight, 0.02, 0),
-      edgeBarrierWeight: resolveFloatOption(opts.edgeBarrierWeight, 0, 0),
-      minFaceArea: resolveNonNegativeOption(opts.minFaceArea, 0),
-      minEdgeLength2: resolveNonNegativeOption(opts.minEdgeLength2, 0)
+      faceBarrierWeight: resolveFloatOption(options.faceBarrierWeight, 0.02, 0),
+      edgeBarrierWeight: resolveFloatOption(options.edgeBarrierWeight, 0, 0),
+      minFaceArea: resolveNonNegativeOption(options.minFaceArea, 0),
+      minEdgeLength2: resolveNonNegativeOption(options.minEdgeLength2, 0)
     });
     if (!data.ok) {
       return buildLayoutError({
@@ -1106,7 +1105,7 @@
     }
 
     var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
-    var q0Result = buildInitialLogitSeed(data, tutteWeights, opts);
+    var q0Result = buildInitialLogitSeed(data, tutteWeights, options);
     if (!q0Result.ok) {
       return buildLayoutError({
         message: q0Result.reason || 'EdgeBalancer initialization failed',
@@ -1117,25 +1116,25 @@
     }
     var q0 = q0Result.q0;
     var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
-      minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),
-      stableIterLimit: resolveIntOption(opts.stableIterLimit, 8, 1),
-      maxMoveTol: resolveNonNegativeOption(opts.movementStopTol, 1e-6 * movementScale),
-      avgMoveTol: resolveNonNegativeOption(opts.avgMovementStopTol, 2e-7 * movementScale)
+      minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),
+      stableIterLimit: resolveIntOption(options.stableIterLimit, 8, 1),
+      maxMoveTol: resolveNonNegativeOption(options.movementStopTol, 1e-6 * movementScale),
+      avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 2e-7 * movementScale)
     });
 
     var iterationCount = 0;
     var result = await runEdgeBalancerOptimization(q0, data, {
       maxIters: maxIters,
-      gradTol: resolveFloatOption(opts.gradTol, 1e-5, 0),
-      stepTol: resolveFloatOption(opts.stepTol, 1e-6, 0),
-      lbfgsMemory: resolveIntOption(opts.lbfgsMemory, 10, 1),
-      maxPositionStep: resolveFloatOption(opts.maxPositionStep, 0.1 * movementScale, 1e-9),
+      gradTol: resolveFloatOption(options.gradTol, 1e-5, 0),
+      stepTol: resolveFloatOption(options.stepTol, 1e-6, 0),
+      lbfgsMemory: resolveIntOption(options.lbfgsMemory, 10, 1),
+      maxPositionStep: resolveFloatOption(options.maxPositionStep, 0.1 * movementScale, 1e-9),
       movementTracker: movementTracker,
       onIteration: async function (progress) {
         iterationCount = progress.iter;
-        if (typeof opts.onIteration === 'function') {
+        if (typeof options.onIteration === 'function') {
           var progressEdgeScore = Metrics.computeUniformEdgeLengthScore(g.edgePairs, progress.positions);
-          await opts.onIteration(Object.assign({}, progress, {
+          await options.onIteration(Object.assign({}, progress, {
             edgeLengthScore: progressEdgeScore && progressEdgeScore.ok ? progressEdgeScore.quality : null
           }));
         }
@@ -1179,7 +1178,7 @@
   }
 
   async function applyEdgeBalancerLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'EdgeBalancer layout',
       compute: computeEdgeBalancerPositions,

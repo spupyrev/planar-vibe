@@ -369,7 +369,6 @@
   }
 
   async function computeImPrEdPositions(g, options) {
-    var opts = options || {};
     if (!g.nodeIds || g.nodeIds.length < 2) {
       return buildLayoutError({ message: 'ImPrEd requires at least 2 vertices', graph: g });
     }
@@ -377,7 +376,7 @@
       return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
     }
 
-    var currentSource = opts.currentPositions || {};
+    var currentSource = options.currentPositions || {};
     var currentPositions = {};
     var currentCount = 0;
     for (var ci = 0; ci < g.nodeIds.length; ci += 1) {
@@ -406,7 +405,7 @@
     } else {
       seed = LayoutPreprocessing.prepareGraphAndLayoutData(g, {
         failureLabel: 'ImPrEd layout',
-        augmentationMethod: opts.augmentationMethod || null,
+        augmentationMethod: options.augmentationMethod || null,
         currentPositions: currentCount === g.nodeIds.length ? currentPositions : null
       });
       if (!seed || !seed.ok) {
@@ -427,24 +426,24 @@
     var adj = g.adjacency;
     var emb = seed.baseEmbedding || null;
     var fixedOuter = new Set((seed.outerFace || []).map(String));
-    var delta = resolvePositiveOption(opts.delta, estimateDelta(g.edgePairs, posById));
-    var maxIters = resolveIntOption(opts.maxIters, 600, 1);
-    var startMaxMove = resolvePositiveOption(opts.maxMove, 3 * delta);
-    var minMaxMove = resolveNonNegativeOption(opts.minMaxMove, 0.05 * delta);
-    var minItersBeforeStop = resolveIntOption(opts.minItersBeforeStop, 60, 1);
-    var stableIterLimit = resolveIntOption(opts.stableIterLimit, 16, 1);
-    var movementStopTol = resolveNonNegativeOption(opts.movementStopTol, 0.008 * delta);
-    var avgMovementStopTol = resolveNonNegativeOption(opts.avgMovementStopTol, 0.0015 * delta);
+    var delta = resolvePositiveOption(options.delta, estimateDelta(g.edgePairs, posById));
+    var maxIters = resolveIntOption(options.maxIters, 600, 1);
+    var startMaxMove = resolvePositiveOption(options.maxMove, 3 * delta);
+    var minMaxMove = resolveNonNegativeOption(options.minMaxMove, 0.05 * delta);
+    var minItersBeforeStop = resolveIntOption(options.minItersBeforeStop, 60, 1);
+    var stableIterLimit = resolveIntOption(options.stableIterLimit, 16, 1);
+    var movementStopTol = resolveNonNegativeOption(options.movementStopTol, 0.008 * delta);
+    var avgMovementStopTol = resolveNonNegativeOption(options.avgMovementStopTol, 0.0015 * delta);
     var sectorCount = 8;
-    var forceScale = resolvePositiveOption(opts.forceScale, 0.04);
-    var cNodeRep = resolveFiniteOption(opts.cNodeRep, 1.0);
-    var cEdgeAttr = resolveFiniteOption(opts.cEdgeAttr, 1.0);
-    var cNodeEdgeRep = resolveFiniteOption(opts.cNodeEdgeRep, 0.75);
-    var nearbyFactor = resolvePositiveOption(opts.nearbyFactor, 6.0);
-    var momentumBeta = resolveFloatOption(opts.momentumBeta, 0.78, 0, 0.98);
-    var rejectedVelocityDamp = resolveFloatOption(opts.rejectedVelocityDamp, 0.25, 0, 1);
-    var rollbackVelocityDamp = resolveFloatOption(opts.rollbackVelocityDamp, 0.0, 0, 1);
-    var fullRollbackVelocityDamp = resolveFloatOption(opts.fullRollbackVelocityDamp, 0.5, 0, 1);
+    var forceScale = resolvePositiveOption(options.forceScale, 0.04);
+    var cNodeRep = resolveFiniteOption(options.cNodeRep, 1.0);
+    var cEdgeAttr = resolveFiniteOption(options.cEdgeAttr, 1.0);
+    var cNodeEdgeRep = resolveFiniteOption(options.cNodeEdgeRep, 0.75);
+    var nearbyFactor = resolvePositiveOption(options.nearbyFactor, 6.0);
+    var momentumBeta = resolveFloatOption(options.momentumBeta, 0.78, 0, 0.98);
+    var rejectedVelocityDamp = resolveFloatOption(options.rejectedVelocityDamp, 0.25, 0, 1);
+    var rollbackVelocityDamp = resolveFloatOption(options.rollbackVelocityDamp, 0.0, 0, 1);
+    var fullRollbackVelocityDamp = resolveFloatOption(options.fullRollbackVelocityDamp, 0.5, 0, 1);
     var iter;
     var stopReason = 'max-iters';
     var lastStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
@@ -577,8 +576,8 @@
         avgMove: lastStats.avgMove
       }, iter + 1) : { stableIterations: 0, stableIterLimit: stableIterLimit, converged: false };
 
-      if (typeof opts.onIteration === 'function') {
-        await opts.onIteration({
+      if (typeof options.onIteration === 'function') {
+        await options.onIteration({
           iter: iter + 1,
           maxIters: maxIters,
           positions: posById,
@@ -621,7 +620,7 @@
   }
 
   async function applyImPrEdLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       compute: computeImPrEdPositions,
       buildResult: function (ctx) {
         var result = ctx.result;

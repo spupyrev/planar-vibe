@@ -490,7 +490,8 @@
   function prepareCEG23State(graph, failureLabel, options) {
     var prepared = prepareGraphAndLayoutData(graph, {
       failureLabel: failureLabel,
-      augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null
+      augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
+      currentPositions: options ? options.currentPositions : undefined
     });
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || {
@@ -571,15 +572,14 @@
   }
 
   function computeCEG23BfsPositions(graph, options) {
-    var opts = options || {};
-    var state = prepareCEG23State(graph, 'CEG23-bfs', opts);
+    var state = prepareCEG23State(graph, 'CEG23-bfs', options);
     if (!state || !state.ok) {
       return state;
     }
 
-    var A = resolvePositiveOption(opts.a, 1.0);
-    var R = resolveGreaterThanOption(opts.r, 1.35, 1);
-    var MAX_ITERS = resolveIntOption(opts.maxIters, 4000, 1);
+    var A = resolvePositiveOption(options.a, 1.0);
+    var R = resolveGreaterThanOption(options.r, 1.35, 1);
+    var MAX_ITERS = resolveIntOption(options.maxIters, 4000, 1);
 
     var baseWeights = buildUniformWeights(state.augmentedPairs, 1);
     var base = solveAugmentedWeightedLayout(state, baseWeights, MAX_ITERS);
@@ -616,13 +616,12 @@
   }
 
   function computeCEG23XPositions(graph, options) {
-    var opts = options || {};
-    var state = prepareCEG23State(graph, 'CEG23-x', opts);
+    var state = prepareCEG23State(graph, 'CEG23-x', options);
     if (!state || !state.ok) {
       return state;
     }
 
-    var maxIters = resolveIntOption(opts.maxIters, 2500, 1);
+    var maxIters = resolveIntOption(options.maxIters, 2500, 1);
     var baseWeights = buildUniformWeights(state.augmentedPairs, 1);
     var base = solveAugmentedWeightedLayout(state, baseWeights, maxIters);
     if (!base.ok) {
@@ -664,13 +663,12 @@
   }
 
   function computeCEG23YPositions(graph, options) {
-    var opts = options || {};
-    var state = prepareCEG23State(graph, 'CEG23-y', opts);
+    var state = prepareCEG23State(graph, 'CEG23-y', options);
     if (!state || !state.ok) {
       return state;
     }
 
-    var maxIters = resolveIntOption(opts.maxIters, 2500, 1);
+    var maxIters = resolveIntOption(options.maxIters, 2500, 1);
     var baseWeights = buildUniformWeights(state.augmentedPairs, 1);
     var base = solveAugmentedWeightedLayout(state, baseWeights, maxIters);
     if (!base.ok) {
@@ -712,14 +710,13 @@
   }
 
   function computeCEG23XyPositions(graph, options) {
-    var opts = options || {};
-    var state = prepareCEG23State(graph, 'CEG23-xy', opts);
+    var state = prepareCEG23State(graph, 'CEG23-xy', options);
     if (!state || !state.ok) {
       return state;
     }
 
-    var maxIters = resolveIntOption(opts.maxIters, 2500, 1);
-    var lambdaX = resolveFiniteOption(opts.lambdaX, 0.5);
+    var maxIters = resolveIntOption(options.maxIters, 2500, 1);
+    var lambdaX = resolveFiniteOption(options.lambdaX, 0.5);
 
     var uniformWeights = buildUniformWeights(state.augmentedPairs, 1);
     var base = solveAugmentedWeightedLayout(state, uniformWeights, maxIters);
@@ -768,7 +765,7 @@
   }
 
   function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       compute: computeLayout,
       buildResult: function (ctx) {
         var result = ctx.result;

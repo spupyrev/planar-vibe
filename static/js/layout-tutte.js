@@ -114,12 +114,11 @@
   }
 
   function computeBarycentricPositions(graph, outerFace, options) {
-    var opts = options || {};
     var ids = graph.nodeIds;
     var face = normalizeOuterFace(outerFace);
-    var adjacency = opts.adjacency || graph.adjacency;
-    var weights = opts.weights || null;
-    var initOptions = opts.initOptions || defaultOuterPlacementOptions();
+    var adjacency = options.adjacency || graph.adjacency;
+    var weights = options.weights || null;
+    var initOptions = options.initOptions || defaultOuterPlacementOptions();
     var pos = placeOuterFaceVertices(ids, face, initOptions);
     var outerSet = new Set(face);
     var interiorIds = [];
@@ -239,7 +238,6 @@
   }
 
   function computeTutteLayout(graph, options) {
-    var opts = options || {};
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
 
@@ -252,8 +250,9 @@
 
     var prepared = LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'Tutte layout',
-      augmentationMethod: opts.augmentationMethod || null,
-      augmentationOptions: opts.augmentationOptions || null
+      augmentationMethod: options.augmentationMethod || null,
+      augmentationOptions: options.augmentationOptions || null,
+      currentPositions: options.currentPositions
     });
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'Tutte failed' });
@@ -299,7 +298,7 @@
   }
 
   function applyTutteLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       compute: computeTutteLayout,
       buildResult: function (ctx) {
         var result = ctx.result;

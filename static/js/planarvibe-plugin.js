@@ -82,10 +82,26 @@
       nodeElements.push(nodeEl);
     });
 
+    var parsedOuterFace = null;
+    if (hasExplicitPositions && global.PlanarGraphUtils && typeof global.PlanarGraphUtils.extractEmbeddingFromPositions === 'function') {
+      var edgePairs = edges.map(function (edge) {
+        return [String(edge.data.source), String(edge.data.target)];
+      });
+      var embedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(
+        nodeElements.map(function (nodeEl) { return String(nodeEl.data.id); }),
+        edgePairs,
+        positionsById
+      );
+      if (embedding && embedding.ok && Array.isArray(embedding.outerFace) && embedding.outerFace.length >= 3) {
+        parsedOuterFace = embedding.outerFace.slice().map(String);
+      }
+    }
+
     return {
       elements: nodeElements.concat(edges),
       nodeCount: nodeElements.length,
       edgeCount: edges.length,
+      outerFace: parsedOuterFace,
       positionsById: positionsById,
       labelsById: labelsById,
       classesById: classesById,
@@ -340,6 +356,67 @@
       }
     }
 
+    function collectStatusText() {
+      var $status = global.$('#status');
+      if (!$status.length) {
+        return '';
+      }
+      var lines = [];
+      $status.children('.status-entry').each(function () {
+        lines.push(global.$(this).text());
+      });
+      return lines.join('\n');
+    }
+
+    async function copyStatusToClipboard() {
+      var text = collectStatusText();
+      if (!text) {
+        setStatus('Status bar is empty', true);
+        return false;
+      }
+
+      try {
+        if (global.navigator && global.navigator.clipboard && typeof global.navigator.clipboard.writeText === 'function') {
+          await global.navigator.clipboard.writeText(text);
+          setStatus('Copied status bar to clipboard', false);
+          return true;
+        }
+      } catch (err) {
+        // Fall through to execCommand fallback.
+      }
+
+      var textarea = global.document ? global.document.createElement('textarea') : null;
+      if (!textarea || !global.document || !global.document.body) {
+        setStatus('Clipboard copy is unavailable', true);
+        return false;
+      }
+
+      textarea.value = text;
+      textarea.setAttribute('readonly', 'readonly');
+      textarea.style.position = 'fixed';
+      textarea.style.top = '-1000px';
+      textarea.style.left = '-1000px';
+      global.document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+
+      var copied = false;
+      try {
+        copied = !!(global.document.execCommand && global.document.execCommand('copy'));
+      } catch (err2) {
+        copied = false;
+      }
+      global.document.body.removeChild(textarea);
+
+      if (copied) {
+        setStatus('Copied status bar to clipboard', false);
+        return true;
+      }
+
+      setStatus('Clipboard copy failed', true);
+      return false;
+    }
+
     function setStatusPanelCollapsed(collapsed, persist) {
       isStatusCollapsed = !!collapsed;
       var $panel = global.$('.status-panel');
@@ -452,6 +529,49 @@
       }
       setCurrentPositions(posById);
       renderStaticSnapshot();
+    }
+
+    function logAirOuterFaceDiagnostics() {
+      if (!currentParsed || !currentParsed.elements || !global.PlanarGraphUtils || !global.GraphUtils) {
+        return;
+      }
+      try {
+        var nodeIds = getNodeIdsFromParsed(currentParsed);
+        var edgePairs = edgePairsFromParsed(currentParsed);
+        var parsedOuter = null;
+        var liveOuter = null;
+        var parsedEmbedding = null;
+        var liveEmbedding = null;
+        if (currentParsed.hasExplicitPositions && currentParsed.positionsById) {
+          parsedEmbedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(
+            nodeIds,
+            edgePairs,
+            currentParsed.positionsById
+          );
+          parsedOuter = parsedEmbedding && parsedEmbedding.ok ? parsedEmbedding.outerFace : null;
+        }
+        if (cy && global.CyRuntime && typeof global.CyRuntime.currentPositionsFromCy === 'function') {
+          var livePositions = global.CyRuntime.currentPositionsFromCy(cy);
+          liveEmbedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(
+            nodeIds,
+            edgePairs,
+            livePositions
+          );
+          liveOuter = liveEmbedding && liveEmbedding.ok ? liveEmbedding.outerFace : null;
+        }
+        setStatus(
+          '[Air debug] parsed outer face: ' +
+          (Array.isArray(parsedOuter) ? parsedOuter.length + ' [' + parsedOuter.join(' ') + ']' : 'null'),
+          false
+        );
+        setStatus(
+          '[Air debug] live outer face: ' +
+          (Array.isArray(liveOuter) ? liveOuter.length + ' [' + liveOuter.join(' ') + ']' : 'null'),
+          false
+        );
+      } catch (err) {
+        setStatus('[Air debug] failed to collect outer-face diagnostics: ' + ((err && err.message) ? err.message : String(err)), true);
+      }
     }
 
     function buildDebugOverlayData() {
@@ -1565,7 +1685,7 @@
         cy.add(currentParsed.elements);
         if (!global.CyRuntime.restorePositionsToCy(cy, currentPositionsCache)) {
           if (global.PlanarVibeRandom && typeof global.PlanarVibeRandom.applyRandomLayout === 'function') {
-            global.PlanarVibeRandom.applyRandomLayout(cy);
+            global.PlanarVibeRandom.applyRandomLayout(cy, {});
           }
           normalizeLayoutScale();
           saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
@@ -1820,7 +1940,11 @@
           applyLayout('random');
         }
         markCurrentInputAsVisualized();
-        setStatus('Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges', false);
+        var drawnMessage = 'Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges';
+        if (Array.isArray(currentParsed.outerFace) && currentParsed.outerFace.length >= 3) {
+          drawnMessage += ' (' + currentParsed.outerFace.length + '-vertex outer face)';
+        }
+        setStatus(drawnMessage, false);
       } catch (error) {
         setStatistics({ vertexCount: 0, edgeCount: 0, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
         clearDrawingStats('Parse error');
@@ -1957,6 +2081,7 @@
       }
 
       if (layoutName === 'air') {
+        logAirOuterFaceDiagnostics();
         runManagedLayout({
           layoutName: 'air',
           disabledMessage: 'Air layout requires a planar graph',
@@ -2894,6 +3019,10 @@
 
       global.$('#status-clear-btn').on('click', function () {
         global.$('#status').empty();
+      });
+
+      global.$('#status-copy-btn').on('click', function () {
+        copyStatusToClipboard();
       });
     }
 

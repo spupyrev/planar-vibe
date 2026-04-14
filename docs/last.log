@@ -1,0 +1,211 @@
+Applied input coordinates | size: 50V, 96E
+Drawn 50 nodes and 96 edges
+Loaded sample: Sample / sample5
+Applied input coordinates | size: 37V, 71E
+Drawn 37 nodes and 71 edges
+[Air debug] parsed outer face: 23 [1 3 8 4 9 11 10 2 18 32 31 33 36 37 19 12 23 21 20 30 29 25 26]
+[Air debug] live outer face: 23 [1 3 8 4 9 11 10 2 18 32 31 33 36 37 19 12 23 21 20 30 29 25 26]
+[Air debug] cy outer face before shared seed: 23 [1 3 8 4 9 11 10 2 18 32 31 33 36 37 19 12 23 21 20 30 29 25 26]
+[Air debug] cy outer face after shared seed: 23 [1 26 25 29 30 20 21 23 12 19 37 36 33 31 32 18 2 10 11 9 4 8 3]
+[Air debug] computeOptions outer face: 23 [1 26 25 29 30 20 21 23 12 19 37 36 33 31 32 18 2 10 11 9 4 8 3]
+Air sweep 1/200 | face err 8.769 | max force 6.03e+6 | max move 2.01e+2 | accepted 52 | faces 111
+Air sweep 2/200 | face err 8.748 | max force 2.99e+5 | max move 8.33e+1 | accepted 52 | faces 111
+Air sweep 3/200 | face err 8.739 | max force 4.81e+4 | max move 2.73e+1 | accepted 52 | faces 111
+Air sweep 4/200 | face err 8.732 | max force 1.94e+4 | max move 1.46e+2 | accepted 52 | faces 111
+Air sweep 5/200 | face err 8.729 | max force 2.07e+4 | max move 4.58e+1 | accepted 52 | faces 111
+Air sweep 6/200 | face err 8.866 | max force 1.27e+4 | max move 5.08e+1 | accepted 52 | faces 111
+Air sweep 7/200 | face err 9.041 | max force 1.06e+4 | max move 6.94e+1 | accepted 52 | faces 111
+Air sweep 8/200 | face err 9.104 | max force 6.05e+3 | max move 7.20e+1 | accepted 52 | faces 111
+Air sweep 9/200 | face err 9.103 | max force 8.62e+3 | max move 1.80e+1 | accepted 52 | faces 111
+Air sweep 10/200 | face err 9.081 | max force 3.54e+3 | max move 1.74e+1 | accepted 52 | faces 111
+Air sweep 11/200 | face err 9.028 | max force 2.09e+3 | max move 2.12e+1 | accepted 52 | faces 111
+Air sweep 12/200 | face err 8.948 | max force 1.32e+3 | max move 3.21e+1 | accepted 52 | dErr[12] 1.56e-1 | faces 111
+Air sweep 13/200 | face err 8.865 | max force 9.23e+2 | max move 2.58e+1 | accepted 52 | dErr[12] -9.65e-2 | faces 111
+Air sweep 14/200 | face err 8.787 | max force 7.42e+2 | max move 2.02e+1 | accepted 52 | dErr[12] -3.93e-2 | faces 111
+Air sweep 15/200 | face err 8.711 | max force 7.42e+2 | max move 1.77e+1 | accepted 52 | dErr[12] 2.77e-2 | faces 111
+Air sweep 16/200 | face err 8.635 | max force 7.19e+2 | max move 1.47e+1 | accepted 52 | dErr[12] 9.69e-2 | faces 111
+Air sweep 17/200 | face err 8.559 | max force 6.84e+2 | max move 1.19e+1 | accepted 52 | dErr[12] 1.69e-1 | faces 111
+Air sweep 18/200 | face err 8.483 | max force 6.47e+2 | max move 9.49e+0 | accepted 52 | dErr[12] 3.83e-1 | faces 111
+Air sweep 19/200 | face err 8.406 | max force 6.11e+2 | max move 1.15e+1 | accepted 52 | dErr[12] 6.34e-1 | faces 111
+Air sweep 20/200 | face err 8.328 | max force 5.79e+2 | max move 1.69e+1 | accepted 52 | dErr[12] 7.76e-1 | faces 111
+Air sweep 21/200 | face err 8.247 | max force 5.49e+2 | max move 2.44e+1 | accepted 52 | dErr[12] 8.56e-1 | faces 111
+Air sweep 22/200 | face err 8.163 | max force 5.19e+2 | max move 3.29e+1 | accepted 52 | dErr[12] 9.18e-1 | faces 111
+Air sweep 23/200 | face err 8.073 | max force 4.89e+2 | max move 3.42e+1 | accepted 52 | dErr[12] 9.54e-1 | faces 111
+Air sweep 24/200 | face err 7.980 | max force 4.55e+2 | max move 1.99e+1 | accepted 52 | dErr[12] 9.68e-1 | faces 111
+Air sweep 25/200 | face err 7.887 | max force 4.20e+2 | max move 8.36e+0 | accepted 52 | dErr[12] 9.78e-1 | faces 111
+Air sweep 26/200 | face err 7.795 | max force 3.85e+2 | max move 6.89e+0 | accepted 52 | dErr[12] 9.92e-1 | faces 111
+Air sweep 27/200 | face err 7.707 | max force 3.53e+2 | max move 6.34e+0 | accepted 52 | dErr[12] 1.00e+0 | faces 111
+Air sweep 28/200 | face err 7.625 | max force 3.25e+2 | max move 5.72e+0 | accepted 52 | dErr[12] 1.01e+0 | faces 111
+Air sweep 29/200 | face err 7.547 | max force 3.03e+2 | max move 5.06e+0 | accepted 52 | dErr[12] 1.01e+0 | faces 111
+Air sweep 30/200 | face err 7.475 | max force 2.85e+2 | max move 4.39e+0 | accepted 52 | dErr[12] 1.01e+0 | faces 111
+Air sweep 31/200 | face err 7.407 | max force 2.70e+2 | max move 3.94e+0 | accepted 52 | dErr[12] 9.99e-1 | faces 111
+Air sweep 32/200 | face err 7.344 | max force 2.60e+2 | max move 3.86e+0 | accepted 52 | dErr[12] 9.83e-1 | faces 111
+Air sweep 33/200 | face err 7.286 | max force 2.56e+2 | max move 3.78e+0 | accepted 52 | dErr[12] 9.61e-1 | faces 111
+Air sweep 34/200 | face err 7.232 | max force 2.51e+2 | max move 3.69e+0 | accepted 52 | dErr[12] 9.30e-1 | faces 111
+Air sweep 35/200 | face err 7.182 | max force 2.46e+2 | max move 3.60e+0 | accepted 52 | dErr[12] 8.91e-1 | faces 111
+Air sweep 36/200 | face err 7.136 | max force 2.41e+2 | max move 3.50e+0 | accepted 52 | dErr[12] 8.45e-1 | faces 111
+Air sweep 37/200 | face err 7.092 | max force 2.35e+2 | max move 3.39e+0 | accepted 52 | dErr[12] 7.94e-1 | faces 111
+Air sweep 38/200 | face err 7.052 | max force 2.30e+2 | max move 3.28e+0 | accepted 52 | dErr[12] 7.43e-1 | faces 111
+Air sweep 39/200 | face err 7.014 | max force 2.24e+2 | max move 3.16e+0 | accepted 52 | dErr[12] 6.94e-1 | faces 111
+Air sweep 40/200 | face err 6.978 | max force 2.19e+2 | max move 3.02e+0 | accepted 52 | dErr[12] 6.47e-1 | faces 111
+Air sweep 41/200 | face err 6.945 | max force 2.13e+2 | max move 2.87e+0 | accepted 52 | dErr[12] 6.02e-1 | faces 111
+Air sweep 42/200 | face err 6.914 | max force 2.08e+2 | max move 2.70e+0 | accepted 52 | dErr[12] 5.61e-1 | faces 111
+Air sweep 43/200 | face err 6.886 | max force 2.02e+2 | max move 2.52e+0 | accepted 52 | dErr[12] 5.21e-1 | faces 111
+Air sweep 44/200 | face err 6.861 | max force 1.97e+2 | max move 2.31e+0 | accepted 52 | dErr[12] 4.83e-1 | faces 111
+Air sweep 45/200 | face err 6.840 | max force 1.91e+2 | max move 2.08e+0 | accepted 52 | dErr[12] 4.46e-1 | faces 111
+Air sweep 46/200 | face err 6.822 | max force 1.85e+2 | max move 1.85e+0 | accepted 52 | dErr[12] 4.10e-1 | faces 111
+Air sweep 47/200 | face err 6.808 | max force 1.80e+2 | max move 1.63e+0 | accepted 52 | dErr[12] 3.75e-1 | faces 111
+Air sweep 48/200 | face err 6.797 | max force 1.74e+2 | max move 1.43e+0 | accepted 52 | dErr[12] 3.39e-1 | faces 111
+Air sweep 49/200 | face err 6.789 | max force 1.69e+2 | max move 1.27e+0 | accepted 52 | dErr[12] 3.03e-1 | faces 111
+Air sweep 50/200 | face err 6.784 | max force 1.64e+2 | max move 1.13e+0 | accepted 52 | dErr[12] 2.68e-1 | faces 111
+Air sweep 51/200 | face err 6.780 | max force 1.59e+2 | max move 1.02e+0 | accepted 52 | dErr[12] 2.33e-1 | faces 111
+Air sweep 52/200 | face err 6.778 | max force 1.55e+2 | max move 9.29e-1 | accepted 52 | dErr[12] 2.00e-1 | faces 111
+Air sweep 53/200 | face err 6.777 | max force 1.51e+2 | max move 8.52e-1 | accepted 52 | dErr[12] 1.68e-1 | faces 111
+Air sweep 54/200 | face err 6.777 | max force 1.48e+2 | max move 7.85e-1 | accepted 52 | dErr[12] 1.37e-1 | faces 111
+Air sweep 55/200 | face err 6.777 | max force 1.45e+2 | max move 7.28e-1 | accepted 52 | dErr[12] 1.09e-1 | faces 111
+Air sweep 56/200 | face err 6.778 | max force 1.42e+2 | max move 6.77e-1 | accepted 52 | dErr[12] 8.38e-2 | faces 111
+Air sweep 57/200 | face err 6.779 | max force 1.39e+2 | max move 6.59e-1 | accepted 52 | dErr[12] 6.14e-2 | faces 111
+Air sweep 58/200 | face err 6.780 | max force 1.37e+2 | max move 6.48e-1 | accepted 52 | dErr[12] 4.24e-2 | faces 111
+Air sweep 59/200 | face err 6.781 | max force 1.34e+2 | max move 6.37e-1 | accepted 52 | dErr[12] 2.68e-2 | faces 111
+Air sweep 60/200 | face err 6.782 | max force 1.32e+2 | max move 6.28e-1 | accepted 52 | dErr[12] 1.45e-2 | faces 111
+Air sweep 61/200 | face err 6.784 | max force 1.30e+2 | max move 6.18e-1 | accepted 52 | dErr[12] 5.13e-3 | faces 111
+Air sweep 62/200 | face err 6.786 | max force 1.27e+2 | max move 6.09e-1 | accepted 52 | dErr[12] -1.90e-3 | faces 111
+Air sweep 63/200 | face err 6.787 | max force 1.25e+2 | max move 6.00e-1 | accepted 52 | dErr[12] -7.07e-3 | faces 111
+Air sweep 64/200 | face err 6.789 | max force 1.24e+2 | max move 5.91e-1 | accepted 52 | dErr[12] -1.09e-2 | faces 111
+Air sweep 65/200 | face err 6.791 | max force 1.22e+2 | max move 5.83e-1 | accepted 52 | dErr[12] -1.37e-2 | faces 111
+Air sweep 66/200 | face err 6.792 | max force 1.20e+2 | max move 5.75e-1 | accepted 52 | dErr[12] -1.57e-2 | faces 111
+Air sweep 67/200 | face err 6.794 | max force 1.18e+2 | max move 5.67e-1 | accepted 52 | dErr[12] -1.73e-2 | faces 111
+Air sweep 68/200 | face err 6.796 | max force 1.17e+2 | max move 5.60e-1 | accepted 52 | dErr[12] -1.86e-2 | faces 111
+Air sweep 69/200 | face err 6.798 | max force 1.15e+2 | max move 5.52e-1 | accepted 52 | dErr[12] -1.96e-2 | faces 111
+Air sweep 70/200 | face err 6.800 | max force 1.13e+2 | max move 5.45e-1 | accepted 52 | dErr[12] -2.04e-2 | faces 111
+Air sweep 71/200 | face err 6.802 | max force 1.12e+2 | max move 5.38e-1 | accepted 52 | dErr[12] -2.12e-2 | faces 111
+Air sweep 72/200 | face err 6.804 | max force 1.10e+2 | max move 5.31e-1 | accepted 52 | dErr[12] -2.19e-2 | faces 111
+Air sweep 73/200 | face err 6.807 | max force 1.09e+2 | max move 5.25e-1 | accepted 52 | dErr[12] -2.26e-2 | faces 111
+Air sweep 74/200 | face err 6.809 | max force 1.08e+2 | max move 5.18e-1 | accepted 52 | dErr[12] -2.33e-2 | faces 111
+Air sweep 75/200 | face err 6.811 | max force 1.06e+2 | max move 5.12e-1 | accepted 52 | dErr[12] -2.39e-2 | faces 111
+Air sweep 76/200 | face err 6.813 | max force 1.05e+2 | max move 5.06e-1 | accepted 52 | dErr[12] -2.46e-2 | faces 111
+Air sweep 77/200 | face err 6.816 | max force 1.04e+2 | max move 5.00e-1 | accepted 52 | dErr[12] -2.52e-2 | faces 111
+Air sweep 78/200 | face err 6.818 | max force 1.02e+2 | max move 4.94e-1 | accepted 52 | dErr[12] -2.59e-2 | faces 111
+Air sweep 79/200 | face err 6.821 | max force 1.01e+2 | max move 4.88e-1 | accepted 52 | dErr[12] -2.66e-2 | faces 111
+Air sweep 80/200 | face err 6.823 | max force 9.99e+1 | max move 4.82e-1 | accepted 52 | dErr[12] -2.72e-2 | faces 111
+Air sweep 81/200 | face err 6.826 | max force 9.88e+1 | max move 4.77e-1 | accepted 52 | dErr[12] -2.79e-2 | faces 111
+Air sweep 82/200 | face err 6.829 | max force 9.76e+1 | max move 4.71e-1 | accepted 52 | dErr[12] -2.85e-2 | faces 111
+Air sweep 83/200 | face err 6.831 | max force 9.65e+1 | max move 4.66e-1 | accepted 52 | dErr[12] -2.92e-2 | faces 111
+Air sweep 84/200 | face err 6.834 | max force 9.54e+1 | max move 4.61e-1 | accepted 52 | dErr[12] -2.98e-2 | faces 111
+Air sweep 85/200 | face err 6.837 | max force 9.44e+1 | max move 4.56e-1 | accepted 52 | dErr[12] -3.04e-2 | faces 111
+Air sweep 86/200 | face err 6.840 | max force 9.34e+1 | max move 4.51e-1 | accepted 52 | dErr[12] -3.10e-2 | faces 111
+Air sweep 87/200 | face err 6.843 | max force 9.24e+1 | max move 4.46e-1 | accepted 52 | dErr[12] -3.16e-2 | faces 111
+Air sweep 88/200 | face err 6.846 | max force 9.14e+1 | max move 4.42e-1 | accepted 52 | dErr[12] -3.21e-2 | faces 111
+Air sweep 89/200 | face err 6.849 | max force 9.04e+1 | max move 4.37e-1 | accepted 52 | dErr[12] -3.27e-2 | faces 111
+Air sweep 90/200 | face err 6.851 | max force 8.95e+1 | max move 4.32e-1 | accepted 52 | dErr[12] -3.32e-2 | faces 111
+Air sweep 91/200 | face err 6.854 | max force 8.86e+1 | max move 4.28e-1 | accepted 52 | dErr[12] -3.37e-2 | faces 111
+Air sweep 92/200 | face err 6.858 | max force 8.77e+1 | max move 4.24e-1 | accepted 52 | dErr[12] -3.41e-2 | faces 111
+Air sweep 93/200 | face err 6.861 | max force 8.69e+1 | max move 4.20e-1 | accepted 52 | dErr[12] -3.46e-2 | faces 111
+Air sweep 94/200 | face err 6.864 | max force 8.60e+1 | max move 4.15e-1 | accepted 52 | dErr[12] -3.50e-2 | faces 111
+Air sweep 95/200 | face err 6.867 | max force 8.52e+1 | max move 4.11e-1 | accepted 52 | dErr[12] -3.54e-2 | faces 111
+Air sweep 96/200 | face err 6.870 | max force 8.44e+1 | max move 4.08e-1 | accepted 52 | dErr[12] -3.57e-2 | faces 111
+Air sweep 97/200 | face err 6.873 | max force 8.36e+1 | max move 4.04e-1 | accepted 52 | dErr[12] -3.61e-2 | faces 111
+Air sweep 98/200 | face err 6.876 | max force 8.29e+1 | max move 4.00e-1 | accepted 52 | dErr[12] -3.64e-2 | faces 111
+Air sweep 99/200 | face err 6.879 | max force 8.21e+1 | max move 3.96e-1 | accepted 52 | dErr[12] -3.67e-2 | faces 111
+Air sweep 100/200 | face err 6.883 | max force 8.14e+1 | max move 3.93e-1 | accepted 52 | dErr[12] -3.69e-2 | faces 111
+Air sweep 101/200 | face err 6.886 | max force 8.07e+1 | max move 3.89e-1 | accepted 52 | dErr[12] -3.72e-2 | faces 111
+Air sweep 102/200 | face err 6.889 | max force 8.00e+1 | max move 3.86e-1 | accepted 52 | dErr[12] -3.74e-2 | faces 111
+Air sweep 103/200 | face err 6.892 | max force 7.94e+1 | max move 3.83e-1 | accepted 52 | dErr[12] -3.76e-2 | faces 111
+Air sweep 104/200 | face err 6.895 | max force 7.87e+1 | max move 3.79e-1 | accepted 52 | dErr[12] -3.78e-2 | faces 111
+Air sweep 105/200 | face err 6.899 | max force 7.81e+1 | max move 3.76e-1 | accepted 52 | dErr[12] -3.79e-2 | faces 111
+Air sweep 106/200 | face err 6.902 | max force 7.75e+1 | max move 3.73e-1 | accepted 52 | dErr[12] -3.81e-2 | faces 111
+Air sweep 107/200 | face err 6.905 | max force 7.69e+1 | max move 3.70e-1 | accepted 52 | dErr[12] -3.82e-2 | faces 111
+Air sweep 108/200 | face err 6.908 | max force 7.63e+1 | max move 3.67e-1 | accepted 52 | dErr[12] -3.83e-2 | faces 111
+Air sweep 109/200 | face err 6.911 | max force 7.57e+1 | max move 3.65e-1 | accepted 52 | dErr[12] -3.84e-2 | faces 111
+Air sweep 110/200 | face err 6.915 | max force 7.52e+1 | max move 3.62e-1 | accepted 52 | dErr[12] -3.84e-2 | faces 111
+Air sweep 111/200 | face err 6.918 | max force 7.46e+1 | max move 3.59e-1 | accepted 52 | dErr[12] -3.85e-2 | faces 111
+Air sweep 112/200 | face err 6.921 | max force 7.41e+1 | max move 3.57e-1 | accepted 52 | dErr[12] -3.85e-2 | faces 111
+Air sweep 113/200 | face err 6.924 | max force 7.36e+1 | max move 3.54e-1 | accepted 52 | dErr[12] -3.85e-2 | faces 111
+Air sweep 114/200 | face err 6.927 | max force 7.32e+1 | max move 3.52e-1 | accepted 52 | dErr[12] -3.85e-2 | faces 111
+Air sweep 115/200 | face err 6.931 | max force 7.27e+1 | max move 3.49e-1 | accepted 52 | dErr[12] -3.85e-2 | faces 111
+Air sweep 116/200 | face err 6.934 | max force 7.22e+1 | max move 3.47e-1 | accepted 52 | dErr[12] -3.85e-2 | faces 111
+Air sweep 117/200 | face err 6.937 | max force 7.18e+1 | max move 3.45e-1 | accepted 52 | dErr[12] -3.85e-2 | faces 111
+Air sweep 118/200 | face err 6.940 | max force 7.14e+1 | max move 3.44e-1 | accepted 52 | dErr[12] -3.84e-2 | faces 111
+Air sweep 119/200 | face err 6.943 | max force 7.10e+1 | max move 3.52e-1 | accepted 52 | dErr[12] -3.84e-2 | faces 111
+Air sweep 120/200 | face err 6.946 | max force 7.06e+1 | max move 3.60e-1 | accepted 52 | dErr[12] -3.83e-2 | faces 111
+Air sweep 121/200 | face err 6.950 | max force 7.02e+1 | max move 3.68e-1 | accepted 52 | dErr[12] -3.83e-2 | faces 111
+Air sweep 122/200 | face err 6.953 | max force 6.98e+1 | max move 3.76e-1 | accepted 52 | dErr[12] -3.82e-2 | faces 111
+Air sweep 123/200 | face err 6.956 | max force 6.95e+1 | max move 3.84e-1 | accepted 52 | dErr[12] -3.81e-2 | faces 111
+Air sweep 124/200 | face err 6.959 | max force 6.91e+1 | max move 3.92e-1 | accepted 52 | dErr[12] -3.80e-2 | faces 111
+Air sweep 125/200 | face err 6.962 | max force 6.88e+1 | max move 4.01e-1 | accepted 52 | dErr[12] -3.79e-2 | faces 111
+Air sweep 126/200 | face err 6.965 | max force 6.85e+1 | max move 4.09e-1 | accepted 52 | dErr[12] -3.78e-2 | faces 111
+Air sweep 127/200 | face err 6.968 | max force 6.82e+1 | max move 4.17e-1 | accepted 52 | dErr[12] -3.77e-2 | faces 111
+Air sweep 128/200 | face err 6.971 | max force 6.79e+1 | max move 4.25e-1 | accepted 52 | dErr[12] -3.75e-2 | faces 111
+Air sweep 129/200 | face err 6.974 | max force 6.77e+1 | max move 4.34e-1 | accepted 52 | dErr[12] -3.74e-2 | faces 111
+Air sweep 130/200 | face err 6.977 | max force 6.74e+1 | max move 4.42e-1 | accepted 52 | dErr[12] -3.73e-2 | faces 111
+Air sweep 131/200 | face err 6.980 | max force 6.72e+1 | max move 4.50e-1 | accepted 52 | dErr[12] -3.72e-2 | faces 111
+Air sweep 132/200 | face err 6.984 | max force 6.69e+1 | max move 4.59e-1 | accepted 52 | dErr[12] -3.70e-2 | faces 111
+Air sweep 133/200 | face err 6.987 | max force 6.67e+1 | max move 4.67e-1 | accepted 52 | dErr[12] -3.69e-2 | faces 111
+Air sweep 134/200 | face err 6.990 | max force 6.65e+1 | max move 4.76e-1 | accepted 52 | dErr[12] -3.67e-2 | faces 111
+Air sweep 135/200 | face err 6.992 | max force 6.63e+1 | max move 4.85e-1 | accepted 52 | dErr[12] -3.66e-2 | faces 111
+Air sweep 136/200 | face err 6.995 | max force 6.62e+1 | max move 4.93e-1 | accepted 52 | dErr[12] -3.64e-2 | faces 111
+Air sweep 137/200 | face err 6.998 | max force 6.60e+1 | max move 5.02e-1 | accepted 52 | dErr[12] -3.63e-2 | faces 111
+Air sweep 138/200 | face err 7.001 | max force 6.58e+1 | max move 5.11e-1 | accepted 52 | dErr[12] -3.61e-2 | faces 111
+Air sweep 139/200 | face err 7.004 | max force 6.57e+1 | max move 5.19e-1 | accepted 52 | dErr[12] -3.60e-2 | faces 111
+Air sweep 140/200 | face err 7.007 | max force 6.56e+1 | max move 5.28e-1 | accepted 52 | dErr[12] -3.58e-2 | faces 111
+Air sweep 141/200 | face err 7.010 | max force 6.55e+1 | max move 5.37e-1 | accepted 52 | dErr[12] -3.57e-2 | faces 111
+Air sweep 142/200 | face err 7.013 | max force 6.54e+1 | max move 5.46e-1 | accepted 52 | dErr[12] -3.55e-2 | faces 111
+Air sweep 143/200 | face err 7.016 | max force 6.53e+1 | max move 5.55e-1 | accepted 52 | dErr[12] -3.53e-2 | faces 111
+Air sweep 144/200 | face err 7.019 | max force 6.52e+1 | max move 5.64e-1 | accepted 52 | dErr[12] -3.52e-2 | faces 111
+Air sweep 145/200 | face err 7.022 | max force 6.52e+1 | max move 5.73e-1 | accepted 52 | dErr[12] -3.50e-2 | faces 111
+Air sweep 146/200 | face err 7.024 | max force 6.51e+1 | max move 5.83e-1 | accepted 52 | dErr[12] -3.48e-2 | faces 111
+Air sweep 147/200 | face err 7.027 | max force 6.51e+1 | max move 5.92e-1 | accepted 52 | dErr[12] -3.47e-2 | faces 111
+Air sweep 148/200 | face err 7.030 | max force 6.51e+1 | max move 6.01e-1 | accepted 52 | dErr[12] -3.45e-2 | faces 111
+Air sweep 149/200 | face err 7.033 | max force 6.51e+1 | max move 6.11e-1 | accepted 52 | dErr[12] -3.44e-2 | faces 111
+Air sweep 150/200 | face err 7.036 | max force 6.51e+1 | max move 6.20e-1 | accepted 52 | dErr[12] -3.42e-2 | faces 111
+Air sweep 151/200 | face err 7.038 | max force 6.51e+1 | max move 6.30e-1 | accepted 52 | dErr[12] -3.40e-2 | faces 111
+Air sweep 152/200 | face err 7.041 | max force 6.51e+1 | max move 6.40e-1 | accepted 52 | dErr[12] -3.39e-2 | faces 111
+Air sweep 153/200 | face err 7.044 | max force 6.52e+1 | max move 6.50e-1 | accepted 52 | dErr[12] -3.37e-2 | faces 111
+Air sweep 154/200 | face err 7.046 | max force 6.52e+1 | max move 6.59e-1 | accepted 52 | dErr[12] -3.35e-2 | faces 111
+Air sweep 155/200 | face err 7.049 | max force 6.53e+1 | max move 6.69e-1 | accepted 52 | dErr[12] -3.34e-2 | faces 111
+Air sweep 156/200 | face err 7.052 | max force 6.54e+1 | max move 6.79e-1 | accepted 52 | dErr[12] -3.32e-2 | faces 111
+Air sweep 157/200 | face err 7.055 | max force 6.55e+1 | max move 6.90e-1 | accepted 52 | dErr[12] -3.31e-2 | faces 111
+Air sweep 158/200 | face err 7.057 | max force 6.56e+1 | max move 7.00e-1 | accepted 52 | dErr[12] -3.29e-2 | faces 111
+Air sweep 159/200 | face err 7.060 | max force 6.57e+1 | max move 7.10e-1 | accepted 52 | dErr[12] -3.28e-2 | faces 111
+Air sweep 160/200 | face err 7.063 | max force 6.58e+1 | max move 7.21e-1 | accepted 52 | dErr[12] -3.26e-2 | faces 111
+Air sweep 161/200 | face err 7.065 | max force 6.60e+1 | max move 7.31e-1 | accepted 52 | dErr[12] -3.25e-2 | faces 111
+Air sweep 162/200 | face err 7.068 | max force 6.61e+1 | max move 7.42e-1 | accepted 52 | dErr[12] -3.23e-2 | faces 111
+Air sweep 163/200 | face err 7.070 | max force 6.63e+1 | max move 7.52e-1 | accepted 52 | dErr[12] -3.22e-2 | faces 111
+Air sweep 164/200 | face err 7.073 | max force 6.65e+1 | max move 7.63e-1 | accepted 52 | dErr[12] -3.20e-2 | faces 111
+Air sweep 165/200 | face err 7.076 | max force 6.67e+1 | max move 7.74e-1 | accepted 52 | dErr[12] -3.19e-2 | faces 111
+Air sweep 166/200 | face err 7.078 | max force 6.69e+1 | max move 7.85e-1 | accepted 52 | dErr[12] -3.17e-2 | faces 111
+Air sweep 167/200 | face err 7.081 | max force 6.71e+1 | max move 7.96e-1 | accepted 52 | dErr[12] -3.16e-2 | faces 111
+Air sweep 168/200 | face err 7.083 | max force 6.74e+1 | max move 8.07e-1 | accepted 52 | dErr[12] -3.14e-2 | faces 111
+Air sweep 169/200 | face err 7.086 | max force 6.76e+1 | max move 8.19e-1 | accepted 52 | dErr[12] -3.13e-2 | faces 111
+Air sweep 170/200 | face err 7.088 | max force 6.79e+1 | max move 8.30e-1 | accepted 52 | dErr[12] -3.11e-2 | faces 111
+Air sweep 171/200 | face err 7.091 | max force 6.82e+1 | max move 8.41e-1 | accepted 52 | dErr[12] -3.10e-2 | faces 111
+Air sweep 172/200 | face err 7.093 | max force 6.85e+1 | max move 8.53e-1 | accepted 52 | dErr[12] -3.09e-2 | faces 111
+Air sweep 173/200 | face err 7.096 | max force 6.88e+1 | max move 8.64e-1 | accepted 52 | dErr[12] -3.07e-2 | faces 111
+Air sweep 174/200 | face err 7.098 | max force 6.91e+1 | max move 8.76e-1 | accepted 52 | dErr[12] -3.06e-2 | faces 111
+Air sweep 175/200 | face err 7.101 | max force 6.94e+1 | max move 8.88e-1 | accepted 52 | dErr[12] -3.05e-2 | faces 111
+Air sweep 176/200 | face err 7.103 | max force 6.98e+1 | max move 9.00e-1 | accepted 52 | dErr[12] -3.03e-2 | faces 111
+Air sweep 177/200 | face err 7.106 | max force 7.01e+1 | max move 9.12e-1 | accepted 52 | dErr[12] -3.02e-2 | faces 111
+Air sweep 178/200 | face err 7.108 | max force 7.05e+1 | max move 9.24e-1 | accepted 52 | dErr[12] -3.01e-2 | faces 111
+Air sweep 179/200 | face err 7.111 | max force 7.09e+1 | max move 9.36e-1 | accepted 52 | dErr[12] -3.00e-2 | faces 111
+Air sweep 180/200 | face err 7.113 | max force 7.13e+1 | max move 9.48e-1 | accepted 52 | dErr[12] -2.98e-2 | faces 111
+Air sweep 181/200 | face err 7.116 | max force 7.17e+1 | max move 9.60e-1 | accepted 52 | dErr[12] -2.97e-2 | faces 111
+Air sweep 182/200 | face err 7.118 | max force 7.21e+1 | max move 9.73e-1 | accepted 52 | dErr[12] -2.96e-2 | faces 111
+Air sweep 183/200 | face err 7.120 | max force 7.25e+1 | max move 9.85e-1 | accepted 52 | dErr[12] -2.95e-2 | faces 111
+Air sweep 184/200 | face err 7.123 | max force 7.30e+1 | max move 9.97e-1 | accepted 52 | dErr[12] -2.94e-2 | faces 111
+Air sweep 185/200 | face err 7.125 | max force 7.35e+1 | max move 1.01e+0 | accepted 52 | dErr[12] -2.92e-2 | faces 111
+Air sweep 186/200 | face err 7.128 | max force 7.39e+1 | max move 1.02e+0 | accepted 52 | dErr[12] -2.91e-2 | faces 111
+Air sweep 187/200 | face err 7.130 | max force 7.44e+1 | max move 1.03e+0 | accepted 52 | dErr[12] -2.90e-2 | faces 111
+Air sweep 188/200 | face err 7.132 | max force 7.49e+1 | max move 1.05e+0 | accepted 52 | dErr[12] -2.89e-2 | faces 111
+Air sweep 189/200 | face err 7.135 | max force 7.54e+1 | max move 1.06e+0 | accepted 52 | dErr[12] -2.88e-2 | faces 111
+Air sweep 190/200 | face err 7.137 | max force 7.60e+1 | max move 1.07e+0 | accepted 52 | dErr[12] -2.87e-2 | faces 111
+Air sweep 191/200 | face err 7.139 | max force 7.65e+1 | max move 1.08e+0 | accepted 52 | dErr[12] -2.86e-2 | faces 111
+Air sweep 192/200 | face err 7.142 | max force 7.70e+1 | max move 1.10e+0 | accepted 52 | dErr[12] -2.85e-2 | faces 111
+Air sweep 193/200 | face err 7.144 | max force 7.76e+1 | max move 1.11e+0 | accepted 52 | dErr[12] -2.84e-2 | faces 111
+Air sweep 194/200 | face err 7.146 | max force 7.82e+1 | max move 1.12e+0 | accepted 52 | dErr[12] -2.82e-2 | faces 111
+Air sweep 195/200 | face err 7.149 | max force 7.88e+1 | max move 1.13e+0 | accepted 52 | dErr[12] -2.81e-2 | faces 111
+Air sweep 196/200 | face err 7.151 | max force 7.94e+1 | max move 1.14e+0 | accepted 52 | dErr[12] -2.80e-2 | faces 111
+Air sweep 197/200 | face err 7.153 | max force 8.00e+1 | max move 1.16e+0 | accepted 52 | dErr[12] -2.79e-2 | faces 111
+Air sweep 198/200 | face err 7.155 | max force 8.06e+1 | max move 1.17e+0 | accepted 52 | dErr[12] -2.78e-2 | faces 111
+Air sweep 199/200 | face err 7.158 | max force 8.12e+1 | max move 1.18e+0 | accepted 52 | dErr[12] -2.77e-2 | faces 111
+Air sweep 200/200 | face err 7.160 | max force 8.18e+1 | max move 1.19e+0 | accepted 52 | dErr[12] -2.76e-2 | faces 111
+Applied Air (9-vertex outer face, 111 bounded faces, +24 dummy vertices, status max_sweeps, max rel err 7.160, face score 0.593) | size: 37V, 71E

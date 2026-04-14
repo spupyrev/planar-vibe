@@ -217,7 +217,7 @@ const layoutSpecs = [
     name: 'Tutte compute',
     graph: CUBE,
     run(graph) {
-      return Tutte.computeTutteLayout(graph);
+      return Tutte.computeTutteLayout(graph, {});
     }
   },
   {
@@ -226,8 +226,7 @@ const layoutSpecs = [
     run(graph) {
       return Air.computeAirPositions(graph, {
         delayMs: 0,
-        yieldEvery: 50,
-        maxSweeps: 40
+        yieldEvery: 50
       });
     }
   },
@@ -361,23 +360,23 @@ test('normalized failure shape is preserved for exported compute functions', asy
     },
     {
       name: 'Tutte compute',
-      run: () => Tutte.computeTutteLayout(singleEdgeGraph)
+      run: () => Tutte.computeTutteLayout(singleEdgeGraph, {})
     },
     {
       name: 'CEG23-bfs compute',
-      run: () => CEG23.computeCEG23BfsPositions(singleEdgeGraph)
+      run: () => CEG23.computeCEG23BfsPositions(singleEdgeGraph, {})
     },
     {
       name: 'CEG23-xy compute',
-      run: () => CEG23XY.computeCEG23XyPositions(singleEdgeGraph)
+      run: () => CEG23XY.computeCEG23XyPositions(singleEdgeGraph, {})
     },
     {
       name: 'ReweightTutte compute',
-      run: () => Reweight.computeReweightTuttePositions(singleEdgeGraph)
+      run: () => Reweight.computeReweightTuttePositions(singleEdgeGraph, {})
     },
     {
       name: 'FD-uniform compute',
-      run: () => FDUniform.computeFDUniformPositions(singleEdgeGraph)
+      run: () => FDUniform.computeFDUniformPositions(singleEdgeGraph, {})
     },
     {
       name: 'FPP compute',

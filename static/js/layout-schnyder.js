@@ -459,7 +459,7 @@
     return out;
   }
 
-  function computeSchnyderPositions(g) {
+  function computeSchnyderPositions(g, options) {
     if (g.nodeIds.length < 3) {
       var smallPos = {};
       if (g.nodeIds.length === 2) {
@@ -479,6 +479,7 @@
 
     var prepared = prepareGraphData(g, {
       failureLabel: 'Schnyder',
+      currentPositions: options ? options.currentPositions : undefined,
       augmentationOptions: {
         triangulateOuterFace: true
       }
@@ -555,7 +556,7 @@
   }
 
   function applySchnyderLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       compute: computeSchnyderPositions,
       buildResult: function (ctx) {
         var result = ctx.result;

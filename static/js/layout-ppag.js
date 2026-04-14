@@ -245,35 +245,27 @@
     return worst;
   }
 
-  function normalizePPAGOptions(options) {
-    var opts = options || {};
-    var timing = CyRuntime.resolveLayoutTimingOptions(opts, {
-      delayMs: 0,
-      renderEvery: 2,
-      yieldEvery: 5
-    });
-    return {
-      augmentationMethod: opts.augmentationMethod || null,
-      maxIters: resolveIntOption(opts.maxIters, 200, 1),
-      maxVertexMoveRel: resolvePositiveOption(opts.maxVertexMoveRel, 0.08),
-      localDamping: resolvePositiveOption(opts.localDamping, 1e-3),
-      stepShrink: resolveOpenIntervalOption(opts.stepShrink, 0.5, 0, 1),
-      minStepScale: resolvePositiveOption(opts.minStepScale, Math.pow(2, -20)),
-      tolAreaPositive: resolveFloatOption(opts.tolAreaPositive, 1e-12, 0),
-      tolAreaGlobal: resolveFloatOption(opts.tolAreaGlobal, 1e-3, 0),
-      delayMs: timing.delayMs,
-      onIteration: resolveFunctionOption(opts.onIteration, null),
-      yieldEvery: timing.yieldEvery,
-      renderEvery: timing.renderEvery
-    };
+  function fillPPAGSettings(options) {
+    options.augmentationMethod = options.augmentationMethod || null;
+    options.maxIters = resolveIntOption(options.maxIters, 200, 1);
+    options.maxVertexMoveRel = resolvePositiveOption(options.maxVertexMoveRel, 0.08);
+    options.localDamping = resolvePositiveOption(options.localDamping, 1e-3);
+    options.stepShrink = resolveOpenIntervalOption(options.stepShrink, 0.5, 0, 1);
+    options.minStepScale = resolvePositiveOption(options.minStepScale, Math.pow(2, -20));
+    options.tolAreaPositive = resolveFloatOption(options.tolAreaPositive, 1e-12, 0);
+    options.tolAreaGlobal = resolveFloatOption(options.tolAreaGlobal, 1e-3, 0);
+    options.delayMs = 0;
+    options.onIteration = resolveFunctionOption(options.onIteration, null);
+    options.yieldEvery = 5;
+    options.renderEvery = 2;
   }
 
   function preparePPAGState(graph, options) {
-    var opts = normalizePPAGOptions(options);
+    fillPPAGSettings(options);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'PPAG layout',
-      augmentationMethod: opts.augmentationMethod,
-      currentPositions: opts.currentPositions || null
+      augmentationMethod: options.augmentationMethod,
+      currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'PPAG setup failed' });
@@ -291,7 +283,7 @@
     if (ppagData.triangles.length === 0) {
       return buildLayoutResult({
         ok: true,
-        opts: opts,
+        opts: options,
         graph: context.graph,
         outerFace: context.augmentedOuterFace || context.outerFace,
         augmented: context.augmented,
@@ -301,7 +293,7 @@
       });
     }
 
-    var minTriangleArea = effectiveMinTriangleArea(ppagData, opts);
+    var minTriangleArea = effectiveMinTriangleArea(ppagData, options);
     for (var fi = 0; fi < ppagData.triangles.length; fi += 1) {
       var tri = ppagData.triangles[fi];
       var area = triangleArea2(context.posById[tri.vertices[0]], context.posById[tri.vertices[1]], context.posById[tri.vertices[2]]) / 2;
@@ -312,7 +304,7 @@
 
     return buildLayoutResult({
       ok: true,
-      opts: opts,
+      opts: options,
       graph: context.graph,
       outerFace: context.augmentedOuterFace || context.outerFace,
       augmented: context.augmented,
@@ -323,17 +315,16 @@
   }
 
   async function runPPAGIterations(prepared, options) {
-    var opts = Object.assign({}, prepared && prepared.opts ? prepared.opts : {}, options || {});
     var g = prepared.graph;
     var posById = prepared.posById;
     var ppagData = prepared.ppagData;
     var movableVertices = prepared.movableVertices || [];
     var outerDiameter = outerFaceDiameter(posById, prepared.outerFace || ppagData.outerFace || []);
-    opts.maxVertexMove = opts.maxVertexMoveRel * outerDiameter;
-    opts.minTriangleArea = effectiveMinTriangleArea(ppagData, opts);
+    options.maxVertexMove = options.maxVertexMoveRel * outerDiameter;
+    options.minTriangleArea = effectiveMinTriangleArea(ppagData, options);
     var status = 'max_iters';
     var lastMoveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
-    var state = computePPAGState(ppagData, posById, opts);
+    var state = computePPAGState(ppagData, posById, options);
 
     if (!state.ok) {
       return buildLayoutError({
@@ -343,12 +334,12 @@
       });
     }
 
-    if (state.maxRelError <= opts.tolAreaGlobal) {
+    if (state.maxRelError <= options.tolAreaGlobal) {
       status = 'realized';
     }
 
     var iter;
-    for (iter = 1; iter <= opts.maxIters && status === 'max_iters'; iter += 1) {
+    for (iter = 1; iter <= options.maxIters && status === 'max_iters'; iter += 1) {
       var prevSweepPos = copyPositions(posById);
       var acceptedCount = 0;
       var acceptedStepSum = 0;
@@ -359,7 +350,7 @@
 
       for (var vi = 0; vi < sweepVertices.length; vi += 1) {
         var vertexId = sweepVertices[vi];
-        var delta = computeLocalDelta(vertexId, ppagData, posById, state.residuals || [], opts);
+        var delta = computeLocalDelta(vertexId, ppagData, posById, state.residuals || [], options);
         if (!(delta.norm > PPAG_INTERNAL.tolGrad)) {
           continue;
         }
@@ -368,20 +359,20 @@
           continue;
         }
         var stepScale = 1;
-        while (stepScale >= opts.minStepScale) {
+        while (stepScale >= options.minStepScale) {
           var dx = stepScale * delta.x;
           var dy = stepScale * delta.y;
           posById[vertexId] = {
             x: basePos.x + dx,
             y: basePos.y + dy
           };
-          if (!incidentTrianglesStayPositive(vertexId, ppagData, posById, opts.minTriangleArea)) {
+          if (!incidentTrianglesStayPositive(vertexId, ppagData, posById, options.minTriangleArea)) {
             posById[vertexId] = basePos;
-            stepScale *= opts.stepShrink;
+            stepScale *= options.stepShrink;
             lineSearchSteps += 1;
             continue;
           }
-          var trialState = computePPAGState(ppagData, posById, opts);
+          var trialState = computePPAGState(ppagData, posById, options);
           if (trialState.ok &&
               trialState.objective <= state.objective - PPAG_INTERNAL.acceptanceTol * Math.max(1, state.objective)) {
             state = trialState;
@@ -390,7 +381,7 @@
             break;
           }
           posById[vertexId] = basePos;
-          stepScale *= opts.stepShrink;
+          stepScale *= options.stepShrink;
           lineSearchSteps += 1;
         }
       }
@@ -398,10 +389,10 @@
       lastMoveStats = computePositionMoveStats(movableVertices, prevSweepPos, posById, { moveTol: 0 });
       lastMoveStats.acceptedCount = acceptedCount;
 
-      if (opts.onIteration) {
-        await opts.onIteration({
+      if (options.onIteration) {
+        await options.onIteration({
           iter: iter,
-          maxIters: opts.maxIters,
+          maxIters: options.maxIters,
           status: status,
           positions: posById,
           objective: state.objective,
@@ -421,7 +412,7 @@
         });
       }
 
-      if (state.maxRelError <= opts.tolAreaGlobal) {
+      if (state.maxRelError <= options.tolAreaGlobal) {
         status = 'realized';
         break;
       }
@@ -431,7 +422,7 @@
       }
     }
 
-    if (status === 'max_iters' && iter > opts.maxIters) {
+    if (status === 'max_iters' && iter > options.maxIters) {
       status = 'max_iters';
     }
 
@@ -442,7 +433,7 @@
       positions: posById,
       stats: state,
       moveStats: lastMoveStats,
-      iters: Math.min(opts.maxIters, Math.max(0, iter - (status === 'max_iters' ? 1 : 0))),
+      iters: Math.min(options.maxIters, Math.max(0, iter - (status === 'max_iters' ? 1 : 0))),
       boundedFaceCount: ppagData.triangles.length,
       dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
       hasCrossings: hasCrossings
@@ -450,8 +441,7 @@
   }
 
   async function computePPAGPositions(graph, options) {
-    var opts = options || {};
-    var prepared = preparePPAGState(graph, opts);
+    var prepared = preparePPAGState(graph, options);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'PPAG setup failed' });
     }
@@ -516,7 +506,7 @@
   }
 
   async function applyPPAGLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'PPAG layout',
       compute: computePPAGPositions,

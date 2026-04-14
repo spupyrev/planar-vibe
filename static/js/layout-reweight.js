@@ -207,38 +207,34 @@
     };
   }
 
-  function normalizeReweightOptions(options) {
-    var opts = options || {};
-    var scaleMin = resolveFloatOption(opts.scaleMin, 0.25, 0.01);
-    var pressureScaleMin = resolveFloatOption(opts.pressureScaleMin, 1.0, 0.01);
-    return {
-      augmentationMethod: opts.augmentationMethod || null,
-      currentPositions: opts.currentPositions || null,
-      maxOuterIters: resolveIntOption(opts.maxOuterIters, 8, 1),
-      pressureStep: resolveFloatOption(opts.pressureStep, 0.16, 0),
-      pressureClamp: resolveFloatOption(opts.pressureClamp, 1.20, 0.05),
-      pressureBeta: resolveFloatOption(opts.pressureBeta, 0.18, 0),
-      innerIters: resolveIntOption(opts.innerIters, 3000, 1),
-      finalIters: resolveIntOption(opts.finalIters, 3000, 1),
-      pressureDeltaClamp: resolveFloatOption(opts.pressureDeltaClamp, 0.75, 0.05),
-      scaleMin: scaleMin,
-      scaleMax: resolveFloatOption(opts.scaleMax, 10.0, scaleMin),
-      pressureScaleMin: pressureScaleMin,
-      pressureScaleMax: resolveFloatOption(opts.pressureScaleMax, 1.25, pressureScaleMin),
-      minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, 8, 1),
-      stableIterLimit: resolveIntOption(opts.stableIterLimit, 4, 1),
-      movementStopTol: resolveNonNegativeOption(opts.movementStopTol, null),
-      avgMovementStopTol: resolveNonNegativeOption(opts.avgMovementStopTol, null),
-      onIteration: resolveFunctionOption(opts.onIteration, null)
-    };
+  function fillReweightSettings(options) {
+    var scaleMin = resolveFloatOption(options.scaleMin, 0.25, 0.01);
+    var pressureScaleMin = resolveFloatOption(options.pressureScaleMin, 1.0, 0.01);
+    options.augmentationMethod = options.augmentationMethod || null;
+    options.maxOuterIters = resolveIntOption(options.maxOuterIters, 8, 1);
+    options.pressureStep = resolveFloatOption(options.pressureStep, 0.16, 0);
+    options.pressureClamp = resolveFloatOption(options.pressureClamp, 1.20, 0.05);
+    options.pressureBeta = resolveFloatOption(options.pressureBeta, 0.18, 0);
+    options.innerIters = resolveIntOption(options.innerIters, 3000, 1);
+    options.finalIters = resolveIntOption(options.finalIters, 3000, 1);
+    options.pressureDeltaClamp = resolveFloatOption(options.pressureDeltaClamp, 0.75, 0.05);
+    options.scaleMin = scaleMin;
+    options.scaleMax = resolveFloatOption(options.scaleMax, 10.0, scaleMin);
+    options.pressureScaleMin = pressureScaleMin;
+    options.pressureScaleMax = resolveFloatOption(options.pressureScaleMax, 1.25, pressureScaleMin);
+    options.minItersBeforeStop = resolveIntOption(options.minItersBeforeStop, 8, 1);
+    options.stableIterLimit = resolveIntOption(options.stableIterLimit, 4, 1);
+    options.movementStopTol = resolveNonNegativeOption(options.movementStopTol, null);
+    options.avgMovementStopTol = resolveNonNegativeOption(options.avgMovementStopTol, null);
+    options.onIteration = resolveFunctionOption(options.onIteration, null);
   }
 
   function prepareReweightState(graph, options) {
-    var opts = normalizeReweightOptions(options);
+    fillReweightSettings(options);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'ReweightTutte',
-      augmentationMethod: opts.augmentationMethod,
-      currentPositions: opts.currentPositions || null
+      augmentationMethod: options.augmentationMethod,
+      currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || {
@@ -295,15 +291,15 @@
     var movableVertices = collectMovableVertices(augmented.graph.nodeIds, outer);
     var movementScale = computeDrawingDiameter(augmented.graph.nodeIds, currentPos);
     var movementTracker = createMovementConvergenceTracker({
-      minItersBeforeStop: opts.minItersBeforeStop,
-      stableIterLimit: opts.stableIterLimit,
-      maxMoveTol: opts.movementStopTol !== null ? opts.movementStopTol : 1e-4 * movementScale,
-      avgMoveTol: opts.avgMovementStopTol !== null ? opts.avgMovementStopTol : 2e-5 * movementScale
+      minItersBeforeStop: options.minItersBeforeStop,
+      stableIterLimit: options.stableIterLimit,
+      maxMoveTol: options.movementStopTol !== null ? options.movementStopTol : 1e-4 * movementScale,
+      avgMoveTol: options.avgMovementStopTol !== null ? options.avgMovementStopTol : 2e-5 * movementScale
     });
 
     return {
       ok: true,
-      opts: opts,
+      opts: options,
       graph: g,
       outerFace: outer,
       augmented: augmented,
@@ -324,7 +320,6 @@
   }
 
   async function runReweightIterations(prepared, options) {
-    var opts = Object.assign({}, prepared && prepared.opts ? prepared.opts : {}, options || {});
     var g = prepared.graph;
     var outer = prepared.outerFace;
     var augmented = prepared.augmented;
@@ -345,9 +340,9 @@
     var performedOuterIters = 0;
     var finalIterationStats = null;
 
-    for (var iter = 0; iter < opts.maxOuterIters; iter += 1) {
+    for (var iter = 0; iter < options.maxOuterIters; iter += 1) {
       var prevPos = currentPos;
-      var inner = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, opts.innerIters, fixedOuterPos);
+      var inner = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, options.innerIters, fixedOuterPos);
       totalInnerIters += inner.iters;
       performedOuterIters = iter + 1;
 
@@ -368,7 +363,7 @@
       var iterStats = computeFaceAreaIterationStats(faceAreas, boundedFaceIdx);
       finalIterationStats = iterStats;
 
-      facePressure = updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, opts.pressureStep, opts.pressureClamp, opts.pressureDeltaClamp);
+      facePressure = updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, options.pressureStep, options.pressureClamp, options.pressureDeltaClamp);
       weights = adjustWeights(
         augmented.graph.edgePairs,
         outer,
@@ -379,16 +374,16 @@
         facePressure,
         e2f,
         boundedSet,
-        opts.pressureBeta,
-        opts.scaleMin,
-        opts.scaleMax,
-        opts.pressureScaleMin,
-        opts.pressureScaleMax
+        options.pressureBeta,
+        options.scaleMin,
+        options.scaleMax,
+        options.pressureScaleMin,
+        options.pressureScaleMax
       );
-      if (typeof opts.onIteration === 'function') {
-        await opts.onIteration({
+      if (typeof options.onIteration === 'function') {
+        await options.onIteration({
           iter: iter + 1,
-          maxIters: opts.maxOuterIters,
+          maxIters: options.maxOuterIters,
           positions: pos,
           faceAreaScore: iterStats ? iterStats.score : null,
           movedVertices: moveStats.movedVertices,
@@ -410,7 +405,7 @@
       }
     }
 
-    var finalLayout = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, opts.finalIters, fixedOuterPos);
+    var finalLayout = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, options.finalIters, fixedOuterPos);
     totalInnerIters += finalLayout.iters;
 
     return buildLayoutResult({
@@ -439,7 +434,7 @@
   }
 
   async function applyReweightTutteLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'ReweightTutte layout',
       compute: computeReweightTuttePositions,

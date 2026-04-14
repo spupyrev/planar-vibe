@@ -312,10 +312,9 @@
   }
 
   function runFDUniformIterations(state, context, options) {
-    var opts = options || {};
-    var evalEvery = resolveIntOption(opts.evalEvery, 10, 1);
-    var onIteration = resolveFunctionOption(opts.onIteration, null);
-    var movementTracker = opts.movementTracker;
+    var evalEvery = resolveIntOption(options.evalEvery, 10, 1);
+    var onIteration = resolveFunctionOption(options.onIteration, null);
+    var movementTracker = options.movementTracker;
     var movable = state.movable;
 
     function runStep(iter) {
@@ -386,30 +385,29 @@
   }
 
   function computeFDUniformPositions(graph, options) {
-    var opts = options || {};
-    var EPS = resolveFloatOption(opts.epsilon, 1e-9, 1e-12);
-    var repEps = resolveFloatOption(opts.repulsionEps, 1e-6, 1e-12);
-    var repPower = resolveFloatOption(opts.repulsionPower, 2, 1);
-    var maxIters = resolveIntOption(opts.maxIters, 400, 1);
-    var beta = resolveFloatOption(opts.beta, 0.45, 0);
-    var alpha0 = resolveFloatOption(opts.alpha, 1.2, 0);
+    var EPS = resolveFloatOption(options.epsilon, 1e-9, 1e-12);
+    var repEps = resolveFloatOption(options.repulsionEps, 1e-6, 1e-12);
+    var repPower = resolveFloatOption(options.repulsionPower, 2, 1);
+    var maxIters = resolveIntOption(options.maxIters, 400, 1);
+    var beta = resolveFloatOption(options.beta, 0.45, 0);
+    var alpha0 = resolveFloatOption(options.alpha, 1.2, 0);
     var alpha = alpha0;
-    var alphaGrowEvery = resolveIntOption(opts.alphaGrowEvery, 120, 1);
-    var alphaGrowFactor = resolveFloatOption(opts.alphaGrowFactor, 1.15, 1);
-    var alphaCap = resolveFloatOption(opts.alphaCap, 4.0, alpha0);
-    var gamma = resolveFloatOption(opts.stepDecay, 0.5, 0.1, 0.95);
-    var maxForce = resolveFloatOption(opts.maxForce, 9.0, 1e-6);
-    var eta = resolveFloatOption(opts.eta, 1.2, 0);
-    var zeta = resolveFloatOption(opts.zeta, 3.2, 0);
-    var collisionBoost = resolveFloatOption(opts.collisionBoost, 6.0, 0);
-    var kNearest = resolveIntOption(opts.kNearest, 4, 1);
-    var evalEvery = resolveIntOption(opts.evalEvery, 10, 1);
-    var onIteration = resolveFunctionOption(opts.onIteration, null);
+    var alphaGrowEvery = resolveIntOption(options.alphaGrowEvery, 120, 1);
+    var alphaGrowFactor = resolveFloatOption(options.alphaGrowFactor, 1.15, 1);
+    var alphaCap = resolveFloatOption(options.alphaCap, 4.0, alpha0);
+    var gamma = resolveFloatOption(options.stepDecay, 0.5, 0.1, 0.95);
+    var maxForce = resolveFloatOption(options.maxForce, 9.0, 1e-6);
+    var eta = resolveFloatOption(options.eta, 1.2, 0);
+    var zeta = resolveFloatOption(options.zeta, 3.2, 0);
+    var collisionBoost = resolveFloatOption(options.collisionBoost, 6.0, 0);
+    var kNearest = resolveIntOption(options.kNearest, 4, 1);
+    var evalEvery = resolveIntOption(options.evalEvery, 10, 1);
+    var onIteration = resolveFunctionOption(options.onIteration, null);
 
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FD-uniform',
-      augmentationMethod: opts.augmentationMethod || null,
-      currentPositions: opts.currentPositions || null
+      augmentationMethod: options.augmentationMethod || null,
+      currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'FD-uniform setup failed' });
@@ -454,13 +452,13 @@
     }
     var targetLength = median(lengths);
     var diameter = computeDrawingDiameter(ids, pos);
-    var h = resolveFloatOption(opts.initialStep, 0.02 * diameter, 1e-8);
-    var hMin = resolveFloatOption(opts.minStep, 1e-5 * diameter, 1e-10);
+    var h = resolveFloatOption(options.initialStep, 0.02 * diameter, 1e-8);
+    var hMin = resolveFloatOption(options.minStep, 1e-5 * diameter, 1e-10);
     var movementTracker = createMovementConvergenceTracker({
-      minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, 30, 1),
-      stableIterLimit: resolveIntOption(opts.stableIterLimit, 8, 1),
-      maxMoveTol: resolveNonNegativeOption(opts.movementStopTol, 1e-4 * diameter),
-      avgMoveTol: resolveNonNegativeOption(opts.avgMovementStopTol, 2e-5 * diameter)
+      minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, 30, 1),
+      stableIterLimit: resolveIntOption(options.stableIterLimit, 8, 1),
+      maxMoveTol: resolveNonNegativeOption(options.movementStopTol, 1e-4 * diameter),
+      avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 2e-5 * diameter)
     });
 
     var state = {
@@ -506,7 +504,7 @@
   }
 
   function applyFDUniformLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'FD-uniform layout',
       compute: computeFDUniformPositions,

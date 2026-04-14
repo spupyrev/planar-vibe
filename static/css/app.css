@@ -663,7 +663,8 @@ body {
 }
 
 .status-collapse-btn,
-.status-clear-btn {
+.status-clear-btn,
+.status-copy-btn {
   position: absolute;
   top: 3px;
   width: 16px;
@@ -685,8 +686,13 @@ body {
   right: 28px;
 }
 
+.status-copy-btn {
+  right: 48px;
+}
+
 .status-collapse-btn:hover,
-.status-clear-btn:hover {
+.status-clear-btn:hover,
+.status-copy-btn:hover {
   background: #e9f0f9;
 }
 

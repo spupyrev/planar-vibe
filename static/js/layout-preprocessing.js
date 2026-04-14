@@ -95,8 +95,7 @@
   }
 
   function prepareGraphData(graph, config) {
-    var cfg = config || {};
-    var label = String(cfg.failureLabel || 'Layout');
+    var label = String(config.failureLabel || 'Layout');
     if (!graph || !Array.isArray(graph.nodeIds) || !Array.isArray(graph.edgePairs)) {
       throw new Error('prepareGraphData requires a graph');
     }
@@ -105,20 +104,20 @@
       return { ok: false, message: label + ' requires at least 3 vertices' };
     }
 
-    var augmentationKey = String(cfg.augmentationMethod || '').trim().toLowerCase();
+    var augmentationKey = String(config.augmentationMethod || '').trim().toLowerCase();
     var augmentationMethod = null;
     if (!augmentationKey || augmentationKey === 'default' || augmentationKey === 'outer-cycle') {
       augmentationMethod = 'triangulateByOuterCycle';
     } else if (augmentationKey === 'face-stellation') {
       augmentationMethod = 'triangulateByFaceStellation';
     } else {
-      return { ok: false, message: 'Unknown augmentation method: ' + String(cfg.augmentationMethod) };
+      return { ok: false, message: 'Unknown augmentation method: ' + String(config.augmentationMethod) };
     }
 
     var drawingEmbedding = PlanarGraphUtils.extractEmbeddingFromPositions(
       graph.nodeIds,
       graph.edgePairs,
-      cfg.currentPositions || null
+      config.currentPositions
     );
     var extractedEmbedding = sanitizeEmbeddingSnapshot(drawingEmbedding);
     drawingEmbedding = null;
@@ -149,7 +148,7 @@
         baseEmbedding,
         selectedOuterFace,
         label,
-        cfg.augmentationOptions || null
+        config.augmentationOptions || null
       );
     } else if (augmentationMethod === 'triangulateByOuterCycle') {
       augmented = prepareOuterCycleTriangulation(
@@ -157,7 +156,7 @@
         baseEmbedding,
         selectedOuterFace,
         label,
-        cfg.augmentationOptions || null
+        config.augmentationOptions || null
       );
     }
     if (!augmented.ok) {
@@ -272,7 +271,6 @@
   }
 
   function verifyEmbeddingWithPositions(embedding, posById, options) {
-    var opts = options || {};
     var emb = embedding || null;
     if (!emb || !emb.ok) {
       return { ok: false, message: 'Position verification requires a planar embedding' };
@@ -293,8 +291,8 @@
       }
     }
 
-    var outerFace = Array.isArray(opts.outerFace) && opts.outerFace.length >= 3
-      ? opts.outerFace.slice().map(String)
+    var outerFace = Array.isArray(options.outerFace) && options.outerFace.length >= 3
+      ? options.outerFace.slice().map(String)
       : (Array.isArray(emb.outerFace) && emb.outerFace.length >= 3 ? emb.outerFace.slice().map(String) : null);
     if (!outerFace) {
       return { ok: false, message: 'Position verification requires an outer face' };
@@ -306,7 +304,7 @@
       return { ok: false, message: 'Position verification found a degenerate outer face' };
     }
 
-    var edges = Array.isArray(opts.edgePairs) ? opts.edgePairs : emb.edges;
+    var edges = Array.isArray(options.edgePairs) ? options.edgePairs : emb.edges;
     if (GeometryUtils.hasPositionCrossings(posById, edges || [])) {
       return { ok: false, message: 'Position verification found crossings in the drawing' };
     }
@@ -326,9 +324,8 @@
   }
 
   function prepareGraphAndLayoutData(graph, config) {
-    var cfg = config || {};
-    var label = String(cfg.failureLabel || 'Layout');
-    var prepared = prepareGraphData(graph, cfg);
+    var label = String(config.failureLabel || 'Layout');
+    var prepared = prepareGraphData(graph, config);
     if (!prepared || !prepared.ok) {
       return prepared;
     }

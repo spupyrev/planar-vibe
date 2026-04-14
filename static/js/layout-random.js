@@ -30,7 +30,7 @@
   }
 
   function applyRandomLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       fitPadding: 20,
       patchComputeOptions: function (ctx) {
         return {

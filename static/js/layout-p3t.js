@@ -112,7 +112,7 @@
   }
 
   function applyP3TLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       compute: computeP3TPositions,
       buildResult: function (ctx) {
         var result = ctx.result;

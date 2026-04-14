@@ -645,7 +645,7 @@ test('shared embedding-position verifier rejects degenerate faces', () => {
     '3': { x: 2, y: 0 }
   };
 
-  const verify = LayoutPreprocessing.verifyEmbeddingWithPositions(embedding, pos);
+  const verify = LayoutPreprocessing.verifyEmbeddingWithPositions(embedding, pos, {});
   assert.equal(verify.ok, false);
   assert.match(String(verify.message || ''), /degenerate/i);
 });
@@ -1064,7 +1064,7 @@ test('ReweightTutte preserves the shared augmented outer-face seed coordinates',
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'ReweightTutte setup failed');
 
   const outer = prepared.augmentedOuterFace.slice();
-  const reweight = await Reweight.computeReweightTuttePositions(graph);
+  const reweight = await Reweight.computeReweightTuttePositions(graph, {});
   assert.equal(reweight.ok, true, reweight.message || 'Reweight failed');
   assert.deepEqual(reweight.outerFace, outer);
 
@@ -1092,13 +1092,11 @@ test('Air outer-ring face weight changes the outer-cycle solve without changing 
   const baseline = await Air.computeAirPositions(graph, {
     augmentationMethod: 'outer-cycle',
     currentPositions: pos,
-    maxSweeps: 3,
     outerRingFaceWeight: 1
   });
   const reduced = await Air.computeAirPositions(graph, {
     augmentationMethod: 'outer-cycle',
     currentPositions: pos,
-    maxSweeps: 3,
     outerRingFaceWeight: 0
   });
 
@@ -1201,7 +1199,7 @@ test('Tutte rejects graphs with fewer than 3 vertices', () => {
     edgePairs: [['a', 'b']]
   };
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-  const result = Tutte.applyTutteLayout(cy);
+  const result = Tutte.applyTutteLayout(cy, {});
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /at least 3 vertices/i);
 });
@@ -1231,6 +1229,6 @@ test('Tutte uses the common outer face and succeeds on grid2x10 after augmentati
 
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = Tutte.applyTutteLayout(cy);
+  const result = Tutte.applyTutteLayout(cy, {});
   assert.equal(result.ok, true, result.message || 'Tutte should succeed on grid2x10 after augmentation');
 });

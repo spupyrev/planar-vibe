@@ -6,6 +6,7 @@
 
   var GraphUtils = global.GraphUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
+  var PlanarGraphUtils = global.PlanarGraphUtils;
 
   function isDummyCyNode(node) {
     return !!(node && typeof node.hasClass === 'function' && node.hasClass('dummy-node'));
@@ -132,6 +133,35 @@
       return;
     }
     cy.fit(undefined, padding);
+  }
+
+  function statusLogFromCy(cy, message) {
+    if (!global.$) {
+      return;
+    }
+    var $status = global.$('#status');
+    if (!$status.length) {
+      return;
+    }
+    var $entry = global.$('<div class="status-entry"></div>').text(String(message || ''));
+    $status.append($entry);
+    var $entries = $status.children('.status-entry');
+    var maxEntries = 250;
+    if ($entries.length > maxEntries) {
+      $entries.slice(0, $entries.length - maxEntries).remove();
+    }
+    var el = $status.get(0);
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }
+
+  function extractedOuterFaceFromPositions(graph, posById) {
+    if (!PlanarGraphUtils || typeof PlanarGraphUtils.extractEmbeddingFromPositions !== 'function') {
+      return null;
+    }
+    var emb = PlanarGraphUtils.extractEmbeddingFromPositions(graph.nodeIds, graph.edgePairs, posById || null);
+    return emb && emb.ok && Array.isArray(emb.outerFace) ? emb.outerFace.slice().map(String) : null;
   }
 
   function applyAndFit(cy, posById, fitPadding, fitBounds) {
@@ -310,6 +340,18 @@
     var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
     var didInitialFit = false;
     var didStreamProgress = false;
+    var shouldLogSharedSeed = !!cfg.useSharedPreparedSeed &&
+      String(cfg.sharedSeedFailureLabel || cfg.failureMessage || '').toLowerCase() === 'air layout';
+
+    if (shouldLogSharedSeed) {
+      var beforeSeedPositions = currentPositionsFromCy(cy);
+      var beforeSeedOuter = extractedOuterFaceFromPositions(graph, beforeSeedPositions);
+      statusLogFromCy(
+        cy,
+        '[Air debug] cy outer face before shared seed: ' +
+        (Array.isArray(beforeSeedOuter) ? beforeSeedOuter.length + ' [' + beforeSeedOuter.join(' ') + ']' : 'null')
+      );
+    }
 
     if (cfg.useSharedPreparedSeed) {
       var initialPrepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
@@ -326,6 +368,15 @@
           computePositionBounds(livePositions, initialPrepared.augmentedOuterFace || initialPrepared.outerFace)
         );
         didInitialFit = true;
+        if (shouldLogSharedSeed) {
+          var afterSeedPositions = currentPositionsFromCy(cy);
+          var afterSeedOuter = extractedOuterFaceFromPositions(graph, afterSeedPositions);
+          statusLogFromCy(
+            cy,
+            '[Air debug] cy outer face after shared seed: ' +
+            (Array.isArray(afterSeedOuter) ? afterSeedOuter.length + ' [' + afterSeedOuter.join(' ') + ']' : 'null')
+          );
+        }
       }
     }
 
@@ -365,6 +416,15 @@
         }) || {})
         : {}
     );
+
+    if (shouldLogSharedSeed) {
+      var computeOuter = extractedOuterFaceFromPositions(graph, computeOptions.currentPositions);
+      statusLogFromCy(
+        cy,
+        '[Air debug] computeOptions outer face: ' +
+        (Array.isArray(computeOuter) ? computeOuter.length + ' [' + computeOuter.join(' ') + ']' : 'null')
+      );
+    }
 
     function finalizeResult(result) {
       var positions = null;

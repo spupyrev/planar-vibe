@@ -9,9 +9,10 @@
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
 
-  function prepareTriangulatedEmbedding(graph) {
+  function prepareTriangulatedEmbedding(graph, options) {
     var prepared = prepareGraphData(graph, {
       failureLabel: 'FPP',
+      currentPositions: options ? options.currentPositions : undefined,
       augmentationOptions: {
         triangulateOuterFace: true
       }
@@ -506,10 +507,10 @@
     });
   }
 
-  function computeFPPPositions(graph) {
+  function computeFPPPositions(graph, options) {
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
-    var prepared = prepareTriangulatedEmbedding(graph);
+    var prepared = prepareTriangulatedEmbedding(graph, options);
     if (!prepared.ok) {
       return buildLayoutError({
         message: prepared.message || prepared.reason,
@@ -544,7 +545,7 @@
   }
 
   function applyFPPLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       compute: computeFPPPositions,
       buildResult: function (ctx) {
         var result = ctx.result;

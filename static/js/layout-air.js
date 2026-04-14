@@ -8,6 +8,7 @@
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
+  var edgeKey = global.GraphUtils.edgeKey;
   var faceKey = global.GraphUtils.faceKey;
   var polygonArea2 = GeometryUtils.polygonArea2;
   var pointAdd = GeometryUtils.pointAdd;
@@ -19,29 +20,20 @@
   var resolveFloatOption = global.GraphUtils.resolveFloatOption;
   var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
   var resolveIntOption = global.GraphUtils.resolveIntOption;
-  var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
-  var resolvePositiveOption = global.GraphUtils.resolvePositiveOption;
   var orientFaceCCW = GeometryUtils.orientFaceCCW;
   var outerFaceDiameter = GeometryUtils.outerFaceDiameter;
   var triangleArea2 = GeometryUtils.triangleArea2;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
 
-  function outerEdgeKey(u, v) {
-    var a = String(u);
-    var b = String(v);
-    return a < b ? a + '::' + b : b + '::' + a;
-  }
-
   function buildAirData(augmentedEmbedding, outerFace, posById, options) {
     var outerKey = faceKey(outerFace);
-    var opts = options || {};
-    var outerRingFaceWeight = Number.isFinite(opts.outerRingFaceWeight) ? opts.outerRingFaceWeight : 1;
+    var outerRingFaceWeight = options.outerRingFaceWeight;
     var outerEdgeSet = {};
     var outerVertexSet = new Set((outerFace || []).map(String));
     var i;
 
     for (i = 0; i < outerFace.length; i += 1) {
-      outerEdgeSet[outerEdgeKey(outerFace[i], outerFace[(i + 1) % outerFace.length])] = true;
+      outerEdgeSet[edgeKey(outerFace[i], outerFace[(i + 1) % outerFace.length])] = true;
     }
 
     var triangles = [];
@@ -72,7 +64,7 @@
           isOuterRing = true;
           break;
         }
-        if (outerEdgeSet[outerEdgeKey(oriented[ei], oriented[(ei + 1) % oriented.length])]) {
+        if (outerEdgeSet[edgeKey(oriented[ei], oriented[(ei + 1) % oriented.length])]) {
           isOuterRing = true;
           break;
         }
@@ -288,52 +280,44 @@
     };
   }
 
-  function normalizeAirOptions(options) {
-    var opts = options || {};
-    var timing = CyRuntime.resolveLayoutTimingOptions(opts, {
-      delayMs: 0,
-      renderEvery: 2,
-      yieldEvery: 5
-    });
-    return {
-      augmentationMethod: opts.augmentationMethod || null,
-      augmentationOptions: opts && typeof opts.augmentationOptions === 'object' && opts.augmentationOptions
-        ? Object.assign({}, opts.augmentationOptions)
-        : null,
-      maxSweeps: resolveIntOption(opts.maxSweeps, 200, 1),
-      maxNewtonIter: resolveIntOption(opts.maxNewtonIter, 10, 1),
-      tolForceGlobal: resolveFloatOption(opts.tolForceGlobal, 1e-8, 0),
-      tolForceVertex: resolveFloatOption(opts.tolForceVertex, 1e-6, 0),
-      tolAreaGlobal: resolveFloatOption(opts.tolAreaGlobal, 1e-3, 0),
-      tolAreaPositive: resolveFloatOption(opts.tolAreaPositive, 1e-15, 0),
-      tolMove: resolveFloatOption(opts.tolMove, 1e-12, 0),
-      armijo: resolveFloatOption(opts.armijo, 1e-4, 0),
-      outerRingFaceWeight: resolveFloatOption(opts.outerRingFaceWeight, 0.25, 0),
-      minStep: resolvePositiveOption(opts.minStep, Math.pow(2, -40)),
-      delayMs: timing.delayMs,
-      onIteration: resolveFunctionOption(opts.onIteration, null),
-      yieldEvery: timing.yieldEvery,
-      renderEvery: timing.renderEvery,
-      moveTolRel: resolveNonNegativeOption(opts.moveTolRel, 1e-5),
-      moveTolAbs: resolveNonNegativeOption(opts.moveTolAbs, 1e-12),
-      errTolRel: resolveNonNegativeOption(opts.errTolRel, 1e-4),
-      patience: resolveIntOption(opts.patience, 2, 1),
-      deadlockPatience: resolveIntOption(opts.deadlockPatience, 2, 1),
-      plateauWindow: resolveIntOption(opts.plateauWindow, 12, 2),
-      plateauPatience: resolveIntOption(opts.plateauPatience, 1, 1),
-      plateauErrTolAbs: resolveNonNegativeOption(opts.plateauErrTolAbs, null),
-      plateauErrTolRel: resolveNonNegativeOption(opts.plateauErrTolRel, null),
-      plateauErrGuardFactor: resolvePositiveOption(opts.plateauErrGuardFactor, 20)
-    };
+  function fillAirSettings(options) {
+    options.augmentationMethod = options.augmentationMethod || null;
+    options.augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
+      ? Object.assign({}, options.augmentationOptions)
+      : null;
+    options.maxSweeps = 200;
+    options.maxNewtonIter = 10;
+    options.tolForceGlobal = 1e-8;
+    options.tolForceVertex = 1e-6;
+    options.tolAreaGlobal = 1e-3;
+    options.tolAreaPositive = 1e-15;
+    options.tolMove = 1e-12;
+    options.armijo = 1e-4;
+    options.outerRingFaceWeight = resolveFloatOption(options.outerRingFaceWeight, 0.25, 0);
+    options.minStep = Math.pow(2, -40);
+    options.delayMs = 0;
+    options.onIteration = resolveFunctionOption(options.onIteration, null);
+    options.yieldEvery = 5;
+    options.renderEvery = 2;
+    options.moveTolRel = 1e-5;
+    options.moveTolAbs = 1e-12;
+    options.errTolRel = 1e-4;
+    options.patience = 2;
+    options.deadlockPatience = 2;
+    options.plateauWindow = 12;
+    options.plateauPatience = 1;
+    options.plateauErrTolAbs = null;
+    options.plateauErrTolRel = null;
+    options.plateauErrGuardFactor = 20;
   }
 
   function prepareAirState(graph, options) {
-    var opts = normalizeAirOptions(options);
+    fillAirSettings(options);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'Air layout',
-      augmentationMethod: opts.augmentationMethod,
-      augmentationOptions: opts.augmentationOptions,
-      currentPositions: opts.currentPositions || null
+      augmentationMethod: options.augmentationMethod,
+      augmentationOptions: options.augmentationOptions,
+      currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'Air setup failed' });
@@ -343,7 +327,7 @@
       context.augmented.embedding,
       context.augmentedOuterFace || context.outerFace,
       context.posById,
-      opts
+      options
     );
     if (!airData.ok) {
       return buildLayoutError({ message: airData.reason || 'Air setup failed' });
@@ -352,7 +336,7 @@
     if (airData.triangles.length === 0) {
       return buildLayoutResult({
         ok: true,
-        opts: opts,
+        opts: options,
         graph: context.graph,
         baseEmbedding: context.baseEmbedding,
         outerFace: context.augmentedOuterFace || context.outerFace,
@@ -370,7 +354,7 @@
         context.posById[tri.vertices[1]],
         context.posById[tri.vertices[2]]
       )) / 2;
-      if (!(area > opts.tolAreaPositive)) {
+      if (!(area > options.tolAreaPositive)) {
         return buildLayoutError({ message: 'Air initialization failed: degenerate augmented triangle' });
       }
     }
@@ -385,7 +369,7 @@
 
     return buildLayoutResult({
       ok: true,
-      opts: opts,
+      opts: options,
       graph: context.graph,
       baseEmbedding: context.baseEmbedding,
       outerFace: context.augmentedOuterFace || context.outerFace,
@@ -397,19 +381,18 @@
   }
 
   async function runAirIterations(prepared, options) {
-    var opts = Object.assign({}, prepared && prepared.opts ? prepared.opts : {}, options || {});
     var g = prepared.graph;
     var posById = prepared.posById;
     var airData = prepared.airData;
     var movableVertices = prepared.movableVertices || [];
     var status = 'max_sweeps';
-    var lastStats = computeAirStats(airData, posById, movableVertices, opts.tolAreaPositive);
+    var lastStats = computeAirStats(airData, posById, movableVertices, options.tolAreaPositive);
     var outerDiameter = outerFaceDiameter(posById, airData.outerFace || prepared.outerFace || []);
-    var moveTol = opts.moveTolAbs + opts.moveTolRel * outerDiameter;
+    var moveTol = options.moveTolAbs + options.moveTolRel * outerDiameter;
     var avgMoveTol = 0.25 * moveTol;
-    var plateauErrTolAbs = opts.plateauErrTolAbs !== null ? opts.plateauErrTolAbs : opts.tolAreaGlobal;
-    var plateauErrTolRel = opts.plateauErrTolRel !== null ? opts.plateauErrTolRel : 5 * opts.errTolRel;
-    var plateauErrGuard = opts.plateauErrGuardFactor * opts.tolAreaGlobal;
+    var plateauErrTolAbs = options.plateauErrTolAbs !== null ? options.plateauErrTolAbs : options.tolAreaGlobal;
+    var plateauErrTolRel = options.plateauErrTolRel !== null ? options.plateauErrTolRel : 5 * options.errTolRel;
+    var plateauErrGuard = options.plateauErrGuardFactor * options.tolAreaGlobal;
     var prevMaxRelErr = lastStats.maxRelError;
     var stalledSweeps = 0;
     var deadSweeps = 0;
@@ -417,7 +400,7 @@
     var errWindow = [prevMaxRelErr];
     var lastMoveStats = { movedVertices: 0, avgMove: 0, maxMove: 0, acceptedCount: 0 };
 
-    if (prevMaxRelErr <= opts.tolAreaGlobal) {
+    if (prevMaxRelErr <= options.tolAreaGlobal) {
       lastStats.maxMove = 0;
       lastStats.avgMove = 0;
       lastStats.acceptedCount = 0;
@@ -434,27 +417,27 @@
       };
     }
 
-    for (var sweep = 1; sweep <= opts.maxSweeps; sweep += 1) {
+    for (var sweep = 1; sweep <= options.maxSweeps; sweep += 1) {
       var acceptedCount = 0;
       var sumMove = 0;
       var maxMove = 0;
 
       for (var vi = 0; vi < movableVertices.length; vi += 1) {
         var v = movableVertices[vi];
-        var currentState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, posById[v], opts.tolAreaPositive);
+        var currentState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, posById[v], options.tolAreaPositive);
         var currentForce = currentState.feasible ? pointNorm(currentState.force) : Infinity;
-        if (currentForce <= opts.tolForceGlobal) {
+        if (currentForce <= options.tolForceGlobal) {
           continue;
         }
 
         var solved = solveBalancedPosition(v, airData, posById, {
           entries: airData.incident[v] || [],
           initialState: currentState,
-          maxNewtonIter: opts.maxNewtonIter,
-          tolForceVertex: opts.tolForceVertex,
-          tolAreaPositive: opts.tolAreaPositive,
-          armijo: opts.armijo,
-          minStep: opts.minStep
+          maxNewtonIter: options.maxNewtonIter,
+          tolForceVertex: options.tolForceVertex,
+          tolAreaPositive: options.tolAreaPositive,
+          armijo: options.armijo,
+          minStep: options.minStep
         });
         if (!solved || !solved.pos) {
           continue;
@@ -464,12 +447,12 @@
         var dy = solved.pos.y - basePos.y;
         var acceptedPos = null;
         var stepScale = 1;
-        while (stepScale >= opts.minStep) {
+        while (stepScale >= options.minStep) {
           var candidate = {
             x: basePos.x + stepScale * dx,
             y: basePos.y + stepScale * dy
           };
-          var candidateState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, candidate, opts.tolAreaPositive);
+          var candidateState = evaluateLocalState(airData.incident[v] || [], airData.triangles, posById, candidate, options.tolAreaPositive);
           if (candidateState.feasible) {
             acceptedPos = candidate;
             break;
@@ -499,17 +482,17 @@
       lastMoveStats.maxMove = maxMove;
       lastMoveStats.avgMove = acceptedCount > 0 ? (sumMove / acceptedCount) : 0;
       lastMoveStats.acceptedCount = acceptedCount;
-      lastStats = computeAirStats(airData, posById, movableVertices, opts.tolAreaPositive);
+      lastStats = computeAirStats(airData, posById, movableVertices, options.tolAreaPositive);
       var maxRelErr = lastStats.maxRelError;
       var improvement = prevMaxRelErr - maxRelErr;
       var relImprovement = improvement / Math.max(1, prevMaxRelErr);
       errWindow.push(maxRelErr);
-      if (errWindow.length > opts.plateauWindow + 1) {
+      if (errWindow.length > options.plateauWindow + 1) {
         errWindow.shift();
       }
       var plateauWindowImprovementAbs = null;
       var plateauWindowImprovementRel = null;
-      if (errWindow.length >= opts.plateauWindow + 1) {
+      if (errWindow.length >= options.plateauWindow + 1) {
         plateauWindowImprovementAbs = errWindow[0] - maxRelErr;
         plateauWindowImprovementRel = plateauWindowImprovementAbs / Math.max(1, errWindow[0]);
       }
@@ -520,10 +503,10 @@
       lastStats.plateauSweepCount = plateauSweeps;
       lastStats.plateauWindowImprovementAbs = plateauWindowImprovementAbs;
       lastStats.plateauWindowImprovementRel = plateauWindowImprovementRel;
-      if (opts.onIteration) {
-        await opts.onIteration({
+      if (options.onIteration) {
+        await options.onIteration({
           iter: sweep,
-          maxIters: opts.maxSweeps,
+          maxIters: options.maxSweeps,
           status: status,
           positions: posById,
           movedVertices: acceptedCount,
@@ -534,12 +517,12 @@
             maxForce: lastStats.maxForce,
             balancedCount: lastStats.balancedCount,
             stableIterCount: stalledSweeps,
-            stableIterLimit: opts.patience,
+            stableIterLimit: options.patience,
             acceptedCount: acceptedCount,
             deadSweepCount: deadSweeps,
             plateauSweepCount: plateauSweeps,
-            plateauPatience: opts.plateauPatience,
-            plateauWindow: opts.plateauWindow,
+            plateauPatience: options.plateauPatience,
+            plateauWindow: options.plateauWindow,
             plateauWindowImprovementAbs: plateauWindowImprovementAbs,
             plateauWindowImprovementRel: plateauWindowImprovementRel,
             boundedFaceCount: lastStats.boundedFaceCount
@@ -547,7 +530,7 @@
         });
       }
 
-      if (maxRelErr <= opts.tolAreaGlobal) {
+      if (maxRelErr <= options.tolAreaGlobal) {
         status = 'realized';
         break;
       }
@@ -557,19 +540,19 @@
       } else {
         deadSweeps = 0;
       }
-      if (deadSweeps >= opts.deadlockPatience) {
+      if (deadSweeps >= options.deadlockPatience) {
         status = 'deadlock';
         break;
       }
 
       if (lastMoveStats.maxMove <= moveTol &&
           lastMoveStats.avgMove <= avgMoveTol &&
-          relImprovement <= opts.errTolRel) {
+          relImprovement <= options.errTolRel) {
         stalledSweeps += 1;
       } else {
         stalledSweeps = 0;
       }
-      if (stalledSweeps >= opts.patience) {
+      if (stalledSweeps >= options.patience) {
         status = 'stalled';
         break;
       }
@@ -582,7 +565,7 @@
       } else {
         plateauSweeps = 0;
       }
-      if (plateauSweeps >= opts.plateauPatience) {
+      if (plateauSweeps >= options.plateauPatience) {
         status = 'stalled';
         break;
       }
@@ -603,8 +586,7 @@
   }
 
   async function computeAirPositions(graph, options) {
-    var opts = options || {};
-    var prepared = prepareAirState(graph, opts);
+    var prepared = prepareAirState(graph, options);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'Air failed' });
     }
@@ -645,6 +627,7 @@
     var faceScore = Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
 
     var message = buildLayoutStatusMessage('Air', {
+      outerFaceVertexCount: Array.isArray(prepared.outerFace) ? prepared.outerFace.length : null,
       boundedFaceCount: prepared.airData.triangles.length,
       dummyCount: prepared.augmented.dummyCount,
       status: status,
@@ -670,7 +653,7 @@
   }
 
   async function applyAirLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'Air layout',
       compute: computeAirPositions,

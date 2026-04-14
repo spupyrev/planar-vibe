@@ -697,12 +697,11 @@
   }
 
   async function computeFaceBalancerPositions(graph, options) {
-    var opts = options || {};
-    var maxIters = resolveIntOption(opts.maxIters, 80, 1);
+    var maxIters = resolveIntOption(options.maxIters, 80, 1);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'FaceBalancer layout',
-      augmentationMethod: opts.augmentationMethod || null,
-      currentPositions: opts.currentPositions || null
+      augmentationMethod: options.augmentationMethod || null,
+      currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'FaceBalancer setup failed' });
@@ -712,20 +711,20 @@
     var outerFace = context.augmentedOuterFace || context.outerFace;
     var augmented = context.augmented;
     var initPos = context.posById;
-    var hasExplicitMinFaceArea = Number.isFinite(opts.minFaceArea) && opts.minFaceArea >= 0;
-    var hasExplicitMinEdgeLength2 = Number.isFinite(opts.minEdgeLength2) && opts.minEdgeLength2 >= 0;
-    var areaTol = resolveNonNegativeOption(opts.areaTol, 1e-15);
+    var hasExplicitMinFaceArea = Number.isFinite(options.minFaceArea) && options.minFaceArea >= 0;
+    var hasExplicitMinEdgeLength2 = Number.isFinite(options.minEdgeLength2) && options.minEdgeLength2 >= 0;
+    var areaTol = resolveNonNegativeOption(options.areaTol, 1e-15);
     var data = buildFaceBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
       outerFace: outerFace,
       initPos: initPos,
       areaTol: areaTol,
-      faceBarrierWeight: resolveFloatOption(opts.faceBarrierWeight, 0.2, 0),
-      edgeBarrierWeight: resolveFloatOption(opts.edgeBarrierWeight, 0.05, 0),
-      edgeUniformWeight: resolveFloatOption(opts.edgeUniformWeight, 0.02, 0),
-      minFaceArea: resolveNonNegativeOption(opts.minFaceArea, 0),
-      minEdgeLength2: resolveNonNegativeOption(opts.minEdgeLength2, 0)
+      faceBarrierWeight: resolveFloatOption(options.faceBarrierWeight, 0.2, 0),
+      edgeBarrierWeight: resolveFloatOption(options.edgeBarrierWeight, 0.05, 0),
+      edgeUniformWeight: resolveFloatOption(options.edgeUniformWeight, 0.02, 0),
+      minFaceArea: resolveNonNegativeOption(options.minFaceArea, 0),
+      minEdgeLength2: resolveNonNegativeOption(options.minEdgeLength2, 0)
     });
     if (!data.ok) {
       return buildLayoutError({
@@ -769,23 +768,23 @@
     var q0 = createZeroVector(data.qSize);
     var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
     var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
-      minItersBeforeStop: resolveIntOption(opts.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),
-      stableIterLimit: resolveIntOption(opts.stableIterLimit, 8, 1),
-      maxMoveTol: resolveNonNegativeOption(opts.movementStopTol, 1e-6 * movementScale),
-      avgMoveTol: resolveNonNegativeOption(opts.avgMovementStopTol, 2e-7 * movementScale)
+      minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),
+      stableIterLimit: resolveIntOption(options.stableIterLimit, 8, 1),
+      maxMoveTol: resolveNonNegativeOption(options.movementStopTol, 1e-6 * movementScale),
+      avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 2e-7 * movementScale)
     });
 
     var iterationCount = 0;
     var result = await runFaceBalancerOptimization(q0, data, {
       maxIters: maxIters,
-      gradTol: resolveFloatOption(opts.gradTol, 1e-5, 0),
-      stepTol: resolveFloatOption(opts.stepTol, 1e-6, 0),
-      lbfgsMemory: resolveIntOption(opts.lbfgsMemory, 10, 1),
+      gradTol: resolveFloatOption(options.gradTol, 1e-5, 0),
+      stepTol: resolveFloatOption(options.stepTol, 1e-6, 0),
+      lbfgsMemory: resolveIntOption(options.lbfgsMemory, 10, 1),
       movementTracker: movementTracker,
       onIteration: async function (progress) {
         iterationCount = progress.iter;
-        if (typeof opts.onIteration === 'function') {
-          await opts.onIteration(progress);
+        if (typeof options.onIteration === 'function') {
+          await options.onIteration(progress);
         }
       }
     });
@@ -825,7 +824,7 @@
   }
 
   async function applyFaceBalancerLayout(cy, options) {
-    return CyRuntime.runLayout(cy, options || {}, {
+    return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
       sharedSeedFailureLabel: 'FaceBalancer layout',
       compute: computeFaceBalancerPositions,
