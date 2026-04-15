@@ -1099,9 +1099,7 @@
       data.minFaceArea = Math.max(0, 0.2 * data.initialMinFaceArea);
     }
     if (!hasExplicitMinEdgeLength2) {
-      data.minEdgeLength2 = data.initialObjectiveMinEdgeLength2 > 0
-        ? 0.05 * data.initialObjectiveMinEdgeLength2
-        : 0;
+      data.minEdgeLength2 = 0;
     }
 
     var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);

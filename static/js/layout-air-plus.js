@@ -19,6 +19,7 @@
   var pointSub = GeometryUtils.pointSub;
   var resolveFloatOption = global.GraphUtils.resolveFloatOption;
   var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
+  var resolveIntOption = global.GraphUtils.resolveIntOption;
   var orientFaceCCW = GeometryUtils.orientFaceCCW;
   var outerFaceDiameter = GeometryUtils.outerFaceDiameter;
   var triangleArea2 = GeometryUtils.triangleArea2;
@@ -110,11 +111,13 @@
 
     var outerArea = Math.abs(polygonArea2(outerFace, posById)) / 2;
     if (!(outerArea > 1e-12)) {
-      return buildLayoutError({ reason: 'Air initialization failed: outer face has zero area' });
+      return buildLayoutError({ reason: 'AirPlus initialization failed: outer face has zero area' });
     }
     var targetTriangleArea = outerArea / triangles.length;
     for (i = 0; i < triangles.length; i += 1) {
-      triangles[i].targetArea = targetTriangleArea;
+      triangles[i].targetArea = triangles[i].isRealFace
+        ? (options.realFaceTargetScale * targetTriangleArea)
+        : targetTriangleArea;
     }
 
     return buildLayoutResult({
@@ -127,7 +130,123 @@
     });
   }
 
-  function evaluateLocalState(entries, triangles, posById, point, tolAreaPositive) {
+  function buildEdgeTargetData(graph, augmentedGraph, posById, options) {
+    var edgePairs = graph && Array.isArray(graph.edgePairs) ? graph.edgePairs : [];
+    var augmentedEdgePairs = augmentedGraph && Array.isArray(augmentedGraph.edgePairs) ? augmentedGraph.edgePairs : [];
+    var edgeEntries = [];
+    var incident = {};
+    var originalEdgeSet = {};
+    var logLen2Sum = 0;
+    var originalLogLen2 = [];
+    var validCount = 0;
+    var i;
+
+    for (i = 0; i < edgePairs.length; i += 1) {
+      var u = String(edgePairs[i][0]);
+      var v = String(edgePairs[i][1]);
+      originalEdgeSet[edgeKey(u, v)] = true;
+      var pu = posById[u];
+      var pv = posById[v];
+      if (!pu || !pv) {
+        continue;
+      }
+      var dx = pu.x - pv.x;
+      var dy = pu.y - pv.y;
+      var len2 = dx * dx + dy * dy;
+      if (!(len2 > 1e-12)) {
+        continue;
+      }
+      edgeEntries.push({ u: u, v: v, weight: 1, isOriginal: true });
+      if (!incident[u]) incident[u] = [];
+      if (!incident[v]) incident[v] = [];
+      incident[u].push({ other: v, weight: 1, isOriginal: true });
+      incident[v].push({ other: u, weight: 1, isOriginal: true });
+      logLen2Sum += Math.log(len2);
+      originalLogLen2.push(Math.log(len2));
+      validCount += 1;
+    }
+
+    for (i = 0; i < augmentedEdgePairs.length; i += 1) {
+      u = String(augmentedEdgePairs[i][0]);
+      v = String(augmentedEdgePairs[i][1]);
+      if (originalEdgeSet[edgeKey(u, v)]) {
+        continue;
+      }
+      pu = posById[u];
+      pv = posById[v];
+      if (!pu || !pv) {
+        continue;
+      }
+      edgeEntries.push({
+        u: u,
+        v: v,
+        weight: options.dummyEdgeWeight,
+        isOriginal: false
+      });
+      if (!incident[u]) incident[u] = [];
+      if (!incident[v]) incident[v] = [];
+      incident[u].push({ other: v, weight: options.dummyEdgeWeight, isOriginal: false });
+      incident[v].push({ other: u, weight: options.dummyEdgeWeight, isOriginal: false });
+    }
+
+    var targetLogLen2 = 0;
+    if (validCount > 0) {
+      originalLogLen2.sort(function (a, b) { return a - b; });
+      var quantileIndex = Math.min(
+        originalLogLen2.length - 1,
+        Math.max(0, Math.floor(options.edgeTargetQuantile * (originalLogLen2.length - 1)))
+      );
+      targetLogLen2 = originalLogLen2[quantileIndex];
+    }
+
+    return {
+      edges: edgeEntries,
+      incident: incident,
+      targetLogLen2: validCount > 0 ? targetLogLen2 : 0
+    };
+  }
+
+  function summarizeEdgeLengths(edgeData, posById) {
+    var minLength = Infinity;
+    var maxLength = 0;
+    var maxLogDeviation = 0;
+    var validCount = 0;
+
+    for (var i = 0; i < edgeData.edges.length; i += 1) {
+      var edge = edgeData.edges[i];
+      if (!edge.isOriginal) {
+        continue;
+      }
+      var pu = posById[edge.u];
+      var pv = posById[edge.v];
+      if (!pu || !pv) {
+        continue;
+      }
+      var dx = pu.x - pv.x;
+      var dy = pu.y - pv.y;
+      var len2 = dx * dx + dy * dy;
+      if (!(len2 > 1e-12)) {
+        continue;
+      }
+      var length = Math.sqrt(len2);
+      if (length < minLength) minLength = length;
+      if (length > maxLength) maxLength = length;
+      var deviation = Math.abs(Math.log(len2) - edgeData.targetLogLen2);
+      if (deviation > maxLogDeviation) {
+        maxLogDeviation = deviation;
+      }
+      validCount += 1;
+    }
+
+    return {
+      minLength: Number.isFinite(minLength) ? minLength : null,
+      maxLength: maxLength > 0 ? maxLength : null,
+      ratio: Number.isFinite(minLength) && maxLength > 0 ? (minLength / maxLength) : null,
+      maxLogDeviation: validCount > 0 ? maxLogDeviation : null
+    };
+  }
+
+  function evaluateLocalState(vertexId, entries, airData, posById, point, options) {
     var areas = [];
     var feasible = true;
     var force = { x: 0, y: 0 };
@@ -135,6 +254,8 @@
     var a = 0;
     var b = 0;
     var c = 0;
+    var triangles = airData.triangles;
+    var tolAreaPositive = options.tolAreaPositive;
 
     for (var i = 0; i < entries.length; i += 1) {
       var entry = entries[i];
@@ -157,16 +278,55 @@
         continue;
       }
 
-      var pressure = tri.targetArea / area;
       var weight = Number.isFinite(tri.weight) ? tri.weight : 1;
+      var pressure;
+      var coeff;
+      if (area <= tri.targetArea) {
+        pressure = tri.targetArea / area;
+        entropy += -weight * tri.targetArea * Math.log(Math.max(pressure, 1e-300));
+        coeff = -0.25 * weight * tri.targetArea / (area * area);
+      } else {
+        var oversizeRatio = area / tri.targetArea;
+        pressure = -Math.log(Math.max(oversizeRatio, 1));
+        entropy += -weight * (
+          area * Math.log(Math.max(oversizeRatio, 1)) - area + tri.targetArea
+        );
+        coeff = -0.25 * weight / area;
+      }
       force.x += weight * pressure * r.x;
       force.y += weight * pressure * r.y;
-      entropy += -weight * tri.targetArea * Math.log(Math.max(pressure, 1e-300));
 
-      var coeff = -0.25 * weight * tri.targetArea / (area * area);
       a += coeff * r.x * r.x;
       b += coeff * r.x * r.y;
       c += coeff * r.y * r.y;
+    }
+
+    var edgeIncident = airData.edgeData && airData.edgeData.incident
+      ? airData.edgeData.incident[vertexId]
+      : null;
+    if (edgeIncident && edgeIncident.length > 0 && options.edgeWeight > 0) {
+      for (i = 0; i < edgeIncident.length; i += 1) {
+        var edgeEntry = edgeIncident[i];
+        var otherId = edgeEntry.other;
+        var otherPos = posById[otherId];
+        if (!otherPos) {
+          continue;
+        }
+        var ex = point.x - otherPos.x;
+        var ey = point.y - otherPos.y;
+        var len2 = ex * ex + ey * ey;
+        if (!(len2 > options.edgeTol2)) {
+          feasible = false;
+          continue;
+        }
+        var residual = Math.log(len2) - airData.edgeData.targetLogLen2;
+        var residualScale = residual < 0 ? options.shortEdgeBoost : options.longEdgeWeightScale;
+        var effectiveEdgeWeight = options.edgeWeight * options.edgeForceScale;
+        var edgeCoeff = -4 * effectiveEdgeWeight * edgeEntry.weight * residualScale * residual / len2;
+        force.x += edgeCoeff * ex;
+        force.y += edgeCoeff * ey;
+        entropy -= effectiveEdgeWeight * edgeEntry.weight * residualScale * residual * residual;
+      }
     }
 
     return {
@@ -185,14 +345,13 @@
     var entries = opts.entries;
     var maxNewtonIter = opts.maxNewtonIter;
     var tolForceVertex = opts.tolForceVertex;
-    var tolAreaPositive = opts.tolAreaPositive;
     var armijo = opts.armijo;
     var minStep = opts.minStep;
     var state = opts.initialState;
 
     for (var iter = 0; iter < maxNewtonIter; iter += 1) {
       if (!state) {
-        state = evaluateLocalState(entries, airData.triangles, posById, p, tolAreaPositive);
+        state = evaluateLocalState(vertexId, entries, airData, posById, p, opts);
       }
       if (!state.feasible) {
         return { pos: p, forceNorm: Infinity, stalled: true };
@@ -226,7 +385,7 @@
       var accepted = false;
       while (alpha >= minStep) {
         var q = pointAdd(p, pointScale(alpha, d));
-        var qState = evaluateLocalState(entries, airData.triangles, posById, q, tolAreaPositive);
+        var qState = evaluateLocalState(vertexId, entries, airData, posById, q, opts);
         if (qState.feasible &&
             qState.entropy >= state.entropy + armijo * alpha * pointDot(g, d)) {
           p = q;
@@ -244,7 +403,7 @@
 
     var finalState = state;
     if (!finalState) {
-      finalState = evaluateLocalState(entries, airData.triangles, posById, p, tolAreaPositive);
+      finalState = evaluateLocalState(vertexId, entries, airData, posById, p, opts);
     }
     return {
       pos: p,
@@ -273,7 +432,11 @@
     var balancedCount = 0;
     for (i = 0; i < movableVertices.length; i += 1) {
       var v = movableVertices[i];
-      var state = evaluateLocalState(airData.incident[v], airData.triangles, posById, posById[v], tolAreaPositive);
+      var state = evaluateLocalState(v, airData.incident[v], airData, posById, posById[v], {
+        tolAreaPositive: tolAreaPositive,
+        edgeWeight: airData.edgeWeight,
+        edgeTol2: airData.edgeTol2
+      });
       var f = state.feasible ? pointNorm(state.force) : Infinity;
       if (f > maxForce) {
         maxForce = f;
@@ -283,11 +446,17 @@
       }
     }
 
+    var edgeStats = summarizeEdgeLengths(airData.edgeData, posById);
+
     return {
       maxRelError: maxRelError,
       maxForce: maxForce,
       balancedCount: balancedCount,
-      boundedFaceCount: airData.triangles.length
+      boundedFaceCount: airData.triangles.length,
+      edgeLengthRatio: edgeStats.ratio,
+      maxLogDeviation: edgeStats.maxLogDeviation,
+      minEdgeLength: edgeStats.minLength,
+      maxEdgeLength: edgeStats.maxLength
     };
   }
 
@@ -298,7 +467,7 @@
     options.augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
       ? Object.assign({}, options.augmentationOptions)
       : null;
-    options.maxSweeps = 200;
+    options.maxSweeps = 400;
     options.maxNewtonIter = 10;
     options.tolForceGlobal = 1e-8;
     options.tolForceVertex = 1e-6;
@@ -307,6 +476,8 @@
     options.tolMove = 1e-12;
     options.armijo = 1e-4;
     options.outerRingFaceWeight = resolveFloatOption(options.outerRingFaceWeight, 0.25, 0);
+    options.edgeWeight = 0;
+    options.edgeTol2 = 1e-12;
     options.minStep = Math.pow(2, -40);
     options.delayMs = 0;
     options.onIteration = resolveFunctionOption(options.onIteration, null);
@@ -322,12 +493,18 @@
     options.plateauErrTolAbs = null;
     options.plateauErrTolRel = null;
     options.plateauErrGuardFactor = 20;
+    options.shortEdgeBoost = 5;
+    options.longEdgeWeightScale = 0.4;
+    options.dummyEdgeWeight = 0.08;
+    options.edgeTargetQuantile = 0.75;
+    options.realFaceTargetScale = 1;
+    options.edgeForceScale = 1;
   }
 
   function prepareAirState(graph, options) {
     fillAirSettings(options);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'Air layout',
+      failureLabel: 'AirPlus layout',
       augmentationMethod: options.augmentationMethod,
       augmentationOptions: options.augmentationOptions,
       currentPositions: options.currentPositions
@@ -336,7 +513,7 @@
       return buildLayoutError(context);
     }
     if (!Array.isArray(context.augmentedOuterFace) || context.augmentedOuterFace.length < 3) {
-      return buildLayoutError({ message: 'Air setup failed: missing augmented outer face' });
+      return buildLayoutError({ message: 'AirPlus setup failed: missing augmented outer face' });
     }
 
     var airData = buildAirData(
@@ -349,6 +526,9 @@
     if (!airData.ok) {
       return buildLayoutError({ message: airData.reason });
     }
+    airData.edgeData = buildEdgeTargetData(context.graph, context.augmented.graph, context.posById, options);
+    airData.edgeWeight = options.edgeWeight;
+    airData.edgeTol2 = options.edgeTol2;
 
     if (airData.triangles.length === 0) {
       return buildLayoutResult({
@@ -372,7 +552,7 @@
         context.posById[tri.vertices[2]]
       )) / 2;
       if (!(area > options.tolAreaPositive)) {
-        return buildLayoutError({ message: 'Air initialization failed: degenerate augmented triangle' });
+        return buildLayoutError({ message: 'AirPlus initialization failed: degenerate augmented triangle' });
       }
     }
 
@@ -441,7 +621,7 @@
 
       for (var vi = 0; vi < movableVertices.length; vi += 1) {
         var v = movableVertices[vi];
-        var currentState = evaluateLocalState(airData.incident[v], airData.triangles, posById, posById[v], options.tolAreaPositive);
+        var currentState = evaluateLocalState(v, airData.incident[v], airData, posById, posById[v], options);
         var currentForce = currentState.feasible ? pointNorm(currentState.force) : Infinity;
         if (currentForce <= options.tolForceGlobal) {
           continue;
@@ -452,9 +632,14 @@
           initialState: currentState,
           maxNewtonIter: options.maxNewtonIter,
           tolForceVertex: options.tolForceVertex,
-          tolAreaPositive: options.tolAreaPositive,
           armijo: options.armijo,
-          minStep: options.minStep
+          minStep: options.minStep,
+          tolAreaPositive: options.tolAreaPositive,
+          edgeWeight: options.edgeWeight,
+          edgeForceScale: options.edgeForceScale,
+          edgeTol2: options.edgeTol2,
+          shortEdgeBoost: options.shortEdgeBoost,
+          longEdgeWeightScale: options.longEdgeWeightScale
         });
         if (!solved || !solved.pos) {
           continue;
@@ -469,7 +654,7 @@
             x: basePos.x + stepScale * dx,
             y: basePos.y + stepScale * dy
           };
-          var candidateState = evaluateLocalState(airData.incident[v], airData.triangles, posById, candidate, options.tolAreaPositive);
+          var candidateState = evaluateLocalState(v, airData.incident[v], airData, posById, candidate, options);
           if (candidateState.feasible) {
             acceptedPos = candidate;
             break;
@@ -481,11 +666,13 @@
           var moveDx = acceptedPos.x - basePos.x;
           var moveDy = acceptedPos.y - basePos.y;
           var move = Math.sqrt(moveDx * moveDx + moveDy * moveDy);
-          if (move > maxMove) {
-            maxMove = move;
+          if (move > 0) {
+            if (move > maxMove) {
+              maxMove = move;
+            }
+            sumMove += move;
+            acceptedCount += 1;
           }
-          sumMove += move;
-          acceptedCount += 1;
         } else {
           posById[v] = basePos;
         }
@@ -542,7 +729,9 @@
             plateauWindow: options.plateauWindow,
             plateauWindowImprovementAbs: plateauWindowImprovementAbs,
             plateauWindowImprovementRel: plateauWindowImprovementRel,
-            boundedFaceCount: lastStats.boundedFaceCount
+            boundedFaceCount: lastStats.boundedFaceCount,
+            edgeLengthRatio: lastStats.edgeLengthRatio,
+            maxLogDeviation: lastStats.maxLogDeviation
           }
         });
       }
@@ -631,7 +820,7 @@
     if (solveResult.hasCrossings) {
       return buildLayoutError({
         status: status,
-        message: 'Air produced a non-plane drawing',
+        message: 'AirPlus produced a non-plane drawing',
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
@@ -643,7 +832,7 @@
 
     var faceScore = Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
 
-    var message = buildLayoutStatusMessage('Air', {
+    var message = buildLayoutStatusMessage('AirPlus', {
       outerFaceVertexCount: Array.isArray(prepared.outerFace) ? prepared.outerFace.length : null,
       boundedFaceCount: prepared.airData.triangles.length,
       dummyCount: prepared.augmented.dummyCount,
@@ -663,6 +852,8 @@
       message: message,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: lastStats ? lastStats.maxRelError : null,
+      edgeLengthRatio: lastStats ? lastStats.edgeLengthRatio : null,
+      maxLogDeviation: lastStats ? lastStats.maxLogDeviation : null,
       boundedFaceCount: prepared.airData.triangles.length,
       dummyCount: prepared.augmented.dummyCount,
       iters: lastStats && Number.isFinite(lastStats.sweeps) ? lastStats.sweeps : null
@@ -672,7 +863,7 @@
   async function applyAirLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       useSharedPreparedSeed: true,
-      sharedSeedFailureLabel: 'Air layout',
+      sharedSeedFailureLabel: 'AirPlus layout',
       compute: computeAirPositions,
       buildResult: function (ctx) {
         var result = ctx.result;
@@ -682,6 +873,8 @@
           message: result.message,
           faceAreaScore: result.faceAreaScore,
           maxRelError: result.maxRelError,
+          edgeLengthRatio: result.edgeLengthRatio,
+          maxLogDeviation: result.maxLogDeviation,
           boundedFaceCount: result.boundedFaceCount,
           dummyCount: result.dummyCount,
           iters: result.iters,
@@ -694,12 +887,11 @@
             : null
         };
       },
-      failureMessage: 'Air failed'
+      failureMessage: 'AirPlus failed'
     });
   }
-
-  global.PlanarVibeAir = {
-    computeAirPositions: computeAirPositions,
-    applyAirLayout: applyAirLayout
+  global.PlanarVibeAirPlus = {
+    computeAirPlusPositions: computeAirPositions,
+    applyAirPlusLayout: applyAirLayout
   };
 })(window);

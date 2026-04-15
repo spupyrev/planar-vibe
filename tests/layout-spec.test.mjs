@@ -31,6 +31,7 @@ function loadBrowserModules() {
     'static/js/cy-runtime.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
+    'static/js/layout-air-plus.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',

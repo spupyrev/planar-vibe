@@ -1,0 +1,600 @@
+{
+  "generatedAt": "2026-04-14T21:16:38.839Z",
+  "results": [
+    {
+      "variant": "Current AirPlus",
+      "id": "baseline",
+      "idea": "baseline",
+      "notes": "checked-in current implementation",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9466, edge ratio 0.1045, face score 0.8240, face vs Air -0.0983"
+      }
+    },
+    {
+      "variant": "Idea 1: gradient step when edge term is active",
+      "id": "idea1_gradient_edge_1e-3",
+      "idea": 1,
+      "notes": "gradient solve, edgeWeight=1e-3",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8239821028443625,
+        "edgeLengthScore": 0.9465842114405327,
+        "edgeRatio": 0.10488121233880729,
+        "minEdgeLength": 47.573434460259186,
+        "maxEdgeLength": 453.593483517128,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.29728946310691,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.297, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9466, edge ratio 0.1049, face score 0.8240, face vs Air -0.0982"
+      }
+    },
+    {
+      "variant": "Idea 1: gradient step when edge term is active (tuned)",
+      "id": "idea1_gradient_edge_1e-2",
+      "idea": 1,
+      "notes": "gradient solve, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8240359417633638,
+        "edgeLengthScore": 0.9465594410017385,
+        "edgeRatio": 0.10474978863963452,
+        "minEdgeLength": 47.520934463739245,
+        "maxEdgeLength": 453.6613875873597,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.323126356262556,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.323, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9466, edge ratio 0.1047, face score 0.8240, face vs Air -0.0982"
+      }
+    },
+    {
+      "variant": "Idea 2: sweep-dependent edge schedule",
+      "id": "idea2_scheduled_edge",
+      "idea": 2,
+      "notes": "gradient solve plus edge ramp, edgeWeight=1e-2",
+      "ok": false,
+      "error": "Error: Patch target not found for edge schedule solve opts\n    at replaceOnce (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:36:11)\n    at patchEdgeWeightSchedule (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:201:9)\n    at Object.patch (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:130:13)\n    at loadAirPlusIntoContext (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:90:20)\n    at runVariant (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:602:5)\n    at main (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:751:26)",
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "failed",
+        "summary": "Error: Patch target not found for edge schedule solve opts\n    at replaceOnce (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:36:11)\n    at patchEdgeWeightSchedule (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:201:9)\n    at Object.patch (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:130:13)\n    at loadAirPlusIntoContext (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:90:20)\n    at runVariant (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:602:5)\n    at main (file:///home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-current-ideas.mjs:751:26)"
+      }
+    },
+    {
+      "variant": "Idea 3: bounded inward correction for oversized real faces",
+      "id": "idea3_bounded_inward",
+      "idea": 3,
+      "notes": "gradient solve, weak inward correction, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8240165104405465,
+        "edgeLengthScore": 0.9466080292176219,
+        "edgeRatio": 0.1048423436186445,
+        "minEdgeLength": 47.544935584598186,
+        "maxEdgeLength": 453.4898204635621,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.35669141037897,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.357, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9466, edge ratio 0.1048, face score 0.8240, face vs Air -0.0982"
+      }
+    },
+    {
+      "variant": "Idea 4: class-normalized real vs dummy face budgets",
+      "id": "idea4_normalized_budgets",
+      "idea": 4,
+      "notes": "normalize total face influence by class, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.819087281415429,
+        "edgeLengthScore": 0.954151404482786,
+        "edgeRatio": 0.19436056358683795,
+        "minEdgeLength": 71.76197581964016,
+        "maxEdgeLength": 369.22086711061513,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 73.28938236873707,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 73.289, face score 0.819)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "mixed",
+        "summary": "plane, edge score 0.9542, edge ratio 0.1944, face score 0.8191, face vs Air -0.1031"
+      }
+    },
+    {
+      "variant": "Idea 5: dummy triangles use seed-area targets",
+      "id": "idea5_dummy_role",
+      "idea": 5,
+      "notes": "dummy faces stabilize around seed geometry, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8076893368883703,
+        "edgeLengthScore": 0.948496699386391,
+        "edgeRatio": 0.14689335110182086,
+        "minEdgeLength": 59.18571294863791,
+        "maxEdgeLength": 402.9162144147194,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 67.91191405333687,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 67.912, face score 0.808)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9485, edge ratio 0.1469, face score 0.8077, face vs Air -0.1145"
+      }
+    },
+    {
+      "variant": "Idea 6: edge objective only on original edges",
+      "id": "idea6_original_edges_only",
+      "idea": 6,
+      "notes": "ignore augmented edges in edge objective, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8239714888406964,
+        "edgeLengthScore": 0.9465806227482928,
+        "edgeRatio": 0.10488549189499913,
+        "minEdgeLength": 47.58003779181977,
+        "maxEdgeLength": 453.6379334470028,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.305590958751466,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.306, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9466, edge ratio 0.1049, face score 0.8240, face vs Air -0.0982"
+      }
+    },
+    {
+      "variant": "Idea 7: one-sided short-edge penalty",
+      "id": "idea7_short_edges_only",
+      "idea": 7,
+      "notes": "gradient solve, only penalize short edges, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8239770927127142,
+        "edgeLengthScore": 0.9465860859460151,
+        "edgeRatio": 0.10488019018159614,
+        "minEdgeLength": 47.57417741288839,
+        "maxEdgeLength": 453.60498803935684,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.30664523114194,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.307, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9466, edge ratio 0.1049, face score 0.8240, face vs Air -0.0982"
+      }
+    },
+    {
+      "variant": "Idea 8: more aggressive robust edge target",
+      "id": "idea8_target_quantile_09",
+      "idea": 8,
+      "notes": "gradient solve, edge target quantile 0.9, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8240447952822404,
+        "edgeLengthScore": 0.9465323180687805,
+        "edgeRatio": 0.10482344778198942,
+        "minEdgeLength": 47.56858892318445,
+        "maxEdgeLength": 453.7972174137703,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.30575700569322,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.306, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9465, edge ratio 0.1048, face score 0.8240, face vs Air -0.0982"
+      }
+    },
+    {
+      "variant": "Idea 9: special handling for real outer-face vertices",
+      "id": "idea9_boundary_dummy_scale",
+      "idea": 9,
+      "notes": "scale down dummy-face influence on real outer-face vertices, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.7618534402468393,
+        "edgeLengthScore": 0.9325839930051094,
+        "edgeRatio": 0.1036438670476881,
+        "minEdgeLength": 19.234000743693834,
+        "maxEdgeLength": 185.57779916532814,
+        "plane": true,
+        "status": "stalled",
+        "maxRelError": 32.38089739864454,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status stalled, max rel err 32.381, face score 0.762)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9326, edge ratio 0.1036, face score 0.7619, face vs Air -0.1604"
+      }
+    },
+    {
+      "variant": "Idea 10: global crossing guard proxy",
+      "id": "idea10_crossing_guard",
+      "idea": 10,
+      "notes": "simple proxy for local geometric guard, edgeWeight=1e-2",
+      "ok": true,
+      "input": {
+        "faceAreaScore": 0.8801064413040813,
+        "edgeLengthScore": 0.9458721630545867,
+        "edgeRatio": 0.18587346324263693,
+        "minEdgeLength": 93.33809511662427,
+        "maxEdgeLength": 502.1593372625864,
+        "plane": true
+      },
+      "air": {
+        "faceAreaScore": 0.9222142594135834,
+        "edgeLengthScore": 0.9438852638894133,
+        "edgeRatio": 0.09586030793444994,
+        "minEdgeLength": 36.27548644222796,
+        "maxEdgeLength": 378.42029953662814,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 2.633250516790065,
+        "message": "Applied Air (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 2.633, face score 0.922)"
+      },
+      "airPlus": {
+        "faceAreaScore": 0.8240359417633638,
+        "edgeLengthScore": 0.9465594410017385,
+        "edgeRatio": 0.10474978863963452,
+        "minEdgeLength": 47.520934463739245,
+        "maxEdgeLength": 453.6613875873597,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.323126356262556,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.323, face score 0.824)"
+      },
+      "baselineAirPlus": {
+        "faceAreaScore": 0.8239627060862537,
+        "edgeLengthScore": 0.9465945765102064,
+        "edgeRatio": 0.10450950460528172,
+        "minEdgeLength": 47.40649787929962,
+        "maxEdgeLength": 453.60944019730607,
+        "plane": true,
+        "status": "max_sweeps",
+        "maxRelError": 53.3600273370173,
+        "message": "Applied AirPlus (23-vertex outer face, 117 bounded faces, +34 dummy vertices, status max_sweeps, max rel err 53.360, face score 0.824)"
+      },
+      "analysis": {
+        "verdict": "bad",
+        "summary": "plane, edge score 0.9466, edge ratio 0.1047, face score 0.8240, face vs Air -0.0982"
+      }
+    }
+  ]
+}

@@ -181,6 +181,7 @@
       if (key === 'ceg23_xy') key = 'ceg23-xy';
       var base = {};
       if (key === 'air' ||
+          key === 'airplus' ||
           key === 'ppag' ||
           key === 'facebalancer' ||
           key === 'edgebalancer' ||
@@ -913,6 +914,24 @@
     }
 
     function renderFaceAreaPlot(values, idealValues, showLine) {
+      var pairs = [];
+      var i;
+      for (i = 0; i < values.length; i += 1) {
+        pairs.push({
+          value: values[i],
+          ideal: Array.isArray(idealValues) && idealValues.length === values.length
+            ? idealValues[i]
+            : (Number.isFinite(idealValues) ? idealValues : 1)
+        });
+      }
+      pairs.sort(function (a, b) {
+        var ra = a.value / Math.max(a.ideal, 1e-12);
+        var rb = b.value / Math.max(b.ideal, 1e-12);
+        return ra - rb;
+      });
+      values = pairs.map(function (pair) { return pair.value; });
+      idealValues = pairs.map(function (pair) { return pair.ideal; });
+
       var size = getPlotSize('stats-face-plot');
       var W = size.width;
       var H = size.height;
@@ -926,7 +945,6 @@
       var ideals = Array.isArray(idealValues) && idealValues.length === values.length
         ? idealValues.slice()
         : values.map(function () { return Number.isFinite(idealValues) ? idealValues : 1; });
-      var i;
 
       function sx(idx) {
         if (values.length <= 1) {
@@ -1824,6 +1842,7 @@
     function setPlanarButtonsDisabled() {
       setLayoutEnabled('tutte', false);
       setLayoutEnabled('air', false);
+      setLayoutEnabled('airplus', false);
       setLayoutEnabled('ppag', false);
       setLayoutEnabled('facebalancer', false);
       setLayoutEnabled('edgebalancer', false);
@@ -1877,6 +1896,7 @@
       });
       setLayoutEnabled('tutte', isPlanar);
       setLayoutEnabled('air', isPlanar);
+      setLayoutEnabled('airplus', isPlanar);
       setLayoutEnabled('ppag', isPlanar);
       setLayoutEnabled('facebalancer', isPlanar);
       setLayoutEnabled('edgebalancer', isPlanar);
@@ -2094,6 +2114,50 @@
                 var debug = progressDebug(progress);
                 var parts = [];
                 parts.push('Air sweep ' + progress.iter + '/' + progress.maxIters);
+                if (Number.isFinite(progress.maxRelError)) {
+                  parts.push('face err ' + progress.maxRelError.toFixed(3));
+                }
+                if (Number.isFinite(debug.maxForce)) {
+                  parts.push('max force ' + debug.maxForce.toExponential(2));
+                }
+                if (Number.isFinite(progress.maxMove)) {
+                  parts.push('max move ' + progress.maxMove.toExponential(2));
+                }
+                if (Number.isFinite(debug.acceptedCount)) {
+                  parts.push('accepted ' + debug.acceptedCount);
+                }
+                if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
+                    Number.isFinite(debug.plateauWindow)) {
+                  parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
+                }
+                if (Number.isFinite(debug.boundedFaceCount)) {
+                  parts.push('faces ' + debug.boundedFaceCount);
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            });
+          },
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'airplus') {
+        runManagedLayout({
+          layoutName: 'airplus',
+          disabledMessage: 'AirPlus layout requires a planar graph',
+          module: global.PlanarVibeAirPlus,
+          methodName: 'applyAirPlusLayout',
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('airplus', {
+              onIteration: function (progress) {
+                if (!progress) return;
+                var debug = progressDebug(progress);
+                var parts = [];
+                parts.push('AirPlus sweep ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.maxRelError)) {
                   parts.push('face err ' + progress.maxRelError.toFixed(3));
                 }
@@ -2524,6 +2588,20 @@
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
             graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
+          }
+        },
+        {
+          layoutName: 'airplus',
+          module: global.PlanarVibeAirPlus,
+          methodName: 'applyAirPlusLayout',
+          missingMessage: 'AirPlus layout module is missing',
+          requires: {
+            cyRuntime: ['runLayout', 'resolveLayoutTimingOptions'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
+            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices', 'edgeKey'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }

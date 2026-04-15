@@ -44,7 +44,8 @@ function loadMetricsModules() {
     GraphUtils: window.GraphUtils,
     Metrics: window.PlanarVibeMetrics,
     Rotation: window.PlanarVibeRotation,
-    PlanarityTest: window.PlanarVibePlanarityTest
+    PlanarityTest: window.PlanarVibePlanarityTest,
+    PlanarGraphUtils: window.PlanarGraphUtils
   };
 }
 
@@ -55,6 +56,7 @@ const GraphUtils = loaded.GraphUtils;
 const Metrics = loaded.Metrics;
 const Rotation = loaded.Rotation;
 const PlanarityTest = loaded.PlanarityTest;
+const PlanarGraphUtils = loaded.PlanarGraphUtils;
 
 function parseSampleWithCoordinates(text) {
   const nodeIds = [];
@@ -225,7 +227,7 @@ test('computeUniformFaceAreaScore uses bounded-face weights from the embedding',
   };
 
   const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
-  const emb = PlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
+  const emb = PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
   assert.equal(result.ok, true);
   assert.equal(result.values.length, 2);
   const outerFace = emb.outerFace || [];
@@ -259,7 +261,7 @@ test('computeUniformFaceAreaScore uses |f|-2 weights for non-triangular bounded 
   };
 
   const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
-  const emb = PlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
+  const emb = PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
   assert.equal(result.ok, true);
   assert.equal(result.values.length, 2);
   assert.equal(result.idealValues.length, 2);
@@ -289,7 +291,7 @@ test('computeUniformFaceAreaScore fails for non-planar graph', () => {
 
   const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
   assert.equal(result.ok, false);
-  assert.equal(result.reason, 'Graph is not planar');
+  assert.equal(result.reason, 'Drawing does not determine a plane embedding');
 });
 
 test('hasCrossingsFromPositions detects crossing and non-crossing drawings', () => {
@@ -356,6 +358,26 @@ test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K
   assert.ok(symmetric.score >= 0 && symmetric.score <= 1);
   assert.ok(skewed.score >= 0 && skewed.score <= 1);
   assert.ok(symmetric.score > skewed.score + 0.05);
+});
+
+test('computeUniformAngleResolutionScore fails when drawing does not determine a plane embedding', () => {
+  const graph = GraphUtils.createGraph(
+    ['1', '2', '3', '4'],
+    [
+      ['1', '2'],
+      ['3', '4']
+    ]
+  );
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 1, y: 1 },
+    '3': { x: 0, y: 1 },
+    '4': { x: 1, y: 0 }
+  };
+
+  const result = Metrics.computeUniformAngleResolutionScore(graph, posById);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'Drawing does not determine a plane embedding');
 });
 
 test('computeSpacingUniformityScore is 1 for equal nearest-neighbor spacing', () => {

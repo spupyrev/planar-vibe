@@ -322,9 +322,9 @@
   }
 
   function computeUniformFaceAreaScore(nodeIds, edgePairs, posById) {
-    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
+    var emb = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
     if (!emb || !emb.ok) {
-      return { ok: false, reason: 'Graph is not planar' };
+      return { ok: false, reason: 'Drawing does not determine a plane embedding' };
     }
     if (!emb.faces || emb.faces.length === 0) {
       return { ok: false, reason: 'No faces available' };
@@ -629,9 +629,9 @@
     if (!edgePairs || edgePairs.length === 0) {
       return { ok: false, reason: 'No edges' };
     }
-    var emb = global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs);
+    var emb = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
     if (!emb || !emb.ok) {
-      return { ok: false, reason: 'Graph is not planar' };
+      return { ok: false, reason: 'Drawing does not determine a plane embedding' };
     }
 
     var adjacency = graph.adjacency;
