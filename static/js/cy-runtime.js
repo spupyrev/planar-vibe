@@ -294,6 +294,7 @@
     var opts = options || {};
     var cfg = spec || {};
     var graph = graphFromCy(cy);
+    var initialCurrentPositions = currentPositionsFromCy(cy);
     var livePositions = {};
     var timing = resolveLayoutTimingOptions(opts, {
       delayMs: cfg.delayMsDefault,
@@ -306,16 +307,17 @@
     var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
     var didStreamProgress = false;
     var initialFitBounds = null;
+    var sharedPreparedSeed = null;
 
     if (cfg.useSharedPreparedSeed) {
-      var initialPrepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      sharedPreparedSeed = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
         failureLabel: String(cfg.sharedSeedFailureLabel || cfg.failureMessage || 'Layout'),
-        currentPositions: currentPositionsFromCy(cy),
+        currentPositions: initialCurrentPositions,
         augmentationMethod: opts.augmentationMethod
       });
-      if (initialPrepared && initialPrepared.ok && initialPrepared.posById) {
-        livePositions = initialPrepared.posById;
-        initialFitBounds = computePositionBounds(initialPrepared.posById);
+      if (sharedPreparedSeed && sharedPreparedSeed.ok && sharedPreparedSeed.posById) {
+        livePositions = sharedPreparedSeed.posById;
+        initialFitBounds = computePositionBounds(sharedPreparedSeed.posById);
       }
     }
 
@@ -389,7 +391,8 @@
         {},
         opts,
         {
-          currentPositions: currentPositionsFromCy(cy),
+          currentPositions: initialCurrentPositions,
+          preparedSeed: sharedPreparedSeed,
           onIteration: onProgress
         },
         typeof cfg.patchComputeOptions === 'function'

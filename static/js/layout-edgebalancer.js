@@ -906,11 +906,17 @@
 
   async function computeEdgeBalancerPositions(graph, options) {
     var maxIters = resolveIntOption(options.maxIters, 80, 1);
-    var context = LayoutPreprocessing.prepareGraphData(graph, {
-      failureLabel: 'EdgeBalancer layout',
-      augmentationMethod: options.augmentationMethod || null,
-      currentPositions: options.currentPositions
+    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
+      preparedSeed: options.preparedSeed,
+      augmentationMethod: options.augmentationMethod || null
     });
+    if (!context) {
+      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+        failureLabel: 'EdgeBalancer layout',
+        augmentationMethod: options.augmentationMethod || null,
+        currentPositions: options.currentPositions
+      });
+    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'EdgeBalancer setup failed' });
     }
@@ -918,33 +924,7 @@
     var g = context.graph;
     var outerFace = context.augmentedOuterFace || context.outerFace;
     var augmented = context.augmented;
-    var initialResult = LayoutPreprocessing.computeInitialPositions(
-      context.augmentedGraph,
-      outerFace,
-      augmented.embedding,
-      g
-    );
-    if (!initialResult || !initialResult.ok || !initialResult.positions) {
-      return buildLayoutError({
-        message: (initialResult && initialResult.message) || 'EdgeBalancer initialization failed',
-        graph: g,
-        outerFace: outerFace,
-        augmented: augmented
-      });
-    }
-    var verification = LayoutPreprocessing.verifyEmbeddingWithPositions(augmented.embedding, initialResult.positions, {
-      edgePairs: augmented.graph.edgePairs,
-      outerFace: outerFace
-    });
-    if (!verification.ok) {
-      return buildLayoutError({
-        message: verification.message || 'EdgeBalancer initialization failed',
-        graph: g,
-        outerFace: outerFace,
-        augmented: augmented
-      });
-    }
-    var initPos = initialResult.positions;
+    var initPos = context.posById;
     var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
     var areaTol = resolveNonNegativeOption(options.areaTol, 1e-15);
     var data = buildEdgeBalancerData({

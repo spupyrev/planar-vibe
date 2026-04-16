@@ -483,11 +483,17 @@
   }
 
   function prepareCEG23State(graph, failureLabel, options) {
-    var prepared = prepareGraphAndLayoutData(graph, {
-      failureLabel: failureLabel,
-      augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
-      currentPositions: options ? options.currentPositions : undefined
+    var prepared = LayoutPreprocessing.reusePreparedLayoutData(graph, {
+      preparedSeed: options ? options.preparedSeed : null,
+      augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null
     });
+    if (!prepared) {
+      prepared = prepareGraphAndLayoutData(graph, {
+        failureLabel: failureLabel,
+        augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
+        currentPositions: options ? options.currentPositions : undefined
+      });
+    }
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || {
         message: failureLabel + ' requires a planar graph'

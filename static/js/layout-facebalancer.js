@@ -698,11 +698,17 @@
 
   async function computeFaceBalancerPositions(graph, options) {
     var maxIters = resolveIntOption(options.maxIters, 80, 1);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'FaceBalancer layout',
-      augmentationMethod: options.augmentationMethod || null,
-      currentPositions: options.currentPositions
+    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
+      preparedSeed: options.preparedSeed,
+      augmentationMethod: options.augmentationMethod || null
     });
+    if (!context) {
+      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+        failureLabel: 'FaceBalancer layout',
+        augmentationMethod: options.augmentationMethod || null,
+        currentPositions: options.currentPositions
+      });
+    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'FaceBalancer setup failed' });
     }

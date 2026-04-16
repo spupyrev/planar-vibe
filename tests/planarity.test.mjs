@@ -131,6 +131,7 @@ const Air = modules.PlanarVibeAir;
 const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
+const AngleBalancer = modules.PlanarVibeAngleBalancer;
 const ImPrEd = modules.PlanarVibeImPrEd;
 const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
@@ -839,7 +840,7 @@ test('shared layout runner fits once before compute even with a shared seed', as
   }
 });
 
-test('shared layout runner passes the shared seeded positions into compute', async () => {
+test('shared layout runner passes the original positions and prepared seed into compute', async () => {
   const graph = {
     nodeIds: ['a', 'b', 'c', 'd', 'e'],
     edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
@@ -865,9 +866,9 @@ test('shared layout runner passes the shared seeded positions into compute', asy
     augmentationMethod: 'outer-cycle'
   });
   assert.equal(preparedSeed && preparedSeed.ok, true, preparedSeed && preparedSeed.message ? preparedSeed.message : 'shared seed prep failed');
-  const seededOriginalPositions = GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds);
 
   let computeCurrentPositions = null;
+  let computePreparedSeed = null;
   const result = await CyRuntime.runLayout(cy, {
     augmentationMethod: 'outer-cycle'
   }, {
@@ -875,6 +876,7 @@ test('shared layout runner passes the shared seeded positions into compute', asy
     sharedSeedFailureLabel: 'PPAG layout',
     compute: function (_graph, options) {
       computeCurrentPositions = options.currentPositions;
+      computePreparedSeed = options.preparedSeed;
       return {
         ok: true,
         positions: preparedSeed.posById
@@ -884,7 +886,48 @@ test('shared layout runner passes the shared seeded positions into compute', asy
   });
 
   assert.equal(result && result.ok, true, result && result.message ? result.message : 'runLayout failed');
-  assert.deepEqual(computeCurrentPositions, seededOriginalPositions);
+  assert.deepEqual(JSON.parse(JSON.stringify(computeCurrentPositions)), pos);
+  assert.equal(computePreparedSeed && computePreparedSeed.ok, true);
+  assert.deepEqual(GeometryUtils.filterPositionMap(computePreparedSeed.posById, graph.nodeIds), preparedSeed.positions || GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds));
+});
+
+test('AngleBalancer UI path reuses the shared prepared seed instead of preparing twice', async () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a']]
+  };
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  cy.nodes().forEach((node, index) => {
+    const positions = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 50, y: 80 }
+    ];
+    node.position(positions[index]);
+  });
+
+  const originalPrepareGraphAndLayoutData = LayoutPreprocessing.prepareGraphAndLayoutData;
+  const originalReusePreparedLayoutData = LayoutPreprocessing.reusePreparedLayoutData;
+  let prepareCount = 0;
+  let reuseCount = 0;
+  LayoutPreprocessing.prepareGraphAndLayoutData = function (...args) {
+    prepareCount += 1;
+    return originalPrepareGraphAndLayoutData.apply(this, args);
+  };
+  LayoutPreprocessing.reusePreparedLayoutData = function (...args) {
+    reuseCount += 1;
+    return originalReusePreparedLayoutData.apply(this, args);
+  };
+
+  try {
+    const result = await AngleBalancer.applyAngleBalancerLayout(cy, {});
+    assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer apply failed'));
+    assert.equal(prepareCount, 1, 'AngleBalancer should prepare only once through the shared seed path');
+    assert.ok(reuseCount >= 1, 'AngleBalancer should attempt to reuse the shared prepared seed');
+  } finally {
+    LayoutPreprocessing.prepareGraphAndLayoutData = originalPrepareGraphAndLayoutData;
+    LayoutPreprocessing.reusePreparedLayoutData = originalReusePreparedLayoutData;
+  }
 });
 
 test('shared layout runner does not synthesize a final progress step for one-shot layouts', async () => {
@@ -1260,6 +1303,21 @@ test('EdgeBalancer respects the maxPositionStep cap during optimization', async 
   assert.equal(result && result.ok, true, result && (result.message || result.reason || 'EdgeBalancer failed with step cap'));
   assert.ok(callbackCount > 0, 'expected EdgeBalancer to emit progress with a step cap');
   assert.ok(observedMaxMove <= stepCap + 1e-6, `EdgeBalancer exceeded maxPositionStep: cap=${stepCap}, observed=${observedMaxMove}`);
+});
+
+test('AngleBalancer keeps augmented barrier coordinates available on sample1', async () => {
+  const text = Generator.getSample('sample1');
+  const parsed = parseEdgeListText(text);
+  const graph = GraphUtils.createGraph(parsed.nodeIds, parsed.edgePairs);
+  const currentPositions = parseVertexPositionsFromEdgeList(text);
+  const result = await AngleBalancer.computeAngleBalancerPositions(graph, {
+    currentPositions,
+    maxSweeps: 6
+  });
+
+  assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer failed on sample1'));
+  assert.notEqual(result.stopReason, 'stalled', 'AngleBalancer should not stall immediately on the augmented face barrier');
+  assert.equal(Number.isFinite(result.objective), true, 'AngleBalancer should report a finite objective on sample1');
 });
 
 test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {

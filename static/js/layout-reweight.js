@@ -231,11 +231,17 @@
 
   function prepareReweightState(graph, options) {
     fillReweightSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'ReweightTutte',
-      augmentationMethod: options.augmentationMethod,
-      currentPositions: options.currentPositions
+    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
+      preparedSeed: options.preparedSeed,
+      augmentationMethod: options.augmentationMethod
     });
+    if (!context) {
+      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+        failureLabel: 'ReweightTutte',
+        augmentationMethod: options.augmentationMethod,
+        currentPositions: options.currentPositions
+      });
+    }
     if (!context || !context.ok) {
       return buildLayoutError(context || {
         message: 'ReweightTutte setup failed',

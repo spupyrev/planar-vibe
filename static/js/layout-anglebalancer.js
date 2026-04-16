@@ -32,7 +32,7 @@
     options.augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
       ? Object.assign({}, options.augmentationOptions)
       : null;
-    options.maxSweeps = resolveIntOption(options.maxSweeps, 1, 1);
+    options.maxSweeps = resolveIntOption(options.maxSweeps, 10, 1);
     options.initialStepScale = resolveFloatOption(options.initialStepScale, 0.35, 1e-6);
     options.minStepScale = resolveFloatOption(options.minStepScale, 1e-4, 1e-9);
     options.armijo = resolveFloatOption(options.armijo, 1e-4, 0);
@@ -52,7 +52,7 @@
     return {
       graph: graph,
       outerFace: outerFace.slice().map(String),
-      posById: filterPositionMap(posById, graph.nodeIds),
+      posById: copyPositionMap(posById),
       movableVertices: movableVertices.slice().map(String),
       barrierData: barrierData || null
     };
@@ -318,19 +318,25 @@
 
   async function computeAngleBalancerPositions(graph, options) {
     fillAngleSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'AngleBalancer layout',
-      augmentationMethod: options.augmentationMethod,
-      augmentationOptions: options.augmentationOptions,
-      currentPositions: options.currentPositions
+    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
+      preparedSeed: options.preparedSeed,
+      augmentationMethod: options.augmentationMethod
     });
+    if (!context) {
+      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+        failureLabel: 'AngleBalancer layout',
+        augmentationMethod: options.augmentationMethod,
+        augmentationOptions: options.augmentationOptions,
+        currentPositions: options.currentPositions
+      });
+    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'AngleBalancer setup failed' });
     }
 
     var g = context.graph;
     var outerFace = context.outerFace;
-    var posById = filterPositionMap(context.posById, g.nodeIds);
+    var posById = copyPositionMap(context.posById);
     var barrierData = buildFaceBarrierData(context);
     var originalNodeSet = new Set(g.nodeIds.map(String));
     var movableVertices = [];
@@ -350,7 +356,7 @@
         outerFace: outerFace,
         graph: g,
         augmented: context.augmented,
-        positions: state.posById,
+        positions: filterPositionMap(state.posById, g.nodeIds),
         debugPositions: context.posById,
         stopReason: 'no-movable-vertices',
         iters: 0,
@@ -507,7 +513,7 @@
       outerFace: outerFace,
       graph: g,
       augmented: context.augmented,
-      positions: state.posById,
+      positions: filterPositionMap(state.posById, g.nodeIds),
       debugPositions: debugPositions,
       stopReason: stopReason,
       iters: iterationCount,

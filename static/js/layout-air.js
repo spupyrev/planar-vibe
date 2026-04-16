@@ -326,12 +326,18 @@
 
   function prepareAirState(graph, options) {
     fillAirSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'Air layout',
-      augmentationMethod: options.augmentationMethod,
-      augmentationOptions: options.augmentationOptions,
-      currentPositions: options.currentPositions
+    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
+      preparedSeed: options.preparedSeed,
+      augmentationMethod: options.augmentationMethod
     });
+    if (!context) {
+      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+        failureLabel: 'Air layout',
+        augmentationMethod: options.augmentationMethod,
+        augmentationOptions: options.augmentationOptions,
+        currentPositions: options.currentPositions
+      });
+    }
     if (!context.ok) {
       return buildLayoutError(context);
     }

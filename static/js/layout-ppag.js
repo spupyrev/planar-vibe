@@ -262,11 +262,17 @@
 
   function preparePPAGState(graph, options) {
     fillPPAGSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'PPAG layout',
-      augmentationMethod: options.augmentationMethod,
-      currentPositions: options.currentPositions
+    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
+      preparedSeed: options.preparedSeed,
+      augmentationMethod: options.augmentationMethod
     });
+    if (!context) {
+      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+        failureLabel: 'PPAG layout',
+        augmentationMethod: options.augmentationMethod,
+        currentPositions: options.currentPositions
+      });
+    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'PPAG setup failed' });
     }
