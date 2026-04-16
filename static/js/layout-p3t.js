@@ -1,11 +1,24 @@
 (function (global) {
   'use strict';
 
+  var GeometryUtils = global.GeometryUtils;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var PlanarityTest = global.PlanarVibePlanarityTest;
   var CyRuntime = global.CyRuntime;
+  var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
+
+  async function emitSingleIteration(options, result) {
+    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
+      return;
+    }
+    await options.onIteration({
+      iter: 1,
+      maxIters: 1,
+      positions: result.positions
+    });
+  }
 
   function cliqueKey(a, b, c, indexById) {
     var arr = [a, b, c];
@@ -107,13 +120,17 @@
         edgePairs: pairs
       },
       embedding: emb,
-      positions: coord
+      positions: normalizePositionMapToViewport(coord)
     });
   }
 
   function applyP3TLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeP3TPositions,
+      compute: async function (graph, computeOptions) {
+        var result = computeP3TPositions(graph, computeOptions || {});
+        await emitSingleIteration(computeOptions || {}, result);
+        return result;
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {

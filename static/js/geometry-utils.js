@@ -226,6 +226,68 @@
     return out;
   }
 
+  function normalizePositionMapToViewport(posById, options) {
+    var source = copyPositionMap(posById || {});
+    var ids = Object.keys(source);
+    if (ids.length === 0) {
+      return source;
+    }
+    var defaults = global.PlanarVibeViewportDefaults || {};
+    var opts = options || {};
+    var width = Number.isFinite(opts.width) ? opts.width : (Number.isFinite(defaults.width) ? defaults.width : 900);
+    var height = Number.isFinite(opts.height) ? opts.height : (Number.isFinite(defaults.height) ? defaults.height : 620);
+    var padding = Number.isFinite(opts.padding) ? Math.max(0, opts.padding) : 24;
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    var i;
+
+    for (i = 0; i < ids.length; i += 1) {
+      var p = source[ids[i]];
+      if (!p) {
+        continue;
+      }
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
+      return source;
+    }
+
+    var boxW = maxX - minX;
+    var boxH = maxY - minY;
+    var innerW = Math.max(1, width - 2 * padding);
+    var innerH = Math.max(1, height - 2 * padding);
+
+    if (boxW < 1e-9 && boxH < 1e-9) {
+      for (i = 0; i < ids.length; i += 1) {
+        source[ids[i]] = { x: width / 2, y: height / 2 };
+      }
+      return source;
+    }
+
+    var safeW = Math.max(boxW, 1e-9);
+    var safeH = Math.max(boxH, 1e-9);
+    var scale = Math.min(innerW / safeW, innerH / safeH);
+    if (!Number.isFinite(scale) || scale <= 0) {
+      scale = 1;
+    }
+    var offsetX = (width - boxW * scale) / 2;
+    var offsetY = (height - boxH * scale) / 2;
+    for (i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
+      var point = source[id];
+      source[id] = {
+        x: (point.x - minX) * scale + offsetX,
+        y: (point.y - minY) * scale + offsetY
+      };
+    }
+    return source;
+  }
+
   function computeFaceCentroid(posById, face) {
     var ids = Array.isArray(face) ? face : [];
     var sx = 0;
@@ -265,36 +327,6 @@
       };
     }
     return out;
-  }
-
-  function alignOuterFaceEdgeHorizontally(posById, outerFace) {
-    var face = Array.isArray(outerFace) ? outerFace.map(String) : [];
-    if (face.length < 2) {
-      return copyPositionMap(posById);
-    }
-    var bestIndex = -1;
-    var bestLength2 = -1;
-    for (var i = 0; i < face.length; i += 1) {
-      var a = posById ? posById[face[i]] : null;
-      var b = posById ? posById[face[(i + 1) % face.length]] : null;
-      if (!a || !b || !Number.isFinite(a.x) || !Number.isFinite(a.y) || !Number.isFinite(b.x) || !Number.isFinite(b.y)) {
-        continue;
-      }
-      var dx = b.x - a.x;
-      var dy = b.y - a.y;
-      var len2 = dx * dx + dy * dy;
-      if (len2 > bestLength2) {
-        bestLength2 = len2;
-        bestIndex = i;
-      }
-    }
-    if (!(bestIndex >= 0) || !(bestLength2 > 1e-18)) {
-      return copyPositionMap(posById);
-    }
-    var start = posById[face[bestIndex]];
-    var end = posById[face[(bestIndex + 1) % face.length]];
-    var angle = Math.atan2(end.y - start.y, end.x - start.x);
-    return rotatePositionMap(posById, computeFaceCentroid(posById, face), -angle);
   }
 
   function hasPositionCrossings(posById, edgePairs) {
@@ -383,9 +415,9 @@
     computeDrawingDiameter: computeDrawingDiameter,
     copyPositionMap: copyPositionMap,
     filterPositionMap: filterPositionMap,
+    normalizePositionMapToViewport: normalizePositionMapToViewport,
     computeFaceCentroid: computeFaceCentroid,
     rotatePositionMap: rotatePositionMap,
-    alignOuterFaceEdgeHorizontally: alignOuterFaceEdgeHorizontally,
     hasPositionCrossings: hasPositionCrossings
   };
 })(window);

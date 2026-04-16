@@ -766,6 +766,15 @@
     }
 
     var q0 = createZeroVector(data.qSize);
+    if (!hasExplicitMinFaceArea && data.minFaceArea > 0) {
+      var minFaceAreaProbe = evaluateObjectiveAndGradient(q0, data);
+      while (!minFaceAreaProbe.ok &&
+             minFaceAreaProbe.reason === 'invalid-face-step' &&
+             data.minFaceArea > 1e-18) {
+        data.minFaceArea *= 0.25;
+        minFaceAreaProbe = evaluateObjectiveAndGradient(q0, data);
+      }
+    }
     var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
     var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
       minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),

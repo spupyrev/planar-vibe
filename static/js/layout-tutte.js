@@ -16,6 +16,17 @@
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
 
+  async function emitSingleIteration(options, result) {
+    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
+      return;
+    }
+    await options.onIteration({
+      iter: 1,
+      maxIters: 1,
+      positions: result.positions
+    });
+  }
+
   function buildDegreeMap(graph) {
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
@@ -32,6 +43,10 @@
     return degreeById;
   }
 
+  function isOuterDummyVertexId(id) {
+    return String(id).indexOf('@outerDummy') === 0;
+  }
+
   function buildTutteWeights(graph, augmentedGraph) {
     var originalPairs = graph.edgePairs;
     var augmentedPairs = augmentedGraph.edgePairs;
@@ -39,7 +54,8 @@
     var originalEdgeSet = {};
     var weights = {};
     var originalWeight = 1;
-    var augmentationWeight = 0.245;
+    var internalDummyWeight = 1;
+    var outerDummyWeight = 10;
     var i;
 
     for (i = 0; i < originalPairs.length; i += 1) {
@@ -50,7 +66,10 @@
       var u = augmentedPairs[i][0];
       var v = augmentedPairs[i][1];
       var key = edgeKey(u, v);
-      var baseWeight = originalEdgeSet[key] ? originalWeight : augmentationWeight;
+      var touchesOuterDummy = isOuterDummyVertexId(u) || isOuterDummyVertexId(v);
+      var baseWeight = originalEdgeSet[key]
+        ? originalWeight
+        : (touchesOuterDummy ? outerDummyWeight : internalDummyWeight);
       var du = Math.max(1, degreeById[u] || 0);
       var dv = Math.max(1, degreeById[v] || 0);
       baseWeight /= Math.sqrt(du * dv);
@@ -291,6 +310,7 @@
       embedding: prepared.baseEmbedding,
       augmented: prepared.augmented,
       graph: prepared.graph,
+      debugPositions: barycentric.positions,
       positions: projected,
       posById: projected,
       iters: barycentric.iters
@@ -299,7 +319,11 @@
 
   function applyTutteLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeTutteLayout,
+      compute: async function (graph, computeOptions) {
+        var result = computeTutteLayout(graph, computeOptions || {});
+        await emitSingleIteration(computeOptions || {}, result);
+        return result;
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -312,7 +336,7 @@
             ? LayoutPreprocessing.createAugmentationDebugState(
               result.graph,
               result.augmented,
-              result.posById
+              result.debugPositions || result.posById
             )
             : null
         };

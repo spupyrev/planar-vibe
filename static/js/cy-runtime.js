@@ -6,8 +6,6 @@
 
   var GraphUtils = global.GraphUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
-  var PlanarGraphUtils = global.PlanarGraphUtils;
-
   function isDummyCyNode(node) {
     return !!(node && typeof node.hasClass === 'function' && node.hasClass('dummy-node'));
   }
@@ -100,28 +98,6 @@
     return changed;
   }
 
-  function computePositionBounds(posById, nodeIds) {
-    var ids = Array.isArray(nodeIds) ? nodeIds.map(String) : [];
-    var minX = Infinity;
-    var minY = Infinity;
-    var maxX = -Infinity;
-    var maxY = -Infinity;
-    for (var i = 0; i < ids.length; i += 1) {
-      var p = posById ? posById[ids[i]] : null;
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      if (p.x < minX) minX = p.x;
-      if (p.y < minY) minY = p.y;
-      if (p.x > maxX) maxX = p.x;
-      if (p.y > maxY) maxY = p.y;
-    }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
-      return null;
-    }
-    return { x1: minX, y1: minY, x2: maxX, y2: maxY };
-  }
-
   function fitCy(cy, fitPadding, bounds) {
     if (!cy || typeof cy.fit !== 'function') {
       return;
@@ -135,38 +111,26 @@
     cy.fit(undefined, padding);
   }
 
-  function statusLogFromCy(cy, message) {
-    if (!global.$) {
-      return;
+  function computePositionBounds(posById) {
+    var ids = Object.keys(posById || {});
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (var i = 0; i < ids.length; i += 1) {
+      var p = posById[ids[i]];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
     }
-    var $status = global.$('#status');
-    if (!$status.length) {
-      return;
-    }
-    var $entry = global.$('<div class="status-entry"></div>').text(String(message || ''));
-    $status.append($entry);
-    var $entries = $status.children('.status-entry');
-    var maxEntries = 250;
-    if ($entries.length > maxEntries) {
-      $entries.slice(0, $entries.length - maxEntries).remove();
-    }
-    var el = $status.get(0);
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }
-
-  function extractedOuterFaceFromPositions(graph, posById) {
-    if (!PlanarGraphUtils || typeof PlanarGraphUtils.extractEmbeddingFromPositions !== 'function') {
+    if (!Number.isFinite(minX) || !Number.isFinite(minY) || !Number.isFinite(maxX) || !Number.isFinite(maxY)) {
       return null;
     }
-    var emb = PlanarGraphUtils.extractEmbeddingFromPositions(graph.nodeIds, graph.edgePairs, posById || null);
-    return emb && emb.ok && Array.isArray(emb.outerFace) ? emb.outerFace.slice().map(String) : null;
-  }
-
-  function applyAndFit(cy, posById, fitPadding, fitBounds) {
-    applyPositionsToCy(cy, posById);
-    fitCy(cy, fitPadding, fitBounds || null);
+    return { x1: minX, y1: minY, x2: maxX, y2: maxY };
   }
 
   function waitForNextFrame(delayMs) {
@@ -211,6 +175,9 @@
   function createLayoutRenderer(config) {
     var cy = config.cy;
     var getPositions = typeof config.getPositions === 'function' ? config.getPositions : function () { return {}; };
+    var hasInitialPositions = typeof config.hasInitialPositions === 'function'
+      ? config.hasInitialPositions
+      : function () { return false; };
     var timing = resolveLayoutTimingOptions(config, {
       delayMs: 0,
       renderEvery: 2,
@@ -220,21 +187,22 @@
     var renderEvery = timing.renderEvery;
     var yieldEvery = timing.yieldEvery;
     var fitPadding = Number.isFinite(config.fitPadding) ? Math.max(0, config.fitPadding) : 24;
-    var didFit = !!config.initialDidFit;
+    var initialFitBounds = config.initialFitBounds || null;
+    var didFit = false;
 
-    function renderCurrent() {
+    function renderCurrent(fitIfFirstVisible) {
       applyPositionsToCy(cy, getPositions());
-    }
-
-    function fitIfNeeded() {
-      if (!didFit) {
-        cy.fit(undefined, fitPadding);
+      if (fitIfFirstVisible && !didFit) {
+        fitCy(cy, fitPadding, initialFitBounds);
         didFit = true;
       }
     }
 
     async function begin() {
-      renderCurrent();
+      if (!hasInitialPositions()) {
+        return;
+      }
+      renderCurrent(true);
       await waitForNextFrame(delayMs);
     }
 
@@ -249,8 +217,7 @@
         (iter === maxIters || (iter % yieldEvery) === 0);
 
       if (isRenderable) {
-        renderCurrent();
-        fitIfNeeded();
+        renderCurrent(true);
         await waitForNextFrame(delayMs);
         return;
       }
@@ -261,8 +228,7 @@
     }
 
     function finish() {
-      renderCurrent();
-      fitIfNeeded();
+      renderCurrent(false);
     }
 
     return {
@@ -338,20 +304,8 @@
     var renderEvery = timing.renderEvery;
     var yieldEvery = timing.yieldEvery;
     var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
-    var didInitialFit = false;
     var didStreamProgress = false;
-    var shouldLogSharedSeed = !!cfg.useSharedPreparedSeed &&
-      String(cfg.sharedSeedFailureLabel || cfg.failureMessage || '').toLowerCase() === 'air layout';
-
-    if (shouldLogSharedSeed) {
-      var beforeSeedPositions = currentPositionsFromCy(cy);
-      var beforeSeedOuter = extractedOuterFaceFromPositions(graph, beforeSeedPositions);
-      statusLogFromCy(
-        cy,
-        '[Air debug] cy outer face before shared seed: ' +
-        (Array.isArray(beforeSeedOuter) ? beforeSeedOuter.length + ' [' + beforeSeedOuter.join(' ') + ']' : 'null')
-      );
-    }
+    var initialFitBounds = null;
 
     if (cfg.useSharedPreparedSeed) {
       var initialPrepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
@@ -361,33 +315,28 @@
       });
       if (initialPrepared && initialPrepared.ok && initialPrepared.posById) {
         livePositions = initialPrepared.posById;
-        applyAndFit(
-          cy,
-          livePositions,
-          fitPadding,
-          computePositionBounds(livePositions, initialPrepared.augmentedOuterFace || initialPrepared.outerFace)
-        );
-        didInitialFit = true;
-        if (shouldLogSharedSeed) {
-          var afterSeedPositions = currentPositionsFromCy(cy);
-          var afterSeedOuter = extractedOuterFaceFromPositions(graph, afterSeedPositions);
-          statusLogFromCy(
-            cy,
-            '[Air debug] cy outer face after shared seed: ' +
-            (Array.isArray(afterSeedOuter) ? afterSeedOuter.length + ' [' + afterSeedOuter.join(' ') + ']' : 'null')
-          );
-        }
+        initialFitBounds = computePositionBounds(initialPrepared.posById);
       }
     }
 
     var renderer = createLayoutRenderer({
       cy: cy,
       getPositions: function () { return livePositions; },
+      hasInitialPositions: function () {
+        var ids = Object.keys(livePositions || {});
+        for (var i = 0; i < ids.length; i += 1) {
+          var p = livePositions[ids[i]];
+          if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+            return true;
+          }
+        }
+        return false;
+      },
       delayMs: delayMs,
       renderEvery: renderEvery,
       yieldEvery: yieldEvery,
       fitPadding: fitPadding,
-      initialDidFit: didInitialFit
+      initialFitBounds: initialFitBounds
     });
 
     async function onProgress(progress) {
@@ -400,32 +349,6 @@
       await renderer.onProgress(event, { forceYield: !!(opts.onIteration || delayMs > 0) });
     }
 
-    var computeOptions = Object.assign(
-      {},
-      opts,
-      {
-        currentPositions: currentPositionsFromCy(cy),
-        onIteration: onProgress
-      },
-      typeof cfg.patchComputeOptions === 'function'
-        ? (cfg.patchComputeOptions({
-          options: opts,
-          graph: graph,
-          cy: cy,
-          onProgress: onProgress
-        }) || {})
-        : {}
-    );
-
-    if (shouldLogSharedSeed) {
-      var computeOuter = extractedOuterFaceFromPositions(graph, computeOptions.currentPositions);
-      statusLogFromCy(
-        cy,
-        '[Air debug] computeOptions outer face: ' +
-        (Array.isArray(computeOuter) ? computeOuter.length + ' [' + computeOuter.join(' ') + ']' : 'null')
-      );
-    }
-
     function finalizeResult(result) {
       var positions = null;
       var streamed = didStreamProgress;
@@ -434,13 +357,6 @@
           ? cfg.getPositions(result)
           : result.positions;
         livePositions = positions || livePositions;
-        if (!streamed && positions && typeof opts.onIteration === 'function') {
-          opts.onIteration({
-            iter: 1,
-            maxIters: 1,
-            positions: positions
-          });
-        }
       }
       renderer.finish();
 
@@ -469,6 +385,22 @@
     }
 
     function executeCompute() {
+      var computeOptions = Object.assign(
+        {},
+        opts,
+        {
+          currentPositions: currentPositionsFromCy(cy),
+          onIteration: onProgress
+        },
+        typeof cfg.patchComputeOptions === 'function'
+          ? (cfg.patchComputeOptions({
+            options: opts,
+            graph: graph,
+            cy: cy,
+            onProgress: onProgress
+          }) || {})
+          : {}
+      );
       var result = cfg.compute(graph, computeOptions);
       if (result && typeof result.then === 'function') {
         return result.then(finalizeResult);
@@ -476,11 +408,7 @@
       return finalizeResult(result);
     }
 
-    if (didInitialFit) {
-      return renderer.begin().then(executeCompute);
-    }
-
-    return executeCompute();
+    return renderer.begin().then(executeCompute);
   }
 
   global.CyRuntime = {
@@ -490,7 +418,6 @@
     applyViewportToCy: applyViewportToCy,
     restorePositionsToCy: restorePositionsToCy,
     syncOverlayInCy: syncOverlayInCy,
-    resolveLayoutTimingOptions: resolveLayoutTimingOptions,
     runLayout: runLayout
   };
 })(window);

@@ -6,6 +6,17 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var normalizedHash = GraphUtils.normalizedHash;
 
+  async function emitSingleIteration(options, result) {
+    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
+      return;
+    }
+    await options.onIteration({
+      iter: 1,
+      maxIters: 1,
+      positions: result.positions
+    });
+  }
+
   function computeRandomPositions(graph, width, height) {
     var ids = Array.isArray(graph && graph.nodeIds) ? graph.nodeIds.map(String) : [];
     var safeWidth = Number.isFinite(width) ? width : 320;
@@ -31,19 +42,20 @@
 
   function applyRandomLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      fitPadding: 20,
       patchComputeOptions: function (ctx) {
         return {
           width: ctx.cy.width(),
           height: ctx.cy.height()
         };
       },
-      compute: function (graph, computeOptions) {
-        return computeRandomPositions(
+      compute: async function (graph, computeOptions) {
+        var result = computeRandomPositions(
           graph,
           computeOptions && computeOptions.width,
           computeOptions && computeOptions.height
         );
+        await emitSingleIteration(computeOptions || {}, result);
+        return result;
       },
       buildResult: function () {
         return { ok: true, message: 'Applied random coordinates' };

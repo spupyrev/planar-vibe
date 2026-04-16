@@ -91,12 +91,14 @@ function loadBrowserModules() {
     'static/js/graph-utils.js',
     'static/js/layout-preprocessing.js',
     'static/js/cy-runtime.js',
+    'static/js/layout-random.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
     'static/js/layout-air-plus.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
+    'static/js/layout-anglebalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -135,6 +137,8 @@ const Schnyder = modules.PlanarVibeSchnyder;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
 const FDUniform = modules.PlanarVibeFDUniform;
+const CEG23Bfs = modules.PlanarVibeCEG23Bfs;
+const Random = modules.PlanarVibeRandom;
 const CyRuntime = modules.CyRuntime;
 
 function buildMockCy(nodeIds, edgePairs) {
@@ -199,6 +203,12 @@ function buildMockCy(nodeIds, edgePairs) {
       this._fitCalls += 1;
       this._fitArg = arg === undefined ? null : arg;
       this._fitPadding = padding;
+    },
+    width() {
+      return 900;
+    },
+    height() {
+      return 620;
     }
   };
 }
@@ -742,7 +752,7 @@ test('prepareGraphData rejects unknown augmentation methods', () => {
   assert.match(String(prepared && prepared.message || ''), /unknown augmentation method/i);
 });
 
-test('shared layout runner fits once from the prepared seed before progress updates', async () => {
+test('shared layout runner fits once before compute even with a shared seed', async () => {
   const graph = {
     nodeIds: ['a', 'b', 'c', 'd', 'e'],
     edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
@@ -773,14 +783,14 @@ test('shared layout runner fits once from the prepared seed before progress upda
     augmentationMethod: 'outer-cycle'
   });
   assert.equal(preparedSeed && preparedSeed.ok, true, preparedSeed && preparedSeed.message ? preparedSeed.message : 'shared seed prep failed');
-  const outerSeedPositions = (preparedSeed.augmentedOuterFace || []).map((id) => preparedSeed.posById[String(id)]);
+  const seededOriginalPositions = GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds);
+  const seedPositions = preparedSeed.posById;
   const expectedFitBounds = {
-    x1: Math.min(...outerSeedPositions.map((p) => p.x)),
-    y1: Math.min(...outerSeedPositions.map((p) => p.y)),
-    x2: Math.max(...outerSeedPositions.map((p) => p.x)),
-    y2: Math.max(...outerSeedPositions.map((p) => p.y))
+    x1: Math.min(...Object.values(seedPositions).map((p) => p.x)),
+    y1: Math.min(...Object.values(seedPositions).map((p) => p.y)),
+    x2: Math.max(...Object.values(seedPositions).map((p) => p.x)),
+    y2: Math.max(...Object.values(seedPositions).map((p) => p.y))
   };
-
   let fitCountAtComputeStart = -1;
   const result = await CyRuntime.runLayout(cy, {
     delayMs: 0,
@@ -829,7 +839,55 @@ test('shared layout runner fits once from the prepared seed before progress upda
   }
 });
 
-test('shared layout runner emits one final progress step synchronously for one-shot layouts without live progress', () => {
+test('shared layout runner passes the shared seeded positions into compute', async () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c', 'd', 'e'],
+    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
+  };
+  const pos = {
+    a: { x: 0, y: 0 },
+    b: { x: 1, y: 1 },
+    c: { x: 0, y: 2 },
+    d: { x: 3, y: 2 },
+    e: { x: 3, y: 0 }
+  };
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  for (const node of cy.nodes()) {
+    const p = pos[String(node.id())];
+    if (p) {
+      node.position(p);
+    }
+  }
+
+  const preparedSeed = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+    failureLabel: 'PPAG layout',
+    currentPositions: pos,
+    augmentationMethod: 'outer-cycle'
+  });
+  assert.equal(preparedSeed && preparedSeed.ok, true, preparedSeed && preparedSeed.message ? preparedSeed.message : 'shared seed prep failed');
+  const seededOriginalPositions = GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds);
+
+  let computeCurrentPositions = null;
+  const result = await CyRuntime.runLayout(cy, {
+    augmentationMethod: 'outer-cycle'
+  }, {
+    useSharedPreparedSeed: true,
+    sharedSeedFailureLabel: 'PPAG layout',
+    compute: function (_graph, options) {
+      computeCurrentPositions = options.currentPositions;
+      return {
+        ok: true,
+        positions: preparedSeed.posById
+      };
+    },
+    failureMessage: 'layout seed handoff test failed'
+  });
+
+  assert.equal(result && result.ok, true, result && result.message ? result.message : 'runLayout failed');
+  assert.deepEqual(computeCurrentPositions, seededOriginalPositions);
+});
+
+test('shared layout runner does not synthesize a final progress step for one-shot layouts', async () => {
   const graph = {
     nodeIds: ['a', 'b', 'c'],
     edgePairs: [['a', 'b'], ['b', 'c']]
@@ -842,7 +900,7 @@ test('shared layout runner emits one final progress step synchronously for one-s
   };
   const events = [];
 
-  const result = CyRuntime.runLayout(cy, {
+  const result = await CyRuntime.runLayout(cy, {
     onIteration: function (progress) {
       events.push(progress);
     }
@@ -856,15 +914,52 @@ test('shared layout runner emits one final progress step synchronously for one-s
     failureMessage: 'one-shot layout failed'
   });
 
-  assert.equal(typeof (result && result.then), 'undefined');
   assert.equal(result && result.ok, true, result && result.message ? result.message : 'runLayout failed');
-  assert.equal(events.length, 1);
-  assert.equal(events[0] && events[0].iter, 1);
-  assert.equal(events[0] && events[0].maxIters, 1);
-  assert.deepEqual(events[0] && events[0].positions, finalPos);
+  assert.equal(events.length, 0);
   for (const node of cy.nodes()) {
     assert.deepEqual(node.position(), finalPos[String(node.id())]);
   }
+});
+
+test('Random emits one explicit 1/1 progress step', async () => {
+  const graph = {
+    nodeIds: ['a', 'b', 'c'],
+    edgePairs: [['a', 'b'], ['b', 'c']]
+  };
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const events = [];
+
+  const result = await Random.applyRandomLayout(cy, {
+    onIteration: function (progress) {
+      events.push(progress);
+    }
+  });
+
+  assert.equal(result && result.ok, true, result && result.message ? result.message : 'Random failed');
+  assert.equal(events.length, 1);
+  assert.equal(events[0] && events[0].iter, 1);
+  assert.equal(events[0] && events[0].maxIters, 1);
+  assert.ok(events[0] && events[0].positions);
+  for (const node of cy.nodes()) {
+    const actual = node.position();
+    const expected = events[0].positions[String(node.id())];
+    assert.equal(actual && actual.x, expected && expected.x);
+    assert.equal(actual && actual.y, expected && expected.y);
+  }
+});
+
+test('viewport normalization maps arbitrary coordinates into the shared world size', () => {
+  const normalized = GeometryUtils.normalizePositionMapToViewport({
+    a: { x: -1000, y: -500 },
+    b: { x: 3000, y: 1500 },
+    c: { x: 500, y: 250 }
+  });
+  const xs = Object.values(normalized).map((p) => p.x);
+  const ys = Object.values(normalized).map((p) => p.y);
+  assert.ok(Math.min(...xs) >= 0);
+  assert.ok(Math.max(...xs) <= modules.PlanarVibeViewportDefaults.width);
+  assert.ok(Math.min(...ys) >= 0);
+  assert.ok(Math.max(...ys) <= modules.PlanarVibeViewportDefaults.height);
 });
 
 test('shared movement convergence helper stops after enough stable iterations', () => {
@@ -1194,15 +1289,53 @@ test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {
   assert.equal(maxActiveCallbacks, 1, 'EdgeBalancer progress callbacks should not overlap');
 });
 
-test('Tutte rejects graphs with fewer than 3 vertices', () => {
+test('Tutte rejects graphs with fewer than 3 vertices', async () => {
   const graph = {
     nodeIds: ['a', 'b'],
     edgePairs: [['a', 'b']]
   };
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-  const result = Tutte.applyTutteLayout(cy, {});
+  const result = await Tutte.applyTutteLayout(cy, {});
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /at least 3 vertices/i);
+});
+
+test('Tutte does not opt into the shared prepared seed', async () => {
+  const originalRunLayout = CyRuntime.runLayout;
+  const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
+  let capturedSpec = null;
+  CyRuntime.runLayout = function (_cy, _options, spec) {
+    capturedSpec = spec;
+    return Promise.resolve({ ok: true, message: 'ok' });
+  };
+  try {
+    const result = await Tutte.applyTutteLayout(cy, {});
+    assert.equal(result && result.ok, true);
+    assert.ok(capturedSpec, 'expected Tutte to call CyRuntime.runLayout');
+    assert.equal(capturedSpec.useSharedPreparedSeed, undefined);
+    assert.equal(capturedSpec.sharedSeedFailureLabel, undefined);
+  } finally {
+    CyRuntime.runLayout = originalRunLayout;
+  }
+});
+
+test('CEG23-bfs opts into the shared prepared seed', async () => {
+  const originalRunLayout = CyRuntime.runLayout;
+  const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
+  let capturedSpec = null;
+  CyRuntime.runLayout = function (_cy, _options, spec) {
+    capturedSpec = spec;
+    return Promise.resolve({ ok: true, message: 'ok' });
+  };
+  try {
+    const result = await CEG23Bfs.applyCEG23BfsLayout(cy, {});
+    assert.equal(result && result.ok, true);
+    assert.ok(capturedSpec, 'expected CEG23-bfs to call CyRuntime.runLayout');
+    assert.equal(capturedSpec.useSharedPreparedSeed, true);
+    assert.equal(capturedSpec.sharedSeedFailureLabel, 'CEG23-bfs layout');
+  } finally {
+    CyRuntime.runLayout = originalRunLayout;
+  }
 });
 
 test('3-connectivity helpers distinguish strict and internal 3-connectivity', () => {
@@ -1219,7 +1352,7 @@ test('3-connectivity helpers distinguish strict and internal 3-connectivity', ()
   assert.equal(internal.ok, true, internal.reason || 'cycle should be internally 3-connected with its outer cycle');
 });
 
-test('Tutte uses the common outer face and succeeds on grid2x10 after augmentation', () => {
+test('Tutte uses the common outer face and succeeds on grid2x10 after augmentation', async () => {
   const text = Generator.getSample('grid2x10');
   const graph = parseEdgeListText(text);
   const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
@@ -1230,6 +1363,6 @@ test('Tutte uses the common outer face and succeeds on grid2x10 after augmentati
 
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = Tutte.applyTutteLayout(cy, {});
+  const result = await Tutte.applyTutteLayout(cy, {});
   assert.equal(result.ok, true, result.message || 'Tutte should succeed on grid2x10 after augmentation');
 });

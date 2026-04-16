@@ -637,7 +637,6 @@
     var adjacency = graph.adjacency;
     var i;
 
-    var outerSet = new Set((emb.outerFace || []).map(String));
     var allValues = [];
     var allIdealValues = [];
     var TWO_PI = 2 * Math.PI;
@@ -675,15 +674,6 @@
       }
 
       var considered = gaps.slice();
-      if (outerSet.has(id)) {
-        var maxIdx = 0;
-        for (j = 1; j < gaps.length; j += 1) {
-          if (gaps[j] > gaps[maxIdx]) {
-            maxIdx = j;
-          }
-        }
-        considered.splice(maxIdx, 1);
-      }
 
       if (considered.length === 0) {
         continue;

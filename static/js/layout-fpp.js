@@ -4,10 +4,23 @@
   var GraphUtils = global.GraphUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   var CyRuntime = global.CyRuntime;
+  var GeometryUtils = global.GeometryUtils;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
+  var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
+
+  async function emitSingleIteration(options, result) {
+    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
+      return;
+    }
+    await options.onIteration({
+      iter: 1,
+      maxIters: 1,
+      positions: result.positions
+    });
+  }
 
   function prepareTriangulatedEmbedding(graph, options) {
     var prepared = prepareGraphData(graph, {
@@ -503,7 +516,7 @@
       ok: true,
       order: order.slice(),
       outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
-      positions: screenPos
+      positions: normalizePositionMapToViewport(screenPos)
     });
   }
 
@@ -546,7 +559,11 @@
 
   function applyFPPLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeFPPPositions,
+      compute: async function (graph, computeOptions) {
+        var result = computeFPPPositions(graph, computeOptions || {});
+        await emitSingleIteration(computeOptions || {}, result);
+        return result;
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {

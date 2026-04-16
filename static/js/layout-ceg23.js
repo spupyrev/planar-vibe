@@ -7,7 +7,6 @@
   var GraphUtils = global.GraphUtils;
   var Tutte = global.PlanarVibeTutte;
   var createAugmentationDebugState = LayoutPreprocessing.createAugmentationDebugState;
-  var alignOuterFaceEdgeHorizontally = GeometryUtils.alignOuterFaceEdgeHorizontally;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var edgeKey = GraphUtils.edgeKey;
@@ -448,11 +447,7 @@
 
     return buildLayoutResult({
       ok: true,
-      angle: angle,
-      workingPositions: workingPositions,
-      weights: spread.weights,
-      orientation: spread.orientation,
-      targetX: spread.targetX
+      weights: spread.weights
     });
   }
 
@@ -603,107 +598,11 @@
         augmented: state.augmented
       });
     }
-    out.positions = alignOuterFaceEdgeHorizontally(out.positions, state.augmentedOuterFace);
-
     return buildCEG23SuccessResult(
       state,
       out.positions,
       base.iters + out.iters,
       'Applied CEG23-bfs (' + state.augmentedOuterFace.length + '-vertex outer face, multi-source outer BFS, edgeDepth=1+min(endpointDepth), r=' + R +
-      (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
-      ', ' + (base.iters + out.iters) + ' total iters)'
-    );
-  }
-
-  function computeCEG23XPositions(graph, options) {
-    var state = prepareCEG23State(graph, 'CEG23-x', options);
-    if (!state || !state.ok) {
-      return state;
-    }
-
-    var maxIters = resolveIntOption(options.maxIters, 2500, 1);
-    var baseWeights = buildUniformWeights(state.augmentedPairs, 1);
-    var base = solveAugmentedWeightedLayout(state, baseWeights, maxIters);
-    if (!base.ok) {
-      return buildLayoutError({
-        message: base.message || 'CEG23-x baseline solve failed',
-        graph: state.prepared.graph,
-        outerFace: state.augmentedOuterFace,
-        augmented: state.augmented
-      });
-    }
-    base.positions = alignOuterFaceEdgeHorizontally(base.positions, state.augmentedOuterFace);
-
-    var spread = buildSpreadState(state, base.positions, 0, 'CEG23-x');
-    if (!spread.ok) {
-      return spread;
-    }
-
-    var fixedOuterPos = buildFixedOuterPositions(state.augmentedOuterFace, base.positions);
-    var out = solveAugmentedWeightedLayout(state, spread.weights, maxIters, {
-      fixedOuterPos: fixedOuterPos
-    });
-    if (!out.ok) {
-      return buildLayoutError({
-        message: out.message || 'CEG23-x solve failed',
-        graph: state.prepared.graph,
-        outerFace: state.augmentedOuterFace,
-        augmented: state.augmented
-      });
-    }
-
-    return buildCEG23SuccessResult(
-      state,
-      out.positions,
-      base.iters + out.iters,
-      'Applied CEG23-x (' + state.augmentedOuterFace.length + '-vertex outer face, st-orientation path-count spread' +
-      (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
-      ', ' + (base.iters + out.iters) + ' total iters)'
-    );
-  }
-
-  function computeCEG23YPositions(graph, options) {
-    var state = prepareCEG23State(graph, 'CEG23-y', options);
-    if (!state || !state.ok) {
-      return state;
-    }
-
-    var maxIters = resolveIntOption(options.maxIters, 2500, 1);
-    var baseWeights = buildUniformWeights(state.augmentedPairs, 1);
-    var base = solveAugmentedWeightedLayout(state, baseWeights, maxIters);
-    if (!base.ok) {
-      return buildLayoutError({
-        message: base.message || 'CEG23-y baseline solve failed',
-        graph: state.prepared.graph,
-        outerFace: state.augmentedOuterFace,
-        augmented: state.augmented
-      });
-    }
-    base.positions = alignOuterFaceEdgeHorizontally(base.positions, state.augmentedOuterFace);
-
-    var spread = buildSpreadState(state, base.positions, Math.PI / 2, 'CEG23-y');
-    if (!spread.ok) {
-      return spread;
-    }
-
-    var fixedOuterPos = buildFixedOuterPositions(state.augmentedOuterFace, base.positions);
-    var out = solveAugmentedWeightedLayout(state, spread.weights, maxIters, {
-      fixedOuterPos: fixedOuterPos
-    });
-    if (!out.ok) {
-      return buildLayoutError({
-        message: out.message || 'CEG23-y solve failed',
-        graph: state.prepared.graph,
-        outerFace: state.augmentedOuterFace,
-        augmented: state.augmented
-      });
-    }
-
-    return buildCEG23SuccessResult(
-      state,
-      out.positions,
-      base.iters + out.iters,
-      'Applied CEG23-y (' + state.augmentedOuterFace.length + '-vertex outer face, rotated st-orientation path-count spread' +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
       ', ' + (base.iters + out.iters) + ' total iters)'
     );
@@ -728,8 +627,6 @@
         augmented: state.augmented
       });
     }
-    base.positions = alignOuterFaceEdgeHorizontally(base.positions, state.augmentedOuterFace);
-
     var xSpread = buildSpreadState(state, base.positions, 0, 'CEG23-xy x-spread');
     if (!xSpread.ok) {
       return xSpread;
@@ -752,8 +649,6 @@
         augmented: state.augmented
       });
     }
-    xySolve.positions = alignOuterFaceEdgeHorizontally(xySolve.positions, state.augmentedOuterFace);
-
     return buildCEG23SuccessResult(
       state,
       xySolve.positions,
@@ -766,7 +661,19 @@
 
   function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeLayout,
+      useSharedPreparedSeed: true,
+      sharedSeedFailureLabel: String(failureMessage || 'CEG23 layout').replace(/ failed$/i, ' layout'),
+      compute: async function (graph, computeOptions) {
+        var result = computeLayout(graph, computeOptions || {});
+        if (result && result.ok && result.positions && typeof computeOptions.onIteration === 'function') {
+          await computeOptions.onIteration({
+            iter: 1,
+            maxIters: 1,
+            positions: result.positions
+          });
+        }
+        return result;
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {

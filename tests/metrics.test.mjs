@@ -357,7 +357,7 @@ test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K
   assert.equal(skewed.ok, true);
   assert.ok(symmetric.score >= 0 && symmetric.score <= 1);
   assert.ok(skewed.score >= 0 && skewed.score <= 1);
-  assert.ok(symmetric.score > skewed.score + 0.05);
+  assert.ok(symmetric.score > skewed.score + 0.01);
 });
 
 test('computeUniformAngleResolutionScore fails when drawing does not determine a plane embedding', () => {

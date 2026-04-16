@@ -54,32 +54,13 @@
     for (i = 0; i < length; i += 1) out[start + i] /= Z;
   }
 
-  function normalizeEdgeObjectiveName(name) {
-    var key = String(name || '').trim().toLowerCase();
-    if (!key || key === 'default' || key === 'logvariance' || key === 'log-variance') {
-      return 'log-variance';
-    }
-    if (key === 'normalizedlengthl2' || key === 'normalized-length-l2' || key === 'edge-score-l2') {
-      return 'normalized-length-l2';
-    }
-    if (key === 'smoothlogabs' || key === 'smooth-log-abs' || key === 'log-abs') {
-      return 'smooth-log-abs';
-    }
-    if (key === 'softrange' || key === 'soft-range' || key === 'minmax-surrogate') {
-      return 'soft-range';
-    }
-    return 'log-variance';
-  }
-
   function buildEdgeBalancerData(input) {
     var augmentedEdgePairs = input.augmentedEdgePairs;
     var augmentedEmbedding = input.augmentedEmbedding;
     var outerFace = input.outerFace;
     var initPos = input.initPos;
     var objectiveEdgePairs = input.objectiveEdgePairs;
-    var augmentedEdgeWeight = Number.isFinite(input.augmentedEdgeWeight)
-      ? Math.max(0, input.augmentedEdgeWeight)
-      : 0.25;
+    var augmentedEdgeWeight = 0.25;
     var augIds = augmentedEmbedding.idByIndex.map(String);
     var augIndexById = {};
     var i;
@@ -227,21 +208,18 @@
       edges: edges,
       objectiveEdges: objectiveEdges,
       areaTol: Number.isFinite(input.areaTol) ? Math.max(0, input.areaTol) : 0,
-      faceBarrierWeight: Number.isFinite(input.faceBarrierWeight) ? Math.max(0, input.faceBarrierWeight) : 0,
-      edgeBarrierWeight: Number.isFinite(input.edgeBarrierWeight) ? Math.max(0, input.edgeBarrierWeight) : 0,
-      edgeObjective: normalizeEdgeObjectiveName(input.edgeObjective),
-      rangeWeight: Number.isFinite(input.rangeWeight) ? Math.max(0, input.rangeWeight) : 0,
-      rangeBeta: Number.isFinite(input.rangeBeta) ? Math.max(1e-3, input.rangeBeta) : 6,
-      logAbsWeight: Number.isFinite(input.logAbsWeight) ? Math.max(0, input.logAbsWeight) : 0,
-      logAbsEpsilon: Number.isFinite(input.logAbsEpsilon) ? Math.max(1e-6, input.logAbsEpsilon) : 0.25,
+      faceBarrierWeight: 0.02,
+      rangeWeight: 0.05,
+      rangeBeta: 6,
+      logAbsWeight: 0.5,
+      logAbsEpsilon: 0.25,
       augmentedEdgeWeight: augmentedEdgeWeight,
       edgeBarrierScale2: edgeScaleWeight > 0 ? (edgeScaleSum / edgeScaleWeight) : 1,
       initialMinEdgeLength2: Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0,
       initialObjectiveMinEdgeLength2: Number.isFinite(initialObjectiveMinEdgeLength2) ? initialObjectiveMinEdgeLength2 : 0,
       initialAvgFaceArea: initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1,
       initialMinFaceArea: Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0,
-      minFaceArea: Number.isFinite(input.minFaceArea) ? Math.max(0, input.minFaceArea) : 0,
-      minEdgeLength2: Number.isFinite(input.minEdgeLength2) ? Math.max(0, input.minEdgeLength2) : 0
+      minFaceArea: 0
     });
   }
 
@@ -346,21 +324,6 @@
       edgeVarianceTerm += centeredLogLen2[i] * centeredLogLen2[i] / m;
     }
 
-    var edgeNormalizedLengthTerm = 0;
-    var normalizedLengthResidual = null;
-    var normalizedLengthDot = 0;
-    if (lengthSum > 0) {
-      normalizedLengthResidual = new Array(m);
-      var uniformTarget = 1 / m;
-      for (i = 0; i < m; i += 1) {
-        var normalizedLength = lengths[i] / lengthSum;
-        var residual = normalizedLength - uniformTarget;
-        normalizedLengthResidual[i] = residual;
-        edgeNormalizedLengthTerm += residual * residual / m;
-        normalizedLengthDot += residual * normalizedLength;
-      }
-    }
-
     var logAbsEpsilon = data.logAbsEpsilon > 0 ? data.logAbsEpsilon : 0.25;
     var edgeSmoothLogAbsTerm = 0;
     var logAbsGrad = new Array(m);
@@ -406,54 +369,28 @@
       }
     }
 
-    var edgeObjectiveTerm = 0;
-    if (data.edgeObjective === 'normalized-length-l2') {
-      edgeObjectiveTerm += edgeNormalizedLengthTerm;
-      for (i = 0; i < m; i += 1) {
-        var normalizedCoeff = (2 / (m * lengthSum * lengths[i])) * (normalizedLengthResidual[i] - normalizedLengthDot);
-        addObjectiveEdgeGradient(data, objectiveEdges[i], normalizedCoeff, dxArr[i], dyArr[i], zX, zY);
-      }
-    } else if (data.edgeObjective === 'smooth-log-abs') {
-      edgeObjectiveTerm += edgeSmoothLogAbsTerm;
-      for (i = 0; i < m; i += 1) {
-        var logAbsCoeff = (2 / (m * len2[i])) * (logAbsGrad[i] - logAbsGradMean);
-        addObjectiveEdgeGradient(data, objectiveEdges[i], logAbsCoeff, dxArr[i], dyArr[i], zX, zY);
-      }
-    } else if (data.edgeObjective === 'soft-range') {
-      edgeObjectiveTerm += edgeSoftRangeTerm;
-      for (i = 0; i < m; i += 1) {
-        var rangeCoeff = (2 / len2[i]) * (rangePosWeights[i] - rangeNegWeights[i]);
-        addObjectiveEdgeGradient(data, objectiveEdges[i], rangeCoeff, dxArr[i], dyArr[i], zX, zY);
-      }
-    } else {
-      edgeObjectiveTerm += edgeVarianceTerm;
-      for (i = 0; i < m; i += 1) {
-        var varianceCoeff = (4 / m) * centeredLogLen2[i] / len2[i];
-        addObjectiveEdgeGradient(data, objectiveEdges[i], varianceCoeff, dxArr[i], dyArr[i], zX, zY);
-      }
-    }
-
-    if (data.rangeWeight > 0 && data.edgeObjective !== 'soft-range') {
-      edgeObjectiveTerm += data.rangeWeight * edgeSoftRangeTerm;
-      for (i = 0; i < m; i += 1) {
-        var extraRangeCoeff = data.rangeWeight * (2 / len2[i]) * (rangePosWeights[i] - rangeNegWeights[i]);
-        addObjectiveEdgeGradient(data, objectiveEdges[i], extraRangeCoeff, dxArr[i], dyArr[i], zX, zY);
-      }
-    }
-
-    if (data.logAbsWeight > 0 && data.edgeObjective !== 'smooth-log-abs') {
-      edgeObjectiveTerm += data.logAbsWeight * edgeSmoothLogAbsTerm;
-      for (i = 0; i < m; i += 1) {
-        var extraLogAbsCoeff = data.logAbsWeight * (2 / (m * len2[i])) * (logAbsGrad[i] - logAbsGradMean);
-        addObjectiveEdgeGradient(data, objectiveEdges[i], extraLogAbsCoeff, dxArr[i], dyArr[i], zX, zY);
-      }
+    var edgeObjectiveTerm = edgeVarianceTerm +
+      data.rangeWeight * edgeSoftRangeTerm +
+      data.logAbsWeight * edgeSmoothLogAbsTerm;
+    for (i = 0; i < m; i += 1) {
+      var varianceCoeff = (4 / m) * centeredLogLen2[i] / len2[i];
+      var extraRangeCoeff = data.rangeWeight * (2 / len2[i]) * (rangePosWeights[i] - rangeNegWeights[i]);
+      var extraLogAbsCoeff = data.logAbsWeight * (2 / (m * len2[i])) * (logAbsGrad[i] - logAbsGradMean);
+      addObjectiveEdgeGradient(
+        data,
+        objectiveEdges[i],
+        varianceCoeff + extraRangeCoeff + extraLogAbsCoeff,
+        dxArr[i],
+        dyArr[i],
+        zX,
+        zY
+      );
     }
 
     return buildLayoutResult({
       ok: true,
       edgeObjectiveTerm: edgeObjectiveTerm,
       edgeVarianceTerm: edgeVarianceTerm,
-      edgeNormalizedLengthTerm: edgeNormalizedLengthTerm,
       edgeSmoothLogAbsTerm: edgeSmoothLogAbsTerm,
       edgeSoftRangeTerm: edgeSoftRangeTerm,
       logLen2: logLen2,
@@ -704,7 +641,6 @@
       return objectiveEval;
     }
     var edgeVarianceTerm = objectiveEval.edgeVarianceTerm;
-    var edgeNormalizedLengthTerm = objectiveEval.edgeNormalizedLengthTerm;
     var edgeSmoothLogAbsTerm = objectiveEval.edgeSmoothLogAbsTerm;
     var edgeSoftRangeTerm = objectiveEval.edgeSoftRangeTerm;
     var edgeObjectiveTerm = objectiveEval.edgeObjectiveTerm;
@@ -750,51 +686,6 @@
       }
     }
 
-    var edgeBarrierTerm = 0;
-    if (data.edgeBarrierWeight > 0) {
-      var edgeScale2 = data.edgeBarrierScale2 > 1e-12 ? data.edgeBarrierScale2 : 1;
-      for (i = 0; i < data.edges.length; i += 1) {
-        var edge = data.edges[i];
-        u = edge[0];
-        v = edge[1];
-        var edgeWeight = Number.isFinite(edge[2]) ? Math.max(0, edge[2]) : 1;
-        if (!(edgeWeight > 0)) {
-          continue;
-        }
-        dx = x[u] - x[v];
-        dy = y[u] - y[v];
-        len2 = dx * dx + dy * dy;
-        var safeLen2 = len2 > edgeTol2 ? len2 : edgeTol2;
-        if (!(safeLen2 < edgeScale2)) {
-          continue;
-        }
-        var weightedBarrier = data.edgeBarrierWeight * edgeWeight;
-        edgeBarrierTerm -= weightedBarrier * Math.log(safeLen2 / edgeScale2);
-        var edgeCoeff = -2 * weightedBarrier / safeLen2;
-        iu = data.interiorIndexByAug[u];
-        iv = data.interiorIndexByAug[v];
-        if (iu >= 0) {
-          zX[iu] += edgeCoeff * dx;
-          zY[iu] += edgeCoeff * dy;
-        }
-        if (iv >= 0) {
-          zX[iv] -= edgeCoeff * dx;
-          zY[iv] -= edgeCoeff * dy;
-        }
-      }
-      E += edgeBarrierTerm;
-    }
-
-    if (data.minEdgeLength2 > 0) {
-      for (i = 0; i < data.edges.length; i += 1) {
-        var boundedEdge = data.edges[i];
-        var ox = x[boundedEdge[0]] - x[boundedEdge[1]];
-        var oy = y[boundedEdge[0]] - y[boundedEdge[1]];
-        if (!(ox * ox + oy * oy > data.minEdgeLength2)) {
-          return buildLayoutError({ reason: 'invalid-edge-step' });
-        }
-      }
-    }
     if (hasIndexedEdgeCrossings(data.edges, getPoint, 1e-9)) {
       return buildLayoutError({ reason: 'invalid-face-step' });
     }
@@ -832,15 +723,6 @@
       x: x,
       y: y,
       maxLogDeviation: maxLogDeviation,
-      objectiveTerms: {
-        edgeObjective: edgeObjectiveTerm,
-        edgeVariance: edgeVarianceTerm,
-        edgeNormalizedLength: edgeNormalizedLengthTerm,
-        edgeSmoothLogAbs: edgeSmoothLogAbsTerm,
-        edgeSoftRange: edgeSoftRangeTerm,
-        faceBarrier: faceBarrierTerm,
-        edgeBarrier: edgeBarrierTerm
-      },
       edgeStats: edgeStats
     });
   }
@@ -868,9 +750,9 @@
 
   async function runEdgeBalancerOptimization(q0, data, opts) {
     var maxIters = resolveIntOption(opts.maxIters, 80, 1);
-    var gradTol = resolveFloatOption(opts.gradTol, 1e-5, 0);
-    var stepTol = resolveFloatOption(opts.stepTol, 1e-10, 0);
-    var memory = resolveIntOption(opts.lbfgsMemory, 10, 1);
+    var gradTol = 1e-5;
+    var stepTol = 1e-10;
+    var memory = 10;
     var maxStepNorm = resolveFloatOption(opts.maxStepNorm, 2.0, 1e-6);
     var maxPositionStep = resolveFloatOption(opts.maxPositionStep, Infinity, 1e-9);
     var lineSearchC1 = resolveFloatOption(opts.lineSearchC1, 1e-4, 0);
@@ -983,7 +865,6 @@
             stableIterCount: movementStatus.stableIterations,
             stableIterLimit: movementStatus.stableIterLimit,
             stepNorm: stepNorm,
-            objectiveTerms: current.objectiveTerms || null,
             worstEdge: current.edgeStats ? current.edgeStats.worstEdge : null
           }
         });
@@ -1018,7 +899,6 @@
       E: best.E,
       gradNorm: best.gradNorm,
       maxLogDeviation: best.maxLogDeviation,
-      objectiveTerms: best.objectiveTerms || null,
       edgeStats: best.edgeStats || null,
       stopReason: stopReason
     });
@@ -1064,28 +944,16 @@
         augmented: augmented
       });
     }
-    var initPos = GeometryUtils.alignOuterFaceEdgeHorizontally(initialResult.positions, outerFace);
+    var initPos = initialResult.positions;
     var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
-    var hasExplicitMinFaceArea = Number.isFinite(options.minFaceArea) && options.minFaceArea >= 0;
-    var hasExplicitMinEdgeLength2 = Number.isFinite(options.minEdgeLength2) && options.minEdgeLength2 >= 0;
     var areaTol = resolveNonNegativeOption(options.areaTol, 1e-15);
     var data = buildEdgeBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
       objectiveEdgePairs: g.edgePairs,
-      augmentedEdgeWeight: resolveFloatOption(options.augmentedEdgeWeight, 0.25, 0),
-      edgeObjective: options.edgeObjective,
-      rangeWeight: resolveFloatOption(options.rangeWeight, 0.05, 0),
-      rangeBeta: resolveFloatOption(options.rangeBeta, 6, 1e-3),
-      logAbsWeight: resolveFloatOption(options.logAbsWeight, 0.5, 0),
-      logAbsEpsilon: resolveFloatOption(options.logAbsEpsilon, 0.25, 1e-6),
       outerFace: outerFace,
       initPos: initPos,
-      areaTol: areaTol,
-      faceBarrierWeight: resolveFloatOption(options.faceBarrierWeight, 0.02, 0),
-      edgeBarrierWeight: resolveFloatOption(options.edgeBarrierWeight, 0, 0),
-      minFaceArea: resolveNonNegativeOption(options.minFaceArea, 0),
-      minEdgeLength2: resolveNonNegativeOption(options.minEdgeLength2, 0)
+      areaTol: areaTol
     });
     if (!data.ok) {
       return buildLayoutError({
@@ -1095,12 +963,7 @@
         augmented: augmented
       });
     }
-    if (!hasExplicitMinFaceArea) {
-      data.minFaceArea = Math.max(0, 0.2 * data.initialMinFaceArea);
-    }
-    if (!hasExplicitMinEdgeLength2) {
-      data.minEdgeLength2 = 0;
-    }
+    data.minFaceArea = Math.max(0, 0.2 * data.initialMinFaceArea);
 
     var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
     var q0Result = buildInitialLogitSeed(data, tutteWeights, options);
@@ -1123,9 +986,6 @@
     var iterationCount = 0;
     var result = await runEdgeBalancerOptimization(q0, data, {
       maxIters: maxIters,
-      gradTol: resolveFloatOption(options.gradTol, 1e-5, 0),
-      stepTol: resolveFloatOption(options.stepTol, 1e-6, 0),
-      lbfgsMemory: resolveIntOption(options.lbfgsMemory, 10, 1),
       maxPositionStep: resolveFloatOption(options.maxPositionStep, 0.1 * movementScale, 1e-9),
       movementTracker: movementTracker,
       onIteration: async function (progress) {
@@ -1169,8 +1029,6 @@
       iters: iterationCount,
       objective: result.E,
       maxLogDeviation: result.maxLogDeviation,
-      objectiveTerms: result.objectiveTerms || null,
-      edgeStats: result.edgeStats || null,
       edgeLengthScore: edgeScore && edgeScore.ok ? edgeScore.quality : null
     });
   }

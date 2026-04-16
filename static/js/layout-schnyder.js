@@ -10,7 +10,19 @@
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var copyPositions = GeometryUtils.copyPositionMap;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
+  var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
+
+  async function emitSingleIteration(options, result) {
+    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
+      return;
+    }
+    await options.onIteration({
+      iter: 1,
+      maxIters: 1,
+      positions: result.positions
+    });
+  }
 
   function buildRotationById(embedding) {
     var byId = {};
@@ -551,13 +563,17 @@
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
       graph: g,
-      positions: bestPos
+      positions: normalizePositionMapToViewport(bestPos)
     });
   }
 
   function applySchnyderLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeSchnyderPositions,
+      compute: async function (graph, computeOptions) {
+        var result = computeSchnyderPositions(graph, computeOptions || {});
+        await emitSingleIteration(computeOptions || {}, result);
+        return result;
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
