@@ -1305,19 +1305,34 @@ test('EdgeBalancer respects the maxPositionStep cap during optimization', async 
   assert.ok(observedMaxMove <= stepCap + 1e-6, `EdgeBalancer exceeded maxPositionStep: cap=${stepCap}, observed=${observedMaxMove}`);
 });
 
-test('AngleBalancer keeps augmented barrier coordinates available on sample1', async () => {
+test('AngleBalancer improves the prepared seed on sample1 without losing augmented barrier coordinates', async () => {
   const text = Generator.getSample('sample1');
   const parsed = parseEdgeListText(text);
   const graph = GraphUtils.createGraph(parsed.nodeIds, parsed.edgePairs);
   const currentPositions = parseVertexPositionsFromEdgeList(text);
+  const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+    failureLabel: 'AngleBalancer test',
+    currentPositions
+  });
+  assert.equal(prepared && prepared.ok, true, prepared && (prepared.message || prepared.reason || 'AngleBalancer seed preparation failed'));
+  const seedPositions = {};
+  for (const id of graph.nodeIds) {
+    seedPositions[String(id)] = prepared.posById[String(id)];
+  }
+  const seedScore = Metrics.computeUniformAngleResolutionScore(graph, seedPositions);
+  assert.equal(seedScore && seedScore.ok, true, 'expected a valid angle-resolution score for the prepared seed');
+
   const result = await AngleBalancer.computeAngleBalancerPositions(graph, {
     currentPositions,
     maxSweeps: 6
   });
+  const finalScore = Metrics.computeUniformAngleResolutionScore(graph, result.positions);
 
   assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer failed on sample1'));
-  assert.notEqual(result.stopReason, 'stalled', 'AngleBalancer should not stall immediately on the augmented face barrier');
   assert.equal(Number.isFinite(result.objective), true, 'AngleBalancer should report a finite objective on sample1');
+  assert.equal(finalScore && finalScore.ok, true, 'expected a valid angle-resolution score for the AngleBalancer result');
+  assert.ok(finalScore.score > seedScore.score + 1e-6,
+    `expected AngleBalancer to improve sample1 angle score: seed=${seedScore.score}, final=${finalScore.score}`);
 });
 
 test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {

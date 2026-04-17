@@ -2295,17 +2295,11 @@
                 if (Number.isFinite(progress.objective)) {
                   parts.push('obj ' + progress.objective.toFixed(3));
                 }
-                if (progress.movedVertexId !== null && progress.movedVertexId !== undefined) {
-                  parts.push('moved v' + String(progress.movedVertexId));
+                if (Number.isFinite(progress.maxAngleResidual)) {
+                  parts.push('max resid ' + progress.maxAngleResidual.toFixed(3));
                 }
-                if (Number.isFinite(progress.minGapGain)) {
-                  parts.push('sum min +' + progress.minGapGain.toExponential(2));
-                }
-                if (Number.isFinite(progress.movedMinGapGain)) {
-                  parts.push('self min +' + progress.movedMinGapGain.toExponential(2));
-                }
-                if (Number.isFinite(progress.faceBarrierGain)) {
-                  parts.push('face barrier +' + progress.faceBarrierGain.toExponential(2));
+                if (Number.isFinite(progress.minAngleRatio)) {
+                  parts.push('min ratio ' + progress.minAngleRatio.toFixed(3));
                 }
                 if (Number.isFinite(progress.gradNorm)) {
                   parts.push('grad ' + progress.gradNorm.toExponential(2));
