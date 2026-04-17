@@ -587,8 +587,6 @@
     var current = evaluateObjectiveAndGradient(q, data);
     if (!current.ok) return current;
 
-    var best = current;
-    var bestQ = q.slice();
     var S = [];
     var Y = [];
     var Rho = [];
@@ -597,6 +595,7 @@
     var movementStatus = { stableIterations: 0, stableIterLimit: 0, converged: false };
     var stopReason = 'max-iters';
     var moveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
+    var completedIters = 0;
 
     for (var iter = 1; iter <= maxIters; iter += 1) {
       if (current.gradNorm <= gradTol) {
@@ -631,10 +630,7 @@
       var stepNorm = vecNorm(s);
       q = accepted.q;
       current = accepted.eval;
-      if (current.E < best.E) {
-        best = current;
-        bestQ = q.slice();
-      }
+      completedIters = iter;
 
       if (movementTracker) {
         moveStats = computeMoveStats(data.interiorAugIndices, function (idx) {
@@ -686,13 +682,14 @@
 
     return buildLayoutResult({
       ok: true,
-      q: bestQ,
-      positions: buildPositionMap(data, best.x, best.y),
-      E: best.E,
-      gradNorm: best.gradNorm,
-      faceAreas: buildFaceAreaMap(data, best.faceAreas),
-      maxRelError: best.maxRelError,
-      stopReason: stopReason
+      q: q,
+      positions: buildPositionMap(data, current.x, current.y),
+      E: current.E,
+      gradNorm: current.gradNorm,
+      faceAreas: buildFaceAreaMap(data, current.faceAreas),
+      maxRelError: current.maxRelError,
+      stopReason: stopReason,
+      iters: completedIters
     });
   }
 
@@ -789,7 +786,6 @@
       avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 2e-7 * movementScale)
     });
 
-    var iterationCount = 0;
     var result = await runFaceBalancerOptimization(q0, data, {
       maxIters: maxIters,
       gradTol: resolveFloatOption(options.gradTol, 1e-5, 0),
@@ -797,7 +793,6 @@
       lbfgsMemory: resolveIntOption(options.lbfgsMemory, 10, 1),
       movementTracker: movementTracker,
       onIteration: async function (progress) {
-        iterationCount = progress.iter;
         if (typeof options.onIteration === 'function') {
           await options.onIteration(progress);
         }
@@ -831,7 +826,7 @@
       augmented: augmented,
       positions: result.positions,
       stopReason: result.stopReason,
-      iters: iterationCount,
+      iters: result.iters,
       objective: result.E,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       boundedFaceCount: data.boundedFaceKeys.length

@@ -181,11 +181,12 @@
       if (key === 'ceg23_xy') key = 'ceg23-xy';
       var base = {};
       if (key === 'air' ||
-          key === 'airplus' ||
           key === 'ppag' ||
           key === 'facebalancer' ||
           key === 'edgebalancer' ||
           key === 'anglebalancer' ||
+          key === 'hybrid' ||
+          key === 'fabalancer' ||
           key === 'reweighttutte' ||
           key === 'fd-uniform' ||
           key === 'impred') {
@@ -1759,11 +1760,11 @@
     function setPlanarButtonsDisabled() {
       setLayoutEnabled('tutte', false);
       setLayoutEnabled('air', false);
-      setLayoutEnabled('airplus', false);
       setLayoutEnabled('ppag', false);
       setLayoutEnabled('facebalancer', false);
       setLayoutEnabled('edgebalancer', false);
       setLayoutEnabled('anglebalancer', false);
+      setLayoutEnabled('hybrid', false);
       setLayoutEnabled('impred', false);
       setLayoutEnabled('ceg23-bfs', false);
       setLayoutEnabled('ceg23-xy', false);
@@ -1814,11 +1815,11 @@
       });
       setLayoutEnabled('tutte', isPlanar);
       setLayoutEnabled('air', isPlanar);
-      setLayoutEnabled('airplus', isPlanar);
       setLayoutEnabled('ppag', isPlanar);
       setLayoutEnabled('facebalancer', isPlanar);
       setLayoutEnabled('edgebalancer', isPlanar);
       setLayoutEnabled('anglebalancer', isPlanar);
+      setLayoutEnabled('hybrid', isPlanar);
       setLayoutEnabled('impred', isPlanar);
       setLayoutEnabled('ceg23-bfs', isPlanar);
       setLayoutEnabled('ceg23-xy', isPlanar);
@@ -2119,50 +2120,6 @@
         return;
       }
 
-      if (layoutName === 'airplus') {
-        runManagedLayout({
-          layoutName: 'airplus',
-          disabledMessage: 'AirPlus layout requires a planar graph',
-          module: global.PlanarVibeAirPlus,
-          methodName: 'applyAirPlusLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('airplus', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var parts = [];
-                parts.push('AirPlus sweep ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.maxRelError)) {
-                  parts.push('face err ' + progress.maxRelError.toFixed(3));
-                }
-                if (Number.isFinite(debug.maxForce)) {
-                  parts.push('max force ' + debug.maxForce.toExponential(2));
-                }
-                if (Number.isFinite(progress.maxMove)) {
-                  parts.push('max move ' + progress.maxMove.toExponential(2));
-                }
-                if (Number.isFinite(debug.acceptedCount)) {
-                  parts.push('accepted ' + debug.acceptedCount);
-                }
-                if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
-                    Number.isFinite(debug.plateauWindow)) {
-                  parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
-                }
-                if (Number.isFinite(debug.boundedFaceCount)) {
-                  parts.push('faces ' + debug.boundedFaceCount);
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
       if (layoutName === 'ppag') {
         runManagedLayout({
           layoutName: 'ppag',
@@ -2178,6 +2135,9 @@
                 parts.push('PPAG step ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.objective)) {
                   parts.push('obj ' + progress.objective.toFixed(3));
+                }
+                if (Number.isFinite(progress.tradeoffScore)) {
+                  parts.push('tradeoff ' + progress.tradeoffScore.toFixed(3));
                 }
                 if (Number.isFinite(progress.maxRelError)) {
                   parts.push('face err ' + progress.maxRelError.toFixed(3));
@@ -2306,6 +2266,53 @@
                 }
                 if (Number.isFinite(progress.maxMove)) {
                   parts.push('max move ' + progress.maxMove.toExponential(2));
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            });
+          },
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'hybrid' || layoutName === 'fabalancer') {
+        runManagedLayout({
+          layoutName: 'hybrid',
+          disabledMessage: 'Hybrid layout requires a planar graph',
+          module: global.PlanarVibeHybrid || global.PlanarVibeFABalancer,
+          methodName: 'applyHybridLayout',
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('hybrid', {
+              onIteration: function (progress) {
+                if (!progress) return;
+                var debug = progressDebug(progress);
+                var parts = [];
+                var stageLabel = progress.stageLabel || progress.stage || 'joint';
+                var stageText = 'Hybrid ' + stageLabel;
+                if (Number.isFinite(progress.stageIndex) && Number.isFinite(progress.stageCount)) {
+                  stageText += ' ' + progress.stageIndex + '/' + progress.stageCount;
+                }
+                if (Number.isFinite(progress.maxIters) && progress.maxIters > 0) {
+                  stageText += ' step ' + progress.iter + '/' + progress.maxIters;
+                } else if (Number.isFinite(progress.iter) && progress.iter >= 0) {
+                  stageText += ' step ' + progress.iter;
+                }
+                parts.push(stageText);
+                if (Number.isFinite(progress.faceAreaScore)) {
+                  parts.push('face score ' + progress.faceAreaScore.toFixed(3));
+                }
+                if (Number.isFinite(progress.angleResolutionScore)) {
+                  parts.push('angle score ' + progress.angleResolutionScore.toFixed(3));
+                }
+                if (Number.isFinite(progress.objective)) {
+                  parts.push('obj ' + progress.objective.toFixed(3));
+                }
+                if (Number.isFinite(progress.tradeoffScore)) {
+                  parts.push('tradeoff ' + progress.tradeoffScore.toFixed(3));
                 }
                 setStatus(parts.join(' | '), false);
               }
@@ -2618,20 +2625,6 @@
           }
         },
         {
-          layoutName: 'airplus',
-          module: global.PlanarVibeAirPlus,
-          methodName: 'applyAirPlusLayout',
-          missingMessage: 'AirPlus layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
-            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices', 'edgeKey'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
-          }
-        },
-        {
           layoutName: 'ppag',
           module: global.PlanarVibePPAG,
           methodName: 'applyPPAGLayout',
@@ -2686,6 +2679,21 @@
             geometry: ['computeDrawingDiameter', 'copyPositionMap', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointScale'],
             graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace']
+          }
+        },
+        {
+          layoutName: 'hybrid',
+          module: global.PlanarVibeHybrid || global.PlanarVibeFABalancer,
+          methodName: 'applyHybridLayout',
+          missingMessage: 'Hybrid layout module is missing',
+          requires: {
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['computeDrawingDiameter', 'copyPositionMap', 'createZeroVector', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointOnSegmentInterior', 'pointScale', 'polygonArea2', 'segmentsIntersectStrict', 'triangleArea2', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub'],
+            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'faceKey'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
+            tutte: ['buildTutteWeights']
           }
         },
         {

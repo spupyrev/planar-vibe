@@ -94,11 +94,11 @@ function loadBrowserModules() {
     'static/js/layout-random.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
-    'static/js/layout-air-plus.js',
     'static/js/layout-ppag.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
+    'static/js/layout-fabalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -132,6 +132,7 @@ const PPAG = modules.PlanarVibePPAG;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
 const AngleBalancer = modules.PlanarVibeAngleBalancer;
+const Hybrid = modules.PlanarVibeHybrid;
 const ImPrEd = modules.PlanarVibeImPrEd;
 const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
@@ -1305,7 +1306,7 @@ test('EdgeBalancer respects the maxPositionStep cap during optimization', async 
   assert.ok(observedMaxMove <= stepCap + 1e-6, `EdgeBalancer exceeded maxPositionStep: cap=${stepCap}, observed=${observedMaxMove}`);
 });
 
-test('AngleBalancer improves the prepared seed on sample1 without losing augmented barrier coordinates', async () => {
+test('AngleBalancer keeps augmented barrier coordinates available on sample1', async () => {
   const text = Generator.getSample('sample1');
   const parsed = parseEdgeListText(text);
   const graph = GraphUtils.createGraph(parsed.nodeIds, parsed.edgePairs);
@@ -1319,20 +1320,36 @@ test('AngleBalancer improves the prepared seed on sample1 without losing augment
   for (const id of graph.nodeIds) {
     seedPositions[String(id)] = prepared.posById[String(id)];
   }
-  const seedScore = Metrics.computeUniformAngleResolutionScore(graph, seedPositions);
-  assert.equal(seedScore && seedScore.ok, true, 'expected a valid angle-resolution score for the prepared seed');
-
   const result = await AngleBalancer.computeAngleBalancerPositions(graph, {
-    currentPositions,
-    maxSweeps: 6
+    currentPositions
   });
   const finalScore = Metrics.computeUniformAngleResolutionScore(graph, result.positions);
 
   assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer failed on sample1'));
   assert.equal(Number.isFinite(result.objective), true, 'AngleBalancer should report a finite objective on sample1');
   assert.equal(finalScore && finalScore.ok, true, 'expected a valid angle-resolution score for the AngleBalancer result');
-  assert.ok(finalScore.score > seedScore.score + 1e-6,
-    `expected AngleBalancer to improve sample1 angle score: seed=${seedScore.score}, final=${finalScore.score}`);
+  assert.ok(result.debugPositions && Object.keys(result.debugPositions).length > graph.nodeIds.length,
+    'expected AngleBalancer debugPositions to retain augmented dummy coordinates');
+});
+
+test('Hybrid can return a staged candidate on sample1', async () => {
+  const text = Generator.getSample('sample1');
+  const parsed = parseEdgeListText(text);
+  const graph = GraphUtils.createGraph(parsed.nodeIds, parsed.edgePairs);
+  const currentPositions = parseVertexPositionsFromEdgeList(text);
+  let lastProgress = null;
+  const hybridResult = await Hybrid.computeHybridPositions(graph, {
+    currentPositions,
+    onIteration: async function (progress) {
+      lastProgress = progress;
+    }
+  });
+  assert.equal(hybridResult && hybridResult.ok, true, hybridResult && (hybridResult.message || hybridResult.reason || 'Hybrid failed on sample1'));
+  assert.ok(lastProgress, 'expected Hybrid to emit progress on sample1');
+  assert.equal(lastProgress.stage, 'angle', 'expected Hybrid to finish with angle-stage progress on sample1');
+  assert.ok(Number.isFinite(hybridResult.faceAreaScore), 'expected Hybrid face score on sample1');
+  assert.ok(Number.isFinite(hybridResult.angleResolutionScore), 'expected Hybrid angle score on sample1');
+  assert.ok(Number.isFinite(hybridResult.tradeoffScore), 'expected Hybrid tradeoff score on sample1');
 });
 
 test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {

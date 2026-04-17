@@ -761,8 +761,6 @@
     var current = evaluateObjectiveAndGradient(q, data);
     if (!current.ok) return current;
 
-    var best = current;
-    var bestQ = q.slice();
     var S = [];
     var Y = [];
     var Rho = [];
@@ -771,6 +769,7 @@
     var movementStatus = { stableIterations: 0, stableIterLimit: 0, converged: false };
     var stopReason = 'max-iters';
     var moveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
+    var completedIters = 0;
 
     for (var iter = 1; iter <= maxIters; iter += 1) {
       if (current.gradNorm <= gradTol) {
@@ -836,10 +835,7 @@
       var stepNorm = vecNorm(s);
       q = accepted.q;
       current = accepted.eval;
-      if (current.E < best.E) {
-        best = current;
-        bestQ = q.slice();
-      }
+      completedIters = iter;
 
       if (movementTracker) {
         moveStats = computeInteriorMoveStats(data, prevX, prevY, current.x, current.y);
@@ -894,13 +890,14 @@
 
     return buildLayoutResult({
       ok: true,
-      q: bestQ,
-      positions: buildPositionMap(data, best.x, best.y),
-      E: best.E,
-      gradNorm: best.gradNorm,
-      maxLogDeviation: best.maxLogDeviation,
-      edgeStats: best.edgeStats || null,
-      stopReason: stopReason
+      q: q,
+      positions: buildPositionMap(data, current.x, current.y),
+      E: current.E,
+      gradNorm: current.gradNorm,
+      maxLogDeviation: current.maxLogDeviation,
+      edgeStats: current.edgeStats || null,
+      stopReason: stopReason,
+      iters: completedIters
     });
   }
 
@@ -963,13 +960,11 @@
       avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 2e-7 * movementScale)
     });
 
-    var iterationCount = 0;
     var result = await runEdgeBalancerOptimization(q0, data, {
       maxIters: maxIters,
       maxPositionStep: resolveFloatOption(options.maxPositionStep, 0.1 * movementScale, 1e-9),
       movementTracker: movementTracker,
       onIteration: async function (progress) {
-        iterationCount = progress.iter;
         if (typeof options.onIteration === 'function') {
           var progressEdgeScore = Metrics.computeUniformEdgeLengthScore(g.edgePairs, progress.positions);
           await options.onIteration(Object.assign({}, progress, {
@@ -1006,7 +1001,7 @@
       augmented: augmented,
       positions: result.positions,
       stopReason: result.stopReason,
-      iters: iterationCount,
+      iters: result.iters,
       objective: result.E,
       maxLogDeviation: result.maxLogDeviation,
       edgeLengthScore: edgeScore && edgeScore.ok ? edgeScore.quality : null
