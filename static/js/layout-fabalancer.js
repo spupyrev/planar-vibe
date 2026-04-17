@@ -30,24 +30,24 @@
   var vecSub = GeometryUtils.vecSub;
 
   var TWO_PI = 2 * Math.PI;
-  var FAB_AREA_TOL = 1e-15;
-  var FAB_GRAD_TOL = 1e-5;
-  var FAB_STEP_TOL = 1e-10;
-  var FAB_ANGLE_TOL = 1e-8;
-  var FAB_ANGLE_BARRIER_WEIGHT = 0.05;
-  var FAB_FACE_BARRIER_WEIGHT = 0.02;
-  var FAB_FACE_WEIGHT = 0.05;
-  var FAB_ANGLE_WEIGHT = 1.0;
-  var FAB_EDGE_BARRIER_WEIGHT = 0.005;
-  var FAB_EDGE_UNIFORM_WEIGHT = 0.002;
-  var FAB_MAX_STEP_NORM = 2.0;
-  var FAB_LBFGS_MEMORY = 10;
-  var FAB_LINE_SEARCH_C1 = 1e-4;
-  var FAB_LINE_SEARCH_TAU = 0.5;
-  var FAB_STABLE_ITER_LIMIT = 8;
-  var FAB_MOVEMENT_STOP_TOL = 1e-6;
-  var FAB_AVG_MOVEMENT_STOP_TOL = 2e-7;
-  var HYBRID_DEFAULT_MAX_ITERS = 180;
+  var HYBRID_AREA_TOL = 1e-15;
+  var HYBRID_GRAD_TOL = 1e-5;
+  var HYBRID_STEP_TOL = 1e-10;
+  var HYBRID_ANGLE_TOL = 1e-8;
+  var HYBRID_ANGLE_BARRIER_WEIGHT = 0.05;
+  var HYBRID_FACE_BARRIER_WEIGHT = 0.02;
+  var HYBRID_FACE_WEIGHT = 0.05;
+  var HYBRID_ANGLE_WEIGHT = 1.0;
+  var HYBRID_EDGE_BARRIER_WEIGHT = 0.005;
+  var HYBRID_EDGE_UNIFORM_WEIGHT = 0.002;
+  var HYBRID_MAX_STEP_NORM = 2.0;
+  var HYBRID_LBFGS_MEMORY = 10;
+  var HYBRID_LINE_SEARCH_C1 = 1e-4;
+  var HYBRID_LINE_SEARCH_TAU = 0.5;
+  var HYBRID_STABLE_ITER_LIMIT = 8;
+  var HYBRID_MOVEMENT_STOP_TOL = 1e-6;
+  var HYBRID_AVG_MOVEMENT_STOP_TOL = 2e-7;
+  var HYBRID_MAX_ITERS = 180;
   var HYBRID_FACE_WARM_START_ITERS = 20;
   var HYBRID_FACE_WARM_FACE_BARRIER_WEIGHT = 0.2;
   var HYBRID_FACE_WARM_EDGE_BARRIER_WEIGHT = 0.05;
@@ -55,21 +55,6 @@
   var HYBRID_FACE_WARM_STABLE_ITER_LIMIT = 6;
   var HYBRID_FACE_WARM_MAX_POSITION_STEP_RATIO = 0.02;
   var HYBRID_ANGLE_STAGE_MAX_POSITION_STEP_RATIO = 0.01;
-
-  function fillAngleSettings(options) {
-    if (options.augmentationMethod === undefined) {
-      options.augmentationMethod = null;
-    }
-    options.augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
-      ? Object.assign({}, options.augmentationOptions)
-      : null;
-    options.maxIters = HYBRID_DEFAULT_MAX_ITERS;
-    options.onIteration = typeof options.onIteration === 'function' ? options.onIteration : null;
-  }
-
-  function fillFASettings(options) {
-    fillAngleSettings(options);
-  }
 
   function softmaxInto(q, start, length, out) {
     var m = -Infinity;
@@ -119,19 +104,19 @@
       : neighborAugIndices.slice().reverse();
   }
 
-  function buildFABData(input) {
+  function buildHybridData(input) {
     var augmentedEdgePairs = input.augmentedEdgePairs;
     var augmentedEmbedding = input.augmentedEmbedding;
     var outerFace = input.outerFace;
     var initPos = input.initPos;
     var objectiveGraph = input.objectiveGraph;
     var baseEmbedding = input.baseEmbedding;
-    var angleBarrierWeight = Number.isFinite(input.angleBarrierWeight) ? input.angleBarrierWeight : FAB_ANGLE_BARRIER_WEIGHT;
-    var faceBarrierWeight = Number.isFinite(input.faceBarrierWeight) ? input.faceBarrierWeight : FAB_FACE_BARRIER_WEIGHT;
-    var faceWeight = Number.isFinite(input.faceWeight) ? input.faceWeight : FAB_FACE_WEIGHT;
-    var angleWeight = Number.isFinite(input.angleWeight) ? input.angleWeight : FAB_ANGLE_WEIGHT;
-    var edgeBarrierWeight = Number.isFinite(input.edgeBarrierWeight) ? input.edgeBarrierWeight : FAB_EDGE_BARRIER_WEIGHT;
-    var edgeUniformWeight = Number.isFinite(input.edgeUniformWeight) ? input.edgeUniformWeight : FAB_EDGE_UNIFORM_WEIGHT;
+    var angleBarrierWeight = Number.isFinite(input.angleBarrierWeight) ? input.angleBarrierWeight : HYBRID_ANGLE_BARRIER_WEIGHT;
+    var faceBarrierWeight = Number.isFinite(input.faceBarrierWeight) ? input.faceBarrierWeight : HYBRID_FACE_BARRIER_WEIGHT;
+    var faceWeight = Number.isFinite(input.faceWeight) ? input.faceWeight : HYBRID_FACE_WEIGHT;
+    var angleWeight = Number.isFinite(input.angleWeight) ? input.angleWeight : HYBRID_ANGLE_WEIGHT;
+    var edgeBarrierWeight = Number.isFinite(input.edgeBarrierWeight) ? input.edgeBarrierWeight : HYBRID_EDGE_BARRIER_WEIGHT;
+    var edgeUniformWeight = Number.isFinite(input.edgeUniformWeight) ? input.edgeUniformWeight : HYBRID_EDGE_UNIFORM_WEIGHT;
     var augIds = augmentedEmbedding.idByIndex.map(String);
     var augIndexById = {};
     var i;
@@ -174,10 +159,10 @@
       var faceK = faceKey(orientedFace);
       if (faceK === outerKey) continue;
       if (!orientedFace || orientedFace.length < 3) {
-        return buildLayoutError({ reason: 'FABalancer requires a valid triangulated augmentation' });
+        return buildLayoutError({ reason: 'Hybrid requires a valid triangulated augmentation' });
       }
       if (orientedFace.length !== 3) {
-        return buildLayoutError({ reason: 'FABalancer requires all non-outer augmented faces to be triangles' });
+        return buildLayoutError({ reason: 'Hybrid requires all non-outer augmented faces to be triangles' });
       }
       boundedFaceKeys.push(faceK);
       var boundedFace = orientedFace.map(function (id) { return augIndexById[String(id)]; });
@@ -298,8 +283,8 @@
       wedgeStart: wedgeStart,
       wedgeCount: wedgeCount,
       wedges: wedges,
-      areaTol: FAB_AREA_TOL,
-      angleTol: FAB_ANGLE_TOL,
+      areaTol: HYBRID_AREA_TOL,
+      angleTol: HYBRID_ANGLE_TOL,
       angleBarrierWeight: angleBarrierWeight,
       faceBarrierWeight: faceBarrierWeight,
       edgeBarrierWeight: edgeBarrierWeight,
@@ -333,7 +318,7 @@
         var rowWeight = weights[edgeKey(vertexId, neighborId)];
         if (!Number.isFinite(rowWeight) || !(rowWeight > 0)) {
           return buildLayoutError({
-            reason: 'FABalancer initialization requires positive Tutte weights',
+            reason: 'Hybrid initialization requires positive Tutte weights',
             vertexId: vertexId,
             neighborId: neighborId
           });
@@ -343,7 +328,7 @@
       }
       if (!(rowWeightSum > 0)) {
         return buildLayoutError({
-          reason: 'FABalancer initialization requires positive Tutte row weight sum',
+          reason: 'Hybrid initialization requires positive Tutte row weight sum',
           vertexId: vertexId
         });
       }
@@ -600,7 +585,7 @@
   function evaluateAngleObjectiveTerms(data, x, y, zX, zY) {
     var wedgeCount = data.wedges.length;
     if (!(wedgeCount > 0)) {
-      return buildLayoutError({ reason: 'FABalancer requires at least one valid objective angle' });
+      return buildLayoutError({ reason: 'Hybrid requires at least one valid objective angle' });
     }
 
     var weightScale = 1 / wedgeCount;
@@ -802,7 +787,7 @@
     });
   }
 
-  function evaluateFABalancerObjectiveAndGradient(q, data) {
+  function evaluateHybridObjectiveAndGradient(q, data) {
     var triangleSlack = Math.max(data.areaTol, 1e-12);
     var nI = data.interiorAugIndices.length;
     var lambda = createZeroVector(data.qSize);
@@ -830,9 +815,9 @@
     }
 
     var factor = luFactorize(L);
-    if (!factor) return buildLayoutError({ reason: 'FABalancer linear solve failed' });
+    if (!factor) return buildLayoutError({ reason: 'Hybrid linear solve failed' });
     var primal = solveLUWithTwoRhs(factor, bx, by);
-    if (!primal) return buildLayoutError({ reason: 'FABalancer linear solve failed' });
+    if (!primal) return buildLayoutError({ reason: 'Hybrid linear solve failed' });
 
     var x = data.x0.slice();
     var y = data.y0.slice();
@@ -872,7 +857,7 @@
       }
     }
     if (faceAreas.length === 0 || !(totalArea > 1e-12)) {
-      return buildLayoutError({ reason: 'FABalancer total bounded area is not positive' });
+      return buildLayoutError({ reason: 'Hybrid total bounded area is not positive' });
     }
 
     var zX = createZeroVector(nI);
@@ -1030,7 +1015,7 @@
     }
 
     var adjoint = solveTransposeLUWithTwoRhs(factor, zX, zY);
-    if (!adjoint) return buildLayoutError({ reason: 'FABalancer adjoint solve failed' });
+    if (!adjoint) return buildLayoutError({ reason: 'Hybrid adjoint solve failed' });
 
     var gradVec = createZeroVector(data.qSize);
     for (i = 0; i < nI; i += 1) {
@@ -1099,7 +1084,7 @@
   async function runHybridOptimization(q0, data, opts) {
     var maxIters = opts.maxIters;
     var maxPositionStep = opts.maxPositionStep;
-    var evaluate = typeof opts.evaluate === 'function' ? opts.evaluate : evaluateFABalancerObjectiveAndGradient;
+    var evaluate = typeof opts.evaluate === 'function' ? opts.evaluate : evaluateHybridObjectiveAndGradient;
     var q = q0.slice();
     var current = evaluate(q, data);
     if (!current.ok) return current;
@@ -1117,7 +1102,7 @@
     var completedIters = 0;
 
     for (var iter = 1; iter <= maxIters; iter += 1) {
-      if (current.gradNorm <= FAB_GRAD_TOL) {
+      if (current.gradNorm <= HYBRID_GRAD_TOL) {
         stopReason = 'grad-converged';
         break;
       }
@@ -1127,8 +1112,8 @@
       var d = lbfgsDirection(current.gradVec, S, Y, Rho);
       if (!(vecDot(current.gradVec, d) < 0)) d = vecScale(current.gradVec, -1);
       var directionNorm = vecNorm(d);
-      if (directionNorm > FAB_MAX_STEP_NORM) {
-        d = vecScale(d, FAB_MAX_STEP_NORM / directionNorm);
+      if (directionNorm > HYBRID_MAX_STEP_NORM) {
+        d = vecScale(d, HYBRID_MAX_STEP_NORM / directionNorm);
       }
 
       var gtd = vecDot(current.gradVec, d);
@@ -1139,8 +1124,8 @@
         if (lineSearchAttempt === 1) {
           searchDir = vecScale(current.gradVec, -1);
           directionNorm = vecNorm(searchDir);
-          if (directionNorm > FAB_MAX_STEP_NORM) {
-            searchDir = vecScale(searchDir, FAB_MAX_STEP_NORM / directionNorm);
+          if (directionNorm > HYBRID_MAX_STEP_NORM) {
+            searchDir = vecScale(searchDir, HYBRID_MAX_STEP_NORM / directionNorm);
           }
           gtd = vecDot(current.gradVec, searchDir);
           if (!(gtd < 0)) {
@@ -1159,15 +1144,15 @@
           if (trial.ok) {
             var trialMoveStats = computeInteriorMoveStats(data, current.x, current.y, trial.x, trial.y);
             if (trialMoveStats.maxMove > maxPositionStep) {
-              alpha *= FAB_LINE_SEARCH_TAU;
+              alpha *= HYBRID_LINE_SEARCH_TAU;
               continue;
             }
           }
-          if (trial.ok && trial.E <= current.E + FAB_LINE_SEARCH_C1 * alpha * gtd) {
+          if (trial.ok && trial.E <= current.E + HYBRID_LINE_SEARCH_C1 * alpha * gtd) {
             accepted = { q: qTrial, eval: trial };
             break;
           }
-          alpha *= FAB_LINE_SEARCH_TAU;
+          alpha *= HYBRID_LINE_SEARCH_TAU;
         }
       }
       if (!accepted) {
@@ -1217,14 +1202,14 @@
         stopReason = movementStatus.reason || 'movement-converged';
         break;
       }
-      if (stepNorm < FAB_STEP_TOL) {
+      if (stepNorm < HYBRID_STEP_TOL) {
         stopReason = 'step-converged';
         break;
       }
 
       var ys = vecDot(y, s);
       if (ys > 1e-14) {
-        if (S.length === FAB_LBFGS_MEMORY) {
+        if (S.length === HYBRID_LBFGS_MEMORY) {
           S.shift();
           Y.shift();
           Rho.shift();
@@ -1257,23 +1242,134 @@
     }));
   }
 
-  async function runFABalancerOptimization(q0, data, opts) {
+  async function runHybridFaceOptimization(q0, data, opts) {
     return runHybridOptimization(q0, data, Object.assign({}, opts, {
-      evaluate: evaluateFABalancerObjectiveAndGradient
+      evaluate: evaluateHybridObjectiveAndGradient
     }));
   }
 
+  function createStageTracker(scale, minItersBeforeStop, stableIterLimit) {
+    return global.GraphUtils.createMovementConvergenceTracker({
+      minItersBeforeStop: minItersBeforeStop,
+      stableIterLimit: stableIterLimit,
+      maxMoveTol: HYBRID_MOVEMENT_STOP_TOL * scale,
+      avgMoveTol: HYBRID_AVG_MOVEMENT_STOP_TOL * scale
+    });
+  }
+
+  function relaxMinFaceArea(data, q0, evaluateFn) {
+    if (!(data && data.minFaceArea > 0) || typeof evaluateFn !== 'function') {
+      return;
+    }
+    var probe = evaluateFn(q0, data);
+    while (!probe.ok &&
+           probe.reason === 'invalid-face-step' &&
+           data.minFaceArea > 1e-18) {
+      data.minFaceArea *= 0.25;
+      probe = evaluateFn(q0, data);
+    }
+  }
+
+  function buildHybridStageData(augmented, outerFace, initPos, objectiveGraph, baseEmbedding, overrides) {
+    return buildHybridData(Object.assign({
+      augmentedEdgePairs: augmented.graph.edgePairs,
+      augmentedEmbedding: augmented.embedding,
+      outerFace: outerFace,
+      initPos: initPos,
+      objectiveGraph: objectiveGraph,
+      baseEmbedding: baseEmbedding
+    }, overrides || {}));
+  }
+
+  function buildStageSeedFromPositions(data, positions, tutteWeights) {
+    var q0Result = buildInitialLogitSeedFromPositions(data, positions);
+    if (!q0Result.ok) {
+      q0Result = buildInitialLogitSeed(data, tutteWeights);
+    }
+    return q0Result;
+  }
+
+  async function runStageOptimization(runFn, q0, data, positionNodeIds, initPos, config) {
+    var scale = GeometryUtils.computeDrawingDiameter(positionNodeIds, initPos);
+    var tracker = createStageTracker(scale, config.minItersBeforeStop, config.stableIterLimit);
+    return runFn(q0, data, {
+      maxIters: config.maxIters,
+      maxPositionStep: config.maxPositionStepRatio * scale,
+      movementTracker: tracker,
+      onIteration: config.onIteration || null
+    });
+  }
+
+  async function runHybridStage(config) {
+    var data = buildHybridStageData(
+      config.augmented,
+      config.outerFace,
+      config.initPos,
+      config.objectiveGraph,
+      config.baseEmbedding,
+      config.dataOverrides
+    );
+    if (!data || !data.ok) {
+      return buildLayoutError({ reason: data && data.reason || 'Hybrid setup failed' });
+    }
+    if (typeof config.prepareData === 'function') {
+      config.prepareData(data);
+    }
+    if (typeof config.skipData === 'function' && config.skipData(data)) {
+      return buildLayoutResult({
+        ok: true,
+        data: data,
+        q0: null,
+        result: null
+      });
+    }
+    if (typeof config.requireData === 'function' && !config.requireData(data)) {
+      return null;
+    }
+    var q0Result = config.buildSeed(data);
+    if (!q0Result || !q0Result.ok) {
+      return q0Result || buildLayoutError({ reason: 'Hybrid initialization failed' });
+    }
+    var q0 = q0Result.q0;
+    relaxMinFaceArea(data, q0, config.evaluate);
+    var result = await runStageOptimization(
+      config.run,
+      q0,
+      data,
+      config.augmented.graph.nodeIds,
+      config.initPos,
+      {
+        maxIters: config.maxIters,
+        maxPositionStepRatio: config.maxPositionStepRatio,
+        minItersBeforeStop: config.minItersBeforeStop,
+        stableIterLimit: config.stableIterLimit,
+        onIteration: config.onIteration || null
+      }
+    );
+    return buildLayoutResult({
+      ok: true,
+      data: data,
+      q0: q0,
+      result: result
+    });
+  }
+
   async function computeHybridPositions(graph, options) {
-    fillFASettings(options);
+    options = options || {};
+    var augmentationMethod = options.augmentationMethod === undefined ? null : options.augmentationMethod;
+    var augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
+      ? Object.assign({}, options.augmentationOptions)
+      : null;
+    var onIteration = options.onIteration || null;
     var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
       preparedSeed: options.preparedSeed,
-      augmentationMethod: options.augmentationMethod
+      augmentationMethod: augmentationMethod
     });
     if (!context) {
       context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
         failureLabel: 'Hybrid layout',
-        augmentationMethod: options.augmentationMethod,
-        augmentationOptions: options.augmentationOptions,
+        augmentationMethod: augmentationMethod,
+        augmentationOptions: augmentationOptions,
         currentPositions: options.currentPositions
       });
     }
@@ -1295,7 +1391,7 @@
     }
 
     async function emitStageProgress(stageKey, stageLabel, stageIndex, rawProgress, positionsOverride) {
-      if (typeof options.onIteration !== 'function' || !rawProgress) return;
+      if (!onIteration || !rawProgress) return;
       var positions = GeometryUtils.filterPositionMap(
         positionsOverride || rawProgress.positions || {},
         g.nodeIds
@@ -1303,7 +1399,7 @@
       var angleStats = computeAngleStats(g, positions);
       var faceStats = computeFaceStats(g, positions);
       var tradeoffScore = computeHybridTradeoffScore(faceStats.faceAreaScore, angleStats.angleResolutionScore);
-      await options.onIteration(Object.assign({}, rawProgress, {
+      await onIteration(Object.assign({}, rawProgress, {
         stage: stageKey,
         stageLabel: stageLabel,
         stageIndex: stageIndex,
@@ -1317,76 +1413,88 @@
     }
 
     if (HYBRID_FACE_WARM_START_ITERS > 0) {
-      var faceWarmData = buildFABData({
-        augmentedEdgePairs: augmented.graph.edgePairs,
-        augmentedEmbedding: augmented.embedding,
+      var faceWarmSetup = await runHybridStage({
+        augmented: augmented,
         outerFace: outerFace,
         initPos: initPos,
         objectiveGraph: g,
         baseEmbedding: baseEmbedding,
-        faceBarrierWeight: HYBRID_FACE_WARM_FACE_BARRIER_WEIGHT,
-        edgeBarrierWeight: HYBRID_FACE_WARM_EDGE_BARRIER_WEIGHT,
-        edgeUniformWeight: HYBRID_FACE_WARM_EDGE_UNIFORM_WEIGHT,
-        faceWeight: 1.0,
-        angleWeight: 0
+        dataOverrides: {
+          faceBarrierWeight: HYBRID_FACE_WARM_FACE_BARRIER_WEIGHT,
+          edgeBarrierWeight: HYBRID_FACE_WARM_EDGE_BARRIER_WEIGHT,
+          edgeUniformWeight: HYBRID_FACE_WARM_EDGE_UNIFORM_WEIGHT,
+          faceWeight: 1.0,
+          angleWeight: 0
+        },
+        prepareData: function (data) {
+          data.minFaceArea = Math.max(0, 0.25 * data.initialMinFaceArea);
+        },
+        requireData: function (data) {
+          return data.boundedFaceKeys.length > 0;
+        },
+        buildSeed: function (data) {
+          return buildLayoutResult({ ok: true, q0: createZeroVector(data.qSize) });
+        },
+        evaluate: evaluateHybridObjectiveAndGradient,
+        run: runHybridFaceOptimization,
+        maxIters: HYBRID_FACE_WARM_START_ITERS,
+        maxPositionStepRatio: HYBRID_FACE_WARM_MAX_POSITION_STEP_RATIO,
+        minItersBeforeStop: Math.max(10, Math.min(HYBRID_FACE_WARM_START_ITERS, 20)),
+        stableIterLimit: HYBRID_FACE_WARM_STABLE_ITER_LIMIT,
+        onIteration: async function (progress) {
+          await emitStageProgress('face-warm', 'face', 1, progress);
+        }
       });
-      if (faceWarmData && faceWarmData.ok && faceWarmData.boundedFaceKeys.length > 0) {
-        faceWarmData.minFaceArea = Math.max(0, 0.25 * faceWarmData.initialMinFaceArea);
-        var faceWarmQ0 = createZeroVector(faceWarmData.qSize);
-        if (faceWarmData.minFaceArea > 0) {
-          var faceWarmProbe = evaluateFABalancerObjectiveAndGradient(faceWarmQ0, faceWarmData);
-          while (!faceWarmProbe.ok &&
-                 faceWarmProbe.reason === 'invalid-face-step' &&
-                 faceWarmData.minFaceArea > 1e-18) {
-            faceWarmData.minFaceArea *= 0.25;
-            faceWarmProbe = evaluateFABalancerObjectiveAndGradient(faceWarmQ0, faceWarmData);
-          }
-        }
-        var faceWarmScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
-        var faceWarmTracker = global.GraphUtils.createMovementConvergenceTracker({
-          minItersBeforeStop: Math.max(10, Math.min(HYBRID_FACE_WARM_START_ITERS, 20)),
-          stableIterLimit: HYBRID_FACE_WARM_STABLE_ITER_LIMIT,
-          maxMoveTol: FAB_MOVEMENT_STOP_TOL * faceWarmScale,
-          avgMoveTol: FAB_AVG_MOVEMENT_STOP_TOL * faceWarmScale
-        });
-        var faceWarmResult = await runFABalancerOptimization(faceWarmQ0, faceWarmData, {
-          maxIters: HYBRID_FACE_WARM_START_ITERS,
-          maxPositionStep: HYBRID_FACE_WARM_MAX_POSITION_STEP_RATIO * faceWarmScale,
-          movementTracker: faceWarmTracker,
-          onIteration: async function (progress) {
-            await emitStageProgress('face-warm', 'face', 1, progress);
-          }
-        });
-        if (faceWarmResult && faceWarmResult.ok && faceWarmResult.positions) {
-          warmStartPositions = faceWarmResult.positions;
-        }
+      if (faceWarmSetup && faceWarmSetup.ok &&
+          faceWarmSetup.result && faceWarmSetup.result.ok &&
+          faceWarmSetup.result.positions) {
+        warmStartPositions = faceWarmSetup.result.positions;
       }
     }
 
-    var angleData = buildFABData({
-      augmentedEdgePairs: augmented.graph.edgePairs,
-      augmentedEmbedding: augmented.embedding,
+    var angleSetup = await runHybridStage({
+      augmented: augmented,
       outerFace: outerFace,
       initPos: warmStartPositions,
       objectiveGraph: g,
       baseEmbedding: baseEmbedding,
-      angleBarrierWeight: FAB_ANGLE_BARRIER_WEIGHT,
-      faceBarrierWeight: FAB_FACE_BARRIER_WEIGHT,
-      faceWeight: 0,
-      angleWeight: 1.0
+      dataOverrides: {
+        angleBarrierWeight: HYBRID_ANGLE_BARRIER_WEIGHT,
+        faceBarrierWeight: HYBRID_FACE_BARRIER_WEIGHT,
+        faceWeight: 0,
+        angleWeight: 1.0
+      },
+      prepareData: function (data) {
+        data.minFaceArea = Math.max(0, 0.2 * data.initialMinFaceArea);
+        if (!(data.objectiveVertexIds.length > 0) || !(data.wedges.length > 0)) {
+          data.angleWeight = 0;
+        }
+      },
+      skipData: function (data) {
+        return !(data.boundedFaceKeys.length > 0);
+      },
+      buildSeed: function (data) {
+        return buildStageSeedFromPositions(data, warmStartPositions, tutteWeights);
+      },
+      evaluate: evaluateHybridAngleStageObjectiveAndGradient,
+      run: runAngleStageOptimization,
+      maxIters: HYBRID_MAX_ITERS,
+      maxPositionStepRatio: HYBRID_ANGLE_STAGE_MAX_POSITION_STEP_RATIO,
+      minItersBeforeStop: Math.max(20, Math.min(HYBRID_MAX_ITERS, 40)),
+      stableIterLimit: HYBRID_STABLE_ITER_LIMIT,
+      onIteration: async function (progress) {
+        await emitStageProgress('angle', 'angle', 2, progress);
+      }
     });
-    if (!angleData.ok) {
+    if (!angleSetup || !angleSetup.ok || !angleSetup.data) {
       return buildLayoutError({
-        message: angleData.reason || 'Hybrid setup failed',
+        message: angleSetup && (angleSetup.reason || angleSetup.message) || 'Hybrid setup failed',
         graph: g,
         outerFace: outerFace,
         augmented: augmented
       });
     }
-    angleData.minFaceArea = Math.max(0, 0.2 * angleData.initialMinFaceArea);
-    if (!(angleData.objectiveVertexIds.length > 0) || !(angleData.wedges.length > 0)) {
-      angleData.angleWeight = 0;
-    }
+    var angleData = angleSetup.data;
     if (!(angleData.boundedFaceKeys.length > 0)) {
       var staticPositions = GeometryUtils.filterPositionMap(initPos, g.nodeIds);
       var staticAngleStats = computeAngleStats(g, staticPositions);
@@ -1409,44 +1517,7 @@
         tradeoffScore: computeHybridTradeoffScore(staticFaceStats.faceAreaScore, staticAngleStats.angleResolutionScore)
       });
     }
-
-    var angleQ0Result = buildInitialLogitSeedFromPositions(angleData, warmStartPositions);
-    if (!angleQ0Result.ok) {
-      angleQ0Result = buildInitialLogitSeed(angleData, tutteWeights);
-    }
-    if (!angleQ0Result.ok) {
-      return buildLayoutError({
-        message: angleQ0Result.reason || 'Hybrid initialization failed',
-        graph: g,
-        outerFace: outerFace,
-        augmented: augmented
-      });
-    }
-    var angleQ0 = angleQ0Result.q0;
-    if (angleData.minFaceArea > 0) {
-      var angleProbe = evaluateHybridAngleStageObjectiveAndGradient(angleQ0, angleData);
-      while (!angleProbe.ok &&
-             angleProbe.reason === 'invalid-face-step' &&
-             angleData.minFaceArea > 1e-18) {
-        angleData.minFaceArea *= 0.25;
-        angleProbe = evaluateHybridAngleStageObjectiveAndGradient(angleQ0, angleData);
-      }
-    }
-    var angleScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, warmStartPositions);
-    var angleTracker = global.GraphUtils.createMovementConvergenceTracker({
-      minItersBeforeStop: Math.max(20, Math.min(options.maxIters, 40)),
-      stableIterLimit: FAB_STABLE_ITER_LIMIT,
-      maxMoveTol: FAB_MOVEMENT_STOP_TOL * angleScale,
-      avgMoveTol: FAB_AVG_MOVEMENT_STOP_TOL * angleScale
-    });
-    var angleResult = await runAngleStageOptimization(angleQ0, angleData, {
-      maxIters: options.maxIters,
-      maxPositionStep: HYBRID_ANGLE_STAGE_MAX_POSITION_STEP_RATIO * angleScale,
-      movementTracker: angleTracker,
-      onIteration: async function (progress) {
-        await emitStageProgress('angle', 'angle', 2, progress);
-      }
-    });
+    var angleResult = angleSetup.result;
     if (!angleResult || !angleResult.ok) {
       return buildLayoutError({
         message: angleResult && (angleResult.reason || angleResult.message) || 'Hybrid optimization failed',
@@ -1528,9 +1599,6 @@
 
   global.PlanarVibeHybrid = {
     computeHybridPositions: computeHybridPositions,
-    applyHybridLayout: applyHybridLayout,
-    computeFABalancerPositions: computeHybridPositions,
-    applyFABalancerLayout: applyHybridLayout
+    applyHybridLayout: applyHybridLayout
   };
-  global.PlanarVibeFABalancer = global.PlanarVibeHybrid;
 })(window);

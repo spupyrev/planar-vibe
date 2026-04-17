@@ -2283,7 +2283,7 @@
         runManagedLayout({
           layoutName: 'hybrid',
           disabledMessage: 'Hybrid layout requires a planar graph',
-          module: global.PlanarVibeHybrid || global.PlanarVibeFABalancer,
+          module: global.PlanarVibeHybrid,
           methodName: 'applyHybridLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('hybrid', {
@@ -2683,7 +2683,7 @@
         },
         {
           layoutName: 'hybrid',
-          module: global.PlanarVibeHybrid || global.PlanarVibeFABalancer,
+          module: global.PlanarVibeHybrid,
           methodName: 'applyHybridLayout',
           missingMessage: 'Hybrid layout module is missing',
           requires: {
