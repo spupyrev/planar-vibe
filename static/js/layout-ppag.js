@@ -491,7 +491,7 @@
     }
 
     var faceScore = Metrics && Metrics.computeUniformFaceAreaScore
-      ? Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById)
+      ? Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById, prepared.baseEmbedding)
       : null;
     var lastStats = result.stats || {};
 

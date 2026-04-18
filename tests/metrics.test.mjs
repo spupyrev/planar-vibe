@@ -226,8 +226,8 @@ test('computeUniformFaceAreaScore uses bounded-face weights from the embedding',
     '4': { x: 0, y: 1 }
   };
 
-  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
   const emb = PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
+  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, emb);
   assert.equal(result.ok, true);
   assert.equal(result.values.length, 2);
   const outerFace = emb.outerFace || [];
@@ -260,8 +260,8 @@ test('computeUniformFaceAreaScore uses |f|-2 weights for non-triangular bounded 
     '5': { x: -1, y: 2 }
   };
 
-  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
   const emb = PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
+  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, emb);
   assert.equal(result.ok, true);
   assert.equal(result.values.length, 2);
   assert.equal(result.idealValues.length, 2);
@@ -274,7 +274,7 @@ test('computeUniformFaceAreaScore uses |f|-2 weights for non-triangular bounded 
   assert.deepEqual(result.idealValues, expectedIdeal);
 });
 
-test('computeUniformFaceAreaScore fails for non-planar graph', () => {
+test('computeUniformFaceAreaScore requires embedding', () => {
   const left = ['a', 'b', 'c'];
   const right = ['x', 'y', 'z'];
   const nodeIds = left.concat(right);
@@ -289,9 +289,9 @@ test('computeUniformFaceAreaScore fails for non-planar graph', () => {
     posById[nodeIds[i]] = { x: i, y: 0 };
   }
 
-  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
+  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, null);
   assert.equal(result.ok, false);
-  assert.equal(result.reason, 'Drawing does not determine a plane embedding');
+  assert.equal(result.reason, 'Planar embedding required');
 });
 
 test('hasCrossingsFromPositions detects crossing and non-crossing drawings', () => {
@@ -360,12 +360,14 @@ test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K
   assert.ok(symmetric.score > skewed.score + 0.01);
 });
 
-test('computeUniformAngleResolutionScore fails when drawing does not determine a plane embedding', () => {
+test('computeUniformAngleResolutionScore does not require extracting a plane embedding', () => {
   const graph = GraphUtils.createGraph(
     ['1', '2', '3', '4'],
     [
       ['1', '2'],
-      ['3', '4']
+      ['2', '3'],
+      ['3', '4'],
+      ['4', '1']
     ]
   );
   const posById = {
@@ -376,8 +378,9 @@ test('computeUniformAngleResolutionScore fails when drawing does not determine a
   };
 
   const result = Metrics.computeUniformAngleResolutionScore(graph, posById);
-  assert.equal(result.ok, false);
-  assert.equal(result.reason, 'Drawing does not determine a plane embedding');
+  assert.equal(result.ok, true);
+  assert.equal(result.angleCount, 8);
+  assert.equal(result.reason, undefined);
 });
 
 test('computeSpacingUniformityScore is 1 for equal nearest-neighbor spacing', () => {

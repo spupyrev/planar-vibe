@@ -321,10 +321,10 @@
     };
   }
 
-  function computeUniformFaceAreaScore(nodeIds, edgePairs, posById) {
-    var emb = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
+  function computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding) {
+    var emb = embedding;
     if (!emb || !emb.ok) {
-      return { ok: false, reason: 'Drawing does not determine a plane embedding' };
+      return { ok: false, reason: 'Planar embedding required' };
     }
     if (!emb.faces || emb.faces.length === 0) {
       return { ok: false, reason: 'No faces available' };
@@ -353,7 +353,7 @@
     return result;
   }
 
-  function computeUniformFaceAreaScoreFromCy(cy, edgePairs) {
+  function computeUniformFaceAreaScoreFromCy(cy, edgePairs, embedding) {
     var nodeIds = [];
     var posById = {};
     cy.nodes().forEach(function (node) {
@@ -365,7 +365,7 @@
     var pairs = edgePairs || cy.edges().map(function (e) {
       return [String(e.source().id()), String(e.target().id())];
     });
-    return computeUniformFaceAreaScore(nodeIds, pairs, posById);
+    return computeUniformFaceAreaScore(nodeIds, pairs, posById, embedding);
   }
 
   function computeUniformEdgeLengthScore(edgePairs, posById) {
@@ -628,10 +628,6 @@
     }
     if (!edgePairs || edgePairs.length === 0) {
       return { ok: false, reason: 'No edges' };
-    }
-    var emb = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
-    if (!emb || !emb.ok) {
-      return { ok: false, reason: 'Drawing does not determine a plane embedding' };
     }
 
     var adjacency = graph.adjacency;

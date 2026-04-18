@@ -647,7 +647,12 @@
       });
     }
 
-    var faceScore = Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById);
+    var faceScore = Metrics.computeUniformFaceAreaScore(
+      prepared.graph.nodeIds,
+      prepared.graph.edgePairs,
+      prepared.posById,
+      prepared.baseEmbedding
+    );
 
     var message = buildLayoutStatusMessage('Air', {
       outerFaceVertexCount: Array.isArray(prepared.outerFace) ? prepared.outerFace.length : null,

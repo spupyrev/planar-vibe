@@ -14,14 +14,12 @@
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var computeMoveStats = global.GraphUtils.computeMoveStats;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
-  var pointOnSegmentInterior = GeometryUtils.pointOnSegmentInterior;
   var polygonArea2 = GeometryUtils.polygonArea2;
   var orientFaceCCW = GeometryUtils.orientFaceCCW;
   var luFactorize = LinearAlgebraUtils.luFactorize;
   var segmentsIntersectStrict = GeometryUtils.segmentsIntersectStrict;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
   var solveTransposeLUWithTwoRhs = LinearAlgebraUtils.solveTransposeLUWithTwoRhs;
-  var triangleArea2 = GeometryUtils.triangleArea2;
   var resolveFloatOption = global.GraphUtils.resolveFloatOption;
   var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
   var resolveIntOption = global.GraphUtils.resolveIntOption;
@@ -32,7 +30,6 @@
   var vecNorm = GeometryUtils.vecNorm;
   var vecScale = GeometryUtils.vecScale;
   var vecSub = GeometryUtils.vecSub;
-
   function softmaxInto(q, start, length, out) {
     var m = -Infinity;
     var i;
@@ -497,55 +494,6 @@
     return false;
   }
 
-  function hasIndexedEdgeCrossings(edgePairs, getPoint, eps) {
-    if (typeof getPoint !== 'function') {
-      throw new Error('hasIndexedEdgeCrossings requires a point lookup function');
-    }
-    if (!edgePairs || edgePairs.length < 2) return false;
-    var tol = Number.isFinite(eps) ? Math.max(0, eps) : 1e-9;
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var e1 = edgePairs[i];
-      var a = e1[0];
-      var b = e1[1];
-      var pa = getPoint(a);
-      var pb = getPoint(b);
-      if (!pa || !pb) {
-        throw new Error('hasIndexedEdgeCrossings found a missing edge endpoint');
-      }
-      for (var j = i + 1; j < edgePairs.length; j += 1) {
-        var e2 = edgePairs[j];
-        var c = e2[0];
-        var d = e2[1];
-        if (a === c || a === d || b === c || b === d) continue;
-        var pc = getPoint(c);
-        var pd = getPoint(d);
-        if (!pc || !pd) {
-          throw new Error('hasIndexedEdgeCrossings found a missing edge endpoint');
-        }
-        if (segmentsIntersectStrict(pa, pb, pc, pd, eps)) {
-          return true;
-        }
-        if (Math.abs(triangleArea2(pa, pb, pc)) <= tol &&
-            pointOnSegmentInterior(pa, pb, pc, tol)) {
-          return true;
-        }
-        if (Math.abs(triangleArea2(pa, pb, pd)) <= tol &&
-            pointOnSegmentInterior(pa, pb, pd, tol)) {
-          return true;
-        }
-        if (Math.abs(triangleArea2(pc, pd, pa)) <= tol &&
-            pointOnSegmentInterior(pc, pd, pa, tol)) {
-          return true;
-        }
-        if (Math.abs(triangleArea2(pc, pd, pb)) <= tol &&
-            pointOnSegmentInterior(pc, pd, pb, tol)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   function getIndexedPoint(x, y) {
     return function (index) {
       return { x: x[index], y: y[index] };
@@ -684,10 +632,6 @@
           zY[ic] += coeff * dAyC;
         }
       }
-    }
-
-    if (hasIndexedEdgeCrossings(data.edges, getPoint, 1e-9)) {
-      return buildLayoutError({ reason: 'invalid-face-step' });
     }
 
     var adjoint = solveTransposeLUWithTwoRhs(factor, zX, zY);

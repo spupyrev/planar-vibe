@@ -1182,10 +1182,11 @@
         return;
       }
       var result = null;
+      var embedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
       if (cy && global.PlanarVibeMetrics.computeUniformFaceAreaScoreFromCy) {
-        result = global.PlanarVibeMetrics.computeUniformFaceAreaScoreFromCy(cy, edgePairs);
+        result = global.PlanarVibeMetrics.computeUniformFaceAreaScoreFromCy(cy, edgePairs, embedding);
       } else if (global.PlanarVibeMetrics.computeUniformFaceAreaScore) {
-        result = global.PlanarVibeMetrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById);
+        result = global.PlanarVibeMetrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding);
       }
       if (!result) {
         clearFaceAreaPlot('Metrics unavailable');

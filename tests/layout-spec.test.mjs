@@ -59,6 +59,7 @@ const GraphUtils = modules.GraphUtils;
 const GeometryUtils = modules.GeometryUtils;
 const LayoutPreprocessing = modules.LayoutPreprocessing;
 const Metrics = modules.PlanarVibeMetrics;
+const PlanarGraphUtils = modules.PlanarGraphUtils;
 const Tutte = modules.PlanarVibeTutte;
 const TutteAlgorithm = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
@@ -122,7 +123,8 @@ function assertPlaneDrawing(graph, posById, label) {
 }
 
 function assertFaceScoreRange(graph, posById, label) {
-  const faceScore = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, posById);
+  const embedding = PlanarGraphUtils.extractEmbeddingFromPositions(graph.nodeIds, graph.edgePairs, posById);
+  const faceScore = Metrics.computeUniformFaceAreaScore(graph.nodeIds, graph.edgePairs, posById, embedding);
   assert.equal(faceScore.ok, true, `${label}: face score failed: ${faceScore.reason || ''}`);
   assert.ok(Number.isFinite(faceScore.quality), `${label}: face score is not finite`);
   assert.ok(faceScore.quality >= 0 && faceScore.quality <= 1, `${label}: face score out of range: ${faceScore.quality}`);
