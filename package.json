@@ -4,6 +4,7 @@
   "scripts": {
     "test": "timeout 10m node --test tests/*.test.mjs",
     "report:data": "node scripts/compute-report-data.mjs",
-    "report": "timeout 2m node scripts/generate-report.mjs"
+    "report": "timeout 2m node scripts/generate-report.mjs",
+    "report:correlation": "node scripts/analyze-metric-correlations.mjs"
   }
 }

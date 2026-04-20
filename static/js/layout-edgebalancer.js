@@ -956,9 +956,9 @@
       movementTracker: movementTracker,
       onIteration: async function (progress) {
         if (options.onIteration) {
-          var progressEdgeScore = Metrics.computeUniformEdgeLengthScore(g.edgePairs, progress.positions);
+          var progressEdgeDeviation = Metrics.computeEdgeLengthDeviationScore(g.edgePairs, progress.positions);
           await options.onIteration(Object.assign({}, progress, {
-            edgeLengthScore: progressEdgeScore && progressEdgeScore.ok ? progressEdgeScore.quality : null
+            edgeLengthDeviation: progressEdgeDeviation && progressEdgeDeviation.ok ? progressEdgeDeviation.score : null
           }));
         }
       }
@@ -982,7 +982,7 @@
         message: 'EdgeBalancer produced a non-plane drawing'
       });
     }
-    var edgeScore = Metrics.computeUniformEdgeLengthScore(g.edgePairs, finalPositions);
+    var edgeDeviation = Metrics.computeEdgeLengthDeviationScore(g.edgePairs, finalPositions);
     return buildLayoutResult({
       ok: true,
       nodeIds: g.nodeIds,
@@ -996,7 +996,7 @@
       iters: result.iters,
       objective: result.E,
       maxLogDeviation: result.maxLogDeviation,
-      edgeLengthScore: edgeScore && edgeScore.ok ? edgeScore.quality : null
+      edgeLengthDeviation: edgeDeviation && edgeDeviation.ok ? edgeDeviation.score : null
     });
   }
 
@@ -1012,14 +1012,14 @@
           iters: result.iters,
           stopReason: result.stopReason,
           extraParts: [
-            Number.isFinite(result.edgeLengthScore) ? 'edge score ' + result.edgeLengthScore.toFixed(3) : null,
+            Number.isFinite(result.edgeLengthDeviation) ? 'edge deviation ' + result.edgeLengthDeviation.toFixed(3) : null,
             Number.isFinite(result.objective) ? 'obj ' + result.objective.toFixed(3) : null
           ]
         });
         return {
           ok: true,
           stopReason: result.stopReason,
-          edgeLengthScore: result.edgeLengthScore,
+          edgeLengthDeviation: result.edgeLengthDeviation,
           message: message,
           debugState: LayoutPreprocessing.createAugmentationDebugState(
             result.graph,

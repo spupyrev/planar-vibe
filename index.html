@@ -134,26 +134,29 @@
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <a href="#" class="drawing-metric-link" data-target="stats-angle-plot-wrap" title="Angle Resolution Score compares incident-angle spacing at each vertex with the ideal equal-angle spacing. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">Angle Resolution Score:</a>
-                  <span id="stats-angle-quality" title="Angle Resolution Score compares incident-angle spacing at each vertex with the ideal equal-angle spacing. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <a href="#" class="drawing-metric-link" data-target="stats-angle-plot-wrap" title="Angular Resolution averages, over vertices of degree at least 2, the smallest incident angle divided by the ideal angle 2pi/deg(v). Score is from 0 to 1, where 0 is worst and 1 is best">Angular Resolution:</a>
+                  <span id="stats-angle-quality" title="Angular Resolution averages, over vertices of degree at least 2, the smallest incident angle divided by the ideal angle 2pi/deg(v). Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
                 </div>
               </div>
               <div id="stats-angle-plot-wrap" class="stats-plot-wrap stats-plot-wrap-standalone is-hidden">
-                <svg id="stats-angle-plot" role="img" aria-label="Angle resolution distribution plot"></svg>
+                <svg id="stats-angle-plot" role="img" aria-label="Angular resolution per-vertex plot"></svg>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <a href="#" class="drawing-metric-link" data-target="stats-face-plot-wrap" title="Face Areas Score compares bounded face areas against the ideal equal-area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Face Areas Score:</a>
-                  <span id="stats-face-quality" title="Face Areas Score compares bounded face areas against the ideal equal-area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <span title="Bounding-box aspect-ratio score in [0,1]. 1 is perfectly balanced">Aspect Ratio:</span>
+                  <span id="stats-aspect-ratio" title="Bounding-box aspect-ratio score in [0,1]. 1 is perfectly balanced">--</span>
                 </div>
               </div>
-              <div id="stats-face-plot-wrap" class="stats-plot-wrap stats-plot-wrap-standalone is-hidden">
-                <svg id="stats-face-plot" role="img" aria-label="Face area distribution plot"></svg>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
+                  <span title="Fraction of bounded faces that are convex. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">Convexity:</span>
+                  <span id="stats-convexity" title="Fraction of bounded faces that are convex. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <a href="#" class="drawing-metric-link" data-target="stats-edge-plot-wrap" title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Edge Length Score:</a>
-                  <span id="stats-edge-quality" title="Edge Length Score compares edge lengths against the ideal equal-length distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <span title="Score in [0,1] based on the mean relative absolute deviation of edge lengths from their average. 1 is best">Edge-Length Deviation:</span>
+                  <span id="stats-edge-deviation" title="Score in [0,1] based on the mean relative absolute deviation of edge lengths from their average. 1 is best">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
@@ -164,14 +167,23 @@
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">Spacing-Uniformity:</span>
-                  <span id="stats-spacing-uniformity" title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">--</span>
+                  <span title="Score in [0,1] that rewards edges being close to horizontal or vertical">Edge Orthogonality:</span>
+                  <span id="stats-edge-orthogonality" title="Score in [0,1] that rewards edges being close to horizontal or vertical">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Unweighted score in [0,1] that rewards edges being close to horizontal and penalizes angular deviation quadratically">Edge Horizontality:</span>
-                  <span id="stats-edge-horizontality" title="Unweighted score in [0,1] that rewards edges being close to horizontal and penalizes angular deviation quadratically">--</span>
+                  <a href="#" class="drawing-metric-link" data-target="stats-face-plot-wrap" title="Face-Area Uniformity compares bounded face areas against the ideal weighted area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Face-Area Uniformity:</a>
+                  <span id="stats-face-quality" title="Face-Area Uniformity compares bounded face areas against the ideal weighted area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                </div>
+              </div>
+              <div id="stats-face-plot-wrap" class="stats-plot-wrap stats-plot-wrap-standalone is-hidden">
+                <svg id="stats-face-plot" role="img" aria-label="Face area distribution plot"></svg>
+              </div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
+                  <span title="Grid-based node-uniformity score in [0,1]. 1 is perfectly even occupancy">Node Uniformity:</span>
+                  <span id="stats-node-uniformity" title="Grid-based node-uniformity score in [0,1]. 1 is perfectly even occupancy">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
@@ -180,8 +192,11 @@
                   <span id="stats-axis-alignment" title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">--</span>
                 </div>
               </div>
-              <div id="stats-edge-plot-wrap" class="stats-plot-wrap stats-plot-wrap-standalone is-hidden">
-                <svg id="stats-edge-plot" role="img" aria-label="Edge length distribution plot"></svg>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
+                  <span title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">Spacing Uniformity:</span>
+                  <span id="stats-spacing-uniformity" title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">--</span>
+                </div>
               </div>
               </div>
             </div>

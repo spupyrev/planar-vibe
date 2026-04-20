@@ -351,10 +351,10 @@
   }
 
   function computeAngleStats(graph, posById) {
-    var angle = Metrics.computeUniformAngleResolutionScore(graph, posById);
+    var angle = Metrics.computeAngularResolutionScore(graph, posById);
     return {
       angleResolutionScore: angle && angle.ok ? angle.score : null,
-      angleCount: angle && angle.ok ? angle.angleCount : null
+      angleCount: angle && angle.ok ? angle.usedNodeCount : null
     };
   }
 

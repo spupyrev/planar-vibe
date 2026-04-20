@@ -1323,7 +1323,7 @@ test('AngleBalancer keeps augmented barrier coordinates available on sample1', a
   const result = await AngleBalancer.computeAngleBalancerPositions(graph, {
     currentPositions
   });
-  const finalScore = Metrics.computeUniformAngleResolutionScore(graph, result.positions);
+  const finalScore = Metrics.computeAngularResolutionScore(graph, result.positions);
 
   assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer failed on sample1'));
   assert.equal(Number.isFinite(result.objective), true, 'AngleBalancer should report a finite objective on sample1');

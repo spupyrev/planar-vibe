@@ -893,12 +893,16 @@
 
     function clearFaceAreaPlot(text) {
       global.$('#stat-is-plane').text('--');
+      global.$('#stats-convexity').text('--');
       clearPlot('stats-face-plot', 'stats-face-quality', text);
     }
 
-    function clearEdgeLengthPlot(text) {
-      clearPlot('stats-edge-plot', 'stats-edge-quality', text);
+    function clearEdgeMetrics() {
       global.$('#stats-edge-ratio').text('--');
+      global.$('#stats-edge-deviation').text('--');
+      global.$('#stats-edge-orthogonality').text('--');
+      global.$('#stats-aspect-ratio').text('--');
+      global.$('#stats-node-uniformity').text('--');
     }
 
     function clearAngleResolutionPlot(text) {
@@ -907,10 +911,9 @@
 
     function clearDrawingStats(text) {
       clearFaceAreaPlot(text);
-      clearEdgeLengthPlot(text);
       clearAngleResolutionPlot(text);
+      clearEdgeMetrics();
       global.$('#stats-spacing-uniformity').text('--');
-      global.$('#stats-edge-horizontality').text('--');
       global.$('#stats-axis-alignment').text('--');
       setAlignEnabled(false);
     }
@@ -989,61 +992,7 @@
         .html(svg);
     }
 
-    function renderEdgeLengthPlot(values, ideal) {
-      var size = getPlotSize('stats-edge-plot');
-      var W = size.width;
-      var H = size.height;
-      var L = 36;
-      var R = 8;
-      var T = 8;
-      var B = 20;
-      var PW = W - L - R;
-      var PH = H - T - B;
-      var maxY = 5;
-      var safeIdeal = Math.max(ideal, 1e-12);
-      var i;
-
-      function sx(idx) {
-        if (values.length <= 1) {
-          return L + PW / 2;
-        }
-        return L + (idx / (values.length - 1)) * PW;
-      }
-      function sy(v) {
-        return T + PH - (v / maxY) * PH;
-      }
-
-      var pts = '';
-      for (i = 0; i < values.length; i += 1) {
-        var normalizedY = values[i] / safeIdeal;
-        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(normalizedY, maxY));
-      }
-
-      var yIdeal = sy(1);
-      var yMaxLabel = '5';
-
-      var svg = '';
-      svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
-      svg += '<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + (L - 4) + '" y1="' + T + '" x2="' + (L + 4) + '" y2="' + T + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + L + '" y1="' + yIdeal + '" x2="' + (L + PW) + '" y2="' + yIdeal + '" stroke="#ea9624" stroke-width="1" stroke-dasharray="3 3" />';
-      if (values.length >= 1) {
-        svg += '<polyline fill="none" stroke="#1060A8" stroke-width="1.5" points="' + pts + '" />';
-      }
-      var yTickX = L - 4;
-      svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
-      svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
-      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">length</text>';
-      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">edges sorted</text>';
-      svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
-      global.$('#stats-edge-plot')
-        .attr('viewBox', '0 0 ' + W + ' ' + H)
-        .attr('preserveAspectRatio', 'none')
-        .html(svg);
-    }
-
-    function renderAngleResolutionPlot(values, idealValues) {
+    function renderAngleResolutionPlot(values) {
       var size = getPlotSize('stats-angle-plot');
       var W = size.width;
       var H = size.height;
@@ -1053,7 +1002,7 @@
       var B = 20;
       var PW = W - L - R;
       var PH = H - T - B;
-      var maxY = 5;
+      var maxY = 1;
       var i;
 
       function sx(idx) {
@@ -1068,13 +1017,11 @@
 
       var pts = '';
       for (i = 0; i < values.length; i += 1) {
-        var ideal = Math.max(idealValues[i], 1e-12);
-        var ratio = values[i] / ideal;
-        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(ratio, maxY));
+        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.max(0, Math.min(values[i], maxY)));
       }
 
       var yIdeal = sy(1);
-      var yMaxLabel = '5';
+      var yMaxLabel = '1';
 
       var svg = '';
       svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
@@ -1088,8 +1035,8 @@
       var yTickX = L - 4;
       svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
       svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
-      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">ratio</text>';
-      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">angles sorted</text>';
+      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">score</text>';
+      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">vertices sorted</text>';
       svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
       global.$('#stats-angle-plot')
         .attr('viewBox', '0 0 ' + W + ' ' + H)
@@ -1123,22 +1070,18 @@
       }
     }
 
-    function updateAngleResolutionScore(graph, posById, hasCrossings) {
-      if (hasCrossings) {
-        clearAngleResolutionPlot('Drawing is not plane');
-        return;
-      }
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformAngleResolutionScore) {
+    function updateAngleResolutionScore(graph, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeAngularResolutionScore) {
         clearAngleResolutionPlot('Metrics unavailable');
         return;
       }
-      var result = global.PlanarVibeMetrics.computeUniformAngleResolutionScore(graph, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score) || !result.values || !result.idealValues) {
+      var result = global.PlanarVibeMetrics.computeAngularResolutionScore(graph, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score) || !result.values) {
         clearAngleResolutionPlot((result && result.reason) ? result.reason : 'No data');
         return;
       }
       global.$('#stats-angle-quality').text(result.score.toFixed(3));
-      renderAngleResolutionPlot(result.values, result.idealValues);
+      renderAngleResolutionPlot(result.values);
     }
 
     function updateFaceAreaPlot() {
@@ -1169,7 +1112,7 @@
       var hasCrossings = global.GeometryUtils.hasPositionCrossings(posById, edgePairs);
       setPlaneStat(!hasCrossings);
       setAlignEnabled(!hasCrossings);
-      updateAngleResolutionScore(graph, posById, hasCrossings);
+      updateAngleResolutionScore(graph, posById);
       if (hasCrossings) {
         clearFaceAreaPlot('Drawing is not plane');
         setPlaneStat(false);
@@ -1182,6 +1125,7 @@
         return;
       }
       var result = null;
+      var convexity = null;
       var embedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
       if (cy && global.PlanarVibeMetrics.computeUniformFaceAreaScoreFromCy) {
         result = global.PlanarVibeMetrics.computeUniformFaceAreaScoreFromCy(cy, edgePairs, embedding);
@@ -1193,6 +1137,9 @@
         setAlignEnabled(false);
         return;
       }
+      if (global.PlanarVibeMetrics.computeConvexityScore) {
+        convexity = global.PlanarVibeMetrics.computeConvexityScore(nodeIds, edgePairs, posById, embedding);
+      }
       if (!result.ok) {
         clearFaceAreaPlot(result.reason || 'No data');
         return;
@@ -1201,13 +1148,15 @@
       global.$('#stats-face-quality').text(
         Number.isFinite(result.quality) ? result.quality.toFixed(3) : '--'
       );
+      global.$('#stats-convexity').text(
+        convexity && convexity.ok && Number.isFinite(convexity.score) ? convexity.score.toFixed(3) : '--'
+      );
     }
 
     function updateEdgeLengthPlot() {
       if (!currentParsed || !currentParsed.elements) {
-        clearEdgeLengthPlot('No graph');
+        clearEdgeMetrics();
         global.$('#stats-spacing-uniformity').text('--');
-        global.$('#stats-edge-horizontality').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
@@ -1216,37 +1165,18 @@
       var nodeIds = getNodeIdsFromParsed(currentParsed);
       var posById = getCurrentPositions();
       if (!nodeIds.length) {
-        clearEdgeLengthPlot('No graph');
+        clearEdgeMetrics();
         global.$('#stats-spacing-uniformity').text('--');
-        global.$('#stats-edge-horizontality').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
       }
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUniformEdgeLengthScore) {
-        clearEdgeLengthPlot('Metrics unavailable');
-        global.$('#stats-spacing-uniformity').text('--');
-        global.$('#stats-edge-horizontality').text('--');
-        global.$('#stats-axis-alignment').text('--');
-        setAlignEnabled(false);
-        return;
-      }
-      var result = global.PlanarVibeMetrics.computeUniformEdgeLengthScore(edgePairs, posById);
-      if (!result.ok) {
-        clearEdgeLengthPlot(result.reason || 'No data');
-        global.$('#stats-spacing-uniformity').text('--');
-        global.$('#stats-edge-horizontality').text('--');
-        global.$('#stats-axis-alignment').text('--');
-        setAlignEnabled(false);
-        return;
-      }
-      renderEdgeLengthPlot(result.values, result.ideal);
-      global.$('#stats-edge-quality').text(
-        Number.isFinite(result.quality) ? result.quality.toFixed(3) : '--'
-      );
       updateEdgeLengthRatio(edgePairs, posById);
+      updateEdgeLengthDeviation(edgePairs, posById);
+      updateEdgeOrthogonality(edgePairs, posById);
+      updateAspectRatio(nodeIds, posById);
+      updateNodeUniformity(nodeIds, posById);
       updateSpacingUniformity(nodeIds, posById);
-      updateEdgeHorizontality(edgePairs, posById);
       updateAxisAlignment(nodeIds, posById);
     }
 
@@ -1276,17 +1206,56 @@
       global.$('#stats-spacing-uniformity').text(result.score.toFixed(3));
     }
 
-    function updateEdgeHorizontality(edgePairs, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeUnweightedEdgeHorizontalityScore) {
-        global.$('#stats-edge-horizontality').text('--');
+    function updateEdgeLengthDeviation(edgePairs, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeEdgeLengthDeviationScore) {
+        global.$('#stats-edge-deviation').text('--');
         return;
       }
-      var result = global.PlanarVibeMetrics.computeUnweightedEdgeHorizontalityScore(edgePairs, posById);
+      var result = global.PlanarVibeMetrics.computeEdgeLengthDeviationScore(edgePairs, posById);
       if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-edge-horizontality').text('--');
+        global.$('#stats-edge-deviation').text('--');
         return;
       }
-      global.$('#stats-edge-horizontality').text(result.score.toFixed(3));
+      global.$('#stats-edge-deviation').text(result.score.toFixed(3));
+    }
+
+    function updateEdgeOrthogonality(edgePairs, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeEdgeOrthogonalityScore) {
+        global.$('#stats-edge-orthogonality').text('--');
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeEdgeOrthogonalityScore(edgePairs, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score)) {
+        global.$('#stats-edge-orthogonality').text('--');
+        return;
+      }
+      global.$('#stats-edge-orthogonality').text(result.score.toFixed(3));
+    }
+
+    function updateAspectRatio(nodeIds, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeAspectRatioScore) {
+        global.$('#stats-aspect-ratio').text('--');
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeAspectRatioScore(nodeIds, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score)) {
+        global.$('#stats-aspect-ratio').text('--');
+        return;
+      }
+      global.$('#stats-aspect-ratio').text(result.score.toFixed(3));
+    }
+
+    function updateNodeUniformity(nodeIds, posById) {
+      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeNodeUniformityScore) {
+        global.$('#stats-node-uniformity').text('--');
+        return;
+      }
+      var result = global.PlanarVibeMetrics.computeNodeUniformityScore(nodeIds, posById);
+      if (!result || !result.ok || !Number.isFinite(result.score)) {
+        global.$('#stats-node-uniformity').text('--');
+        return;
+      }
+      global.$('#stats-node-uniformity').text(result.score.toFixed(3));
     }
 
     function updateAxisAlignment(nodeIds, posById) {
@@ -2211,8 +2180,8 @@
                 var debug = progressDebug(progress);
                 var parts = [];
                 parts.push('EdgeBalancer step ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.edgeLengthScore)) {
-                  parts.push('edge score ' + progress.edgeLengthScore.toFixed(3));
+                if (Number.isFinite(progress.edgeLengthDeviation)) {
+                  parts.push('edge deviation ' + progress.edgeLengthDeviation.toFixed(3));
                 }
                 if (Number.isFinite(progress.edgeLengthRatio)) {
                   parts.push('min/max ' + progress.edgeLengthRatio.toFixed(3));
@@ -3003,7 +2972,7 @@
     }
 
     function showDrawingMetricPlot(targetId) {
-      var ids = ['stats-angle-plot-wrap', 'stats-face-plot-wrap', 'stats-edge-plot-wrap'];
+      var ids = ['stats-angle-plot-wrap', 'stats-face-plot-wrap'];
       var $target = global.$('#' + targetId);
       var targetIsVisible = $target.length && !$target.hasClass('is-hidden');
 

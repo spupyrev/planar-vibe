@@ -1,19 +1,6 @@
 (function (global) {
   'use strict';
 
-  function normalizeDistribution(rawValues) {
-    var total = 0;
-    for (var i = 0; i < rawValues.length; i += 1) {
-      total += rawValues[i];
-    }
-    if (!(total > 0)) {
-      return null;
-    }
-    var normalized = rawValues.map(function (v) { return v / total; });
-    normalized.sort(function (a, b) { return a - b; });
-    return normalized;
-  }
-
   function uniformIdealDistribution(n) {
     var ideal = [];
     if (!(n > 0)) {
@@ -63,24 +50,6 @@
     var normalized = Math.sqrt(sumSq / maxSq);
     var quality = 1 - normalized;
     return Math.max(0, Math.min(1, quality));
-  }
-
-  function buildUniformDistributionResult(rawValues, noDataReason, degenerateReason) {
-    if (!rawValues || rawValues.length === 0) {
-      return { ok: false, reason: noDataReason };
-    }
-    var normalized = normalizeDistribution(rawValues);
-    if (!normalized) {
-      return { ok: false, reason: degenerateReason };
-    }
-    var idealValues = uniformIdealDistribution(normalized.length);
-    return {
-      ok: true,
-      values: normalized,
-      ideal: 1 / normalized.length,
-      idealValues: idealValues,
-      quality: computeUniformityScore(normalized, idealValues)
-    };
   }
 
   function buildWeightedDistributionResult(rawValues, rawIdealWeights, noDataReason, degenerateReason) {
@@ -339,7 +308,7 @@
         continue;
       }
       var a = global.GeometryUtils.polygonAreaAbs(face, posById);
-      if (a > 1e-12) {
+      if (a > 0) {
         areas.push(a);
         idealWeights.push(Math.max(1, face.length - 2));
       }
@@ -351,6 +320,69 @@
     }
     result.faceCount = result.values.length;
     return result;
+  }
+
+  function isConvexFace(face, posById, eps) {
+    if (!face || face.length < 3) {
+      return false;
+    }
+    var sign = 0;
+    for (var i = 0; i < face.length; i += 1) {
+      var prev = posById[String(face[(i - 1 + face.length) % face.length])];
+      var cur = posById[String(face[i])];
+      var next = posById[String(face[(i + 1) % face.length])];
+      if (!prev || !cur || !next ||
+          !Number.isFinite(prev.x) || !Number.isFinite(prev.y) ||
+          !Number.isFinite(cur.x) || !Number.isFinite(cur.y) ||
+          !Number.isFinite(next.x) || !Number.isFinite(next.y)) {
+        return false;
+      }
+      var turn = global.GeometryUtils.triangleArea2(prev, cur, next);
+      if (Math.abs(turn) <= eps) {
+        return false;
+      }
+      var currentSign = turn > 0 ? 1 : -1;
+      if (sign === 0) {
+        sign = currentSign;
+      } else if (currentSign !== sign) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function computeConvexityScore(nodeIds, edgePairs, posById, embedding) {
+    var emb = embedding;
+    if (!emb || !emb.ok) {
+      return { ok: false, reason: 'Planar embedding required' };
+    }
+    if (!emb.faces || emb.faces.length === 0) {
+      return { ok: false, reason: 'No faces available' };
+    }
+
+    var outerFaceIdx = global.PlanarGraphUtils.findOuterFaceIndex(emb.faces, emb.outerFace || []);
+    var eps = Math.max(1e-12, global.GeometryUtils.computeDrawingDiameter(nodeIds || [], posById || {}) * 1e-9);
+    var faceCount = 0;
+    var convexFaceCount = 0;
+    for (var i = 0; i < emb.faces.length; i += 1) {
+      if (i === outerFaceIdx) {
+        continue;
+      }
+      faceCount += 1;
+      if (isConvexFace(emb.faces[i], posById, eps)) {
+        convexFaceCount += 1;
+      }
+    }
+
+    if (faceCount === 0) {
+      return { ok: false, reason: 'No bounded faces available' };
+    }
+    return {
+      ok: true,
+      score: convexFaceCount / faceCount,
+      convexFaceCount: convexFaceCount,
+      faceCount: faceCount
+    };
   }
 
   function computeUniformFaceAreaScoreFromCy(cy, edgePairs, embedding) {
@@ -366,30 +398,6 @@
       return [String(e.source().id()), String(e.target().id())];
     });
     return computeUniformFaceAreaScore(nodeIds, pairs, posById, embedding);
-  }
-
-  function computeUniformEdgeLengthScore(edgePairs, posById) {
-    if (!edgePairs || edgePairs.length === 0) {
-      return { ok: false, reason: 'No edges' };
-    }
-    var lengths = [];
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      var pu = posById[u];
-      var pv = posById[v];
-      if (!pu || !pv || !Number.isFinite(pu.x) || !Number.isFinite(pu.y) || !Number.isFinite(pv.x) || !Number.isFinite(pv.y)) {
-        return { ok: false, reason: 'Metrics unavailable' };
-      }
-      var dx = pu.x - pv.x;
-      var dy = pu.y - pv.y;
-      var len = Math.sqrt(dx * dx + dy * dy);
-      if (!(len > 1e-12)) {
-        continue;
-      }
-      lengths.push(len);
-    }
-    return buildUniformDistributionResult(lengths, 'No edge lengths available', 'No edge lengths available');
   }
 
   function computeEdgeLengthRatio(edgePairs, posById) {
@@ -409,7 +417,7 @@
       var dx = pu.x - pv.x;
       var dy = pu.y - pv.y;
       var len = Math.sqrt(dx * dx + dy * dy);
-      if (!(len > 1e-12)) {
+      if (!(len > 0)) {
         continue;
       }
       if (len < minLen) {
@@ -430,36 +438,181 @@
     };
   }
 
-  function wrapAngleToPi(angle) {
-    var wrapped = Number(angle) || 0;
-    var PI = Math.PI;
-    var TWO_PI = 2 * PI;
-    wrapped = wrapped % TWO_PI;
-    if (wrapped <= -PI) {
-      wrapped += TWO_PI;
-    } else if (wrapped > PI) {
-      wrapped -= TWO_PI;
+  function collectPositionedPoints(nodeIds, posById) {
+    var points = [];
+    if (!nodeIds || nodeIds.length === 0) {
+      return points;
     }
-    return wrapped;
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      var p = posById[id];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
+      points.push({ id: id, x: p.x, y: p.y });
+    }
+    return points;
   }
 
-  function angleToNearestHorizontal(angle) {
-    var wrapped = wrapAngleToPi(angle);
-    var absAngle = Math.abs(wrapped);
-    return Math.min(absAngle, Math.abs(Math.PI - absAngle));
+  function computeAspectRatioScore(nodeIds, posById) {
+    var points = collectPositionedPoints(nodeIds, posById);
+    if (points.length === 0) {
+      return { ok: false, reason: 'No positioned nodes' };
+    }
+
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (var i = 0; i < points.length; i += 1) {
+      if (points[i].x < minX) minX = points[i].x;
+      if (points[i].y < minY) minY = points[i].y;
+      if (points[i].x > maxX) maxX = points[i].x;
+      if (points[i].y > maxY) maxY = points[i].y;
+    }
+
+    var width = maxX - minX;
+    var height = maxY - minY;
+    var minSide = Math.min(width, height);
+    var maxSide = Math.max(width, height);
+    return {
+      ok: true,
+      score: !(minSide > 0) ? 1 : (minSide / maxSide),
+      width: width,
+      height: height,
+      usedNodeCount: points.length
+    };
   }
 
-  function computeGenericEdgeHorizontalityScore(edgePairs, posById, options) {
+  function computeNodeUniformityScore(nodeIds, posById) {
+    var points = collectPositionedPoints(nodeIds, posById);
+    var n = points.length;
+    if (n === 0) {
+      return { ok: false, reason: 'No positioned nodes' };
+    }
+
+    var minX = Infinity;
+    var minY = Infinity;
+    var maxX = -Infinity;
+    var maxY = -Infinity;
+    for (var i = 0; i < points.length; i += 1) {
+      if (points[i].x < minX) minX = points[i].x;
+      if (points[i].y < minY) minY = points[i].y;
+      if (points[i].x > maxX) maxX = points[i].x;
+      if (points[i].y > maxY) maxY = points[i].y;
+    }
+
+    var width = maxX - minX;
+    var height = maxY - minY;
+    var rows = Math.max(1, Math.floor(Math.sqrt(n)));
+    var cols = Math.max(1, Math.ceil(n / rows));
+    var cellCount = rows * cols;
+    var counts = [];
+    for (i = 0; i < cellCount; i += 1) {
+      counts.push(0);
+    }
+
+    for (i = 0; i < points.length; i += 1) {
+      var col = 0;
+      var row = 0;
+      if (width > 0) {
+        col = Math.floor(((points[i].x - minX) / width) * cols);
+        if (col < 0) col = 0;
+        if (col >= cols) col = cols - 1;
+      }
+      if (height > 0) {
+        row = Math.floor(((points[i].y - minY) / height) * rows);
+        if (row < 0) row = 0;
+        if (row >= rows) row = rows - 1;
+      }
+      counts[row * cols + col] += 1;
+    }
+
+    var mu = n / cellCount;
+    var deviation = 0;
+    for (i = 0; i < counts.length; i += 1) {
+      deviation += Math.abs(counts[i] - mu);
+    }
+    var maxDeviation = (2 * n * (cellCount - 1)) / cellCount;
+
+    return {
+      ok: true,
+      score: !(maxDeviation > 0) ? 1 : Math.max(0, Math.min(1, 1 - (deviation / maxDeviation))),
+      rows: rows,
+      cols: cols,
+      cellCount: cellCount,
+      deviation: deviation,
+      maxDeviation: maxDeviation,
+      counts: counts
+    };
+  }
+
+  function computeEdgeLengthDeviationScore(edgePairs, posById) {
     if (!edgePairs || edgePairs.length === 0) {
       return { ok: false, reason: 'No edges' };
     }
-    var opts = options || {};
-    var useLengthWeights = opts.useLengthWeights === true;
-    var angleOffset = Number.isFinite(opts.angleOffset) ? opts.angleOffset : 0;
-    var totalWeight = 0;
-    var weightedPenalty = 0;
+
+    var lengths = [];
+    var i;
+    for (i = 0; i < edgePairs.length; i += 1) {
+      var u = String(edgePairs[i][0]);
+      var v = String(edgePairs[i][1]);
+      var pu = posById[u];
+      var pv = posById[v];
+      if (!pu || !pv || !Number.isFinite(pu.x) || !Number.isFinite(pu.y) || !Number.isFinite(pv.x) || !Number.isFinite(pv.y)) {
+        return { ok: false, reason: 'Metrics unavailable' };
+      }
+      var dx = pu.x - pv.x;
+      var dy = pu.y - pv.y;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0) {
+        lengths.push(len);
+      }
+    }
+
+    if (lengths.length === 0) {
+      return { ok: false, reason: 'No edge lengths available' };
+    }
+
+    var meanLength = 0;
+    for (i = 0; i < lengths.length; i += 1) {
+      meanLength += lengths[i];
+    }
+    meanLength /= lengths.length;
+
+    var avgRelativeDeviation = 0;
+    for (i = 0; i < lengths.length; i += 1) {
+      avgRelativeDeviation += Math.abs(lengths[i] - meanLength) / meanLength;
+    }
+    avgRelativeDeviation /= lengths.length;
+
+    return {
+      ok: true,
+      score: 1 / (1 + avgRelativeDeviation),
+      meanLength: meanLength,
+      avgRelativeDeviation: avgRelativeDeviation,
+      usedEdgeCount: lengths.length
+    };
+  }
+
+  function angleToNearestOrthogonal(angle) {
+    var halfPi = Math.PI / 2;
+    var wrapped = Number(angle) || 0;
+    wrapped = wrapped % halfPi;
+    if (wrapped < 0) {
+      wrapped += halfPi;
+    }
+    return Math.min(wrapped, halfPi - wrapped);
+  }
+
+  function computeEdgeOrthogonalityScore(edgePairs, posById) {
+    if (!edgePairs || edgePairs.length === 0) {
+      return { ok: false, reason: 'No edges' };
+    }
+
     var usedEdgeCount = 0;
-    var maxDeviation = Math.PI / 2;
+    var deviationSum = 0;
+    var maxDeviation = Math.PI / 4;
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
       var v = String(edgePairs[i][1]);
@@ -471,39 +624,24 @@
       var dx = pv.x - pu.x;
       var dy = pv.y - pu.y;
       var len = Math.sqrt(dx * dx + dy * dy);
-      if (!(len > 1e-12)) {
+      if (!(len > 0)) {
         continue;
       }
-      var deviation = angleToNearestHorizontal(Math.atan2(dy, dx) + angleOffset);
-      var normalizedDeviation = deviation / maxDeviation;
-      var weight = useLengthWeights ? len : 1;
-      totalWeight += weight;
-      weightedPenalty += weight * normalizedDeviation * normalizedDeviation;
+      deviationSum += angleToNearestOrthogonal(Math.atan2(dy, dx));
       usedEdgeCount += 1;
     }
-    if (!(totalWeight > 0) || usedEdgeCount === 0) {
+
+    if (usedEdgeCount === 0) {
       return { ok: false, reason: 'No edge lengths available' };
     }
-    var meanPenalty = weightedPenalty / totalWeight;
+
+    var meanDeviation = deviationSum / usedEdgeCount;
     return {
       ok: true,
-      score: Math.max(0, Math.min(1, 1 - meanPenalty)),
-      penalty: Math.max(0, meanPenalty),
-      weightedPenalty: weightedPenalty,
-      totalWeight: totalWeight,
-      usedEdgeCount: usedEdgeCount,
-      weighting: useLengthWeights ? 'length' : 'uniform'
+      score: Math.max(0, Math.min(1, 1 - (meanDeviation / maxDeviation))),
+      meanDeviation: meanDeviation,
+      usedEdgeCount: usedEdgeCount
     };
-  }
-
-  function computeUnweightedEdgeHorizontalityScore(edgePairs, posById, options) {
-    var opts = Object.assign({}, options || {}, { useLengthWeights: false });
-    return computeGenericEdgeHorizontalityScore(edgePairs, posById, opts);
-  }
-
-  function computeWeightedEdgeHorizontalityScore(edgePairs, posById, options) {
-    var opts = Object.assign({}, options || {}, { useLengthWeights: true });
-    return computeGenericEdgeHorizontalityScore(edgePairs, posById, opts);
   }
 
   function computeSpacingUniformityScore(nodeIds, posById, options) {
@@ -578,11 +716,11 @@
         var dist = Math.sqrt(dx * dx + dy * dy);
         if (dist < best) best = dist;
       }
-      if (Number.isFinite(best) && best > 1e-12) {
+      if (Number.isFinite(best) && best > 0) {
         nn.push(best);
       }
     }
-    if (nn.length < 2) {
+    if (nn.length < 1) {
       return { ok: false, reason: 'Not enough valid nearest-neighbor distances' };
     }
 
@@ -591,7 +729,7 @@
       sum += nn[i];
     }
     var mean = sum / nn.length;
-    if (!(mean > 1e-12)) {
+    if (!(mean > 0)) {
       return { ok: false, reason: 'Degenerate nearest-neighbor distances' };
     }
     var varSum = 0;
@@ -620,24 +758,18 @@
     return computeUniformityScore(values, ideal);
   }
 
-  function computeUniformAngleResolutionScore(graph, posById) {
+  function computeAngularResolutionScore(graph, posById) {
     var nodeIds = graph.nodeIds;
-    var edgePairs = graph.edgePairs;
+    var adjacency = graph.adjacency;
     if (!nodeIds || nodeIds.length === 0) {
       return { ok: false, reason: 'No nodes' };
     }
-    if (!edgePairs || edgePairs.length === 0) {
-      return { ok: false, reason: 'No edges' };
-    }
 
-    var adjacency = graph.adjacency;
-    var i;
-
-    var allValues = [];
-    var allIdealValues = [];
+    var vertexCount = 0;
+    var scoreSum = 0;
+    var ratios = [];
     var TWO_PI = 2 * Math.PI;
-
-    for (i = 0; i < nodeIds.length; i += 1) {
+    for (var i = 0; i < nodeIds.length; i += 1) {
       var id = String(nodeIds[i]);
       var neighbors = adjacency[id] || [];
       if (neighbors.length < 2) {
@@ -655,61 +787,43 @@
           return { ok: false, reason: 'Metrics unavailable' };
         }
         var a = Math.atan2(q.y - p.y, q.x - p.x);
-        if (a < 0) a += TWO_PI;
+        if (a < 0) {
+          a += TWO_PI;
+        }
         dirs.push(a);
       }
       dirs.sort(function (a, b) { return a - b; });
 
-      var gaps = [];
+      var minGap = Infinity;
       for (j = 0; j < dirs.length; j += 1) {
         var next = dirs[(j + 1) % dirs.length];
         var cur = dirs[j];
-        var g = next - cur;
-        if (g <= 0) g += TWO_PI;
-        gaps.push(g);
+        var gap = next - cur;
+        if (gap <= 0) {
+          gap += TWO_PI;
+        }
+        if (gap < minGap) {
+          minGap = gap;
+        }
       }
-
-      var considered = gaps.slice();
-
-      if (considered.length === 0) {
-        continue;
-      }
-      var localSum = 0;
-      for (j = 0; j < considered.length; j += 1) {
-        localSum += considered[j];
-      }
-      if (!(localSum > 0)) {
-        continue;
-      }
-      var localValues = considered.map(function (x) { return x / localSum; });
-      var idealAngle = 1 / localValues.length;
-      for (j = 0; j < localValues.length; j += 1) {
-        allValues.push(localValues[j]);
-        allIdealValues.push(idealAngle);
-      }
+      var idealGap = TWO_PI / dirs.length;
+      var ratio = minGap / idealGap;
+      scoreSum += ratio;
+      ratios.push(ratio);
+      vertexCount += 1;
     }
 
-    if (allValues.length === 0) {
+    if (vertexCount === 0) {
       return { ok: false, reason: 'No angle data' };
     }
-    var score = computeUniformityScore(allValues, allIdealValues);
-    var pairs = [];
-    for (i = 0; i < allValues.length; i += 1) {
-      pairs.push([allValues[i], allIdealValues[i]]);
-    }
-    pairs.sort(function (a, b) {
-      var ra = a[0] / Math.max(a[1], 1e-12);
-      var rb = b[0] / Math.max(b[1], 1e-12);
-      return ra - rb;
-    });
-    var valuesSorted = pairs.map(function (p) { return p[0]; });
-    var idealSorted = pairs.map(function (p) { return p[1]; });
+
+    ratios.sort(function (a, b) { return a - b; });
+
     return {
       ok: true,
-      score: score === null ? null : Math.max(0, Math.min(1, score)),
-      values: valuesSorted,
-      idealValues: idealSorted,
-      angleCount: allValues.length
+      score: Math.max(0, Math.min(1, scoreSum / vertexCount)),
+      usedNodeCount: vertexCount,
+      values: ratios
     };
   }
 
@@ -751,15 +865,17 @@
   }
 
   global.PlanarVibeMetrics = {
+    computeAspectRatioScore: computeAspectRatioScore,
+    computeNodeUniformityScore: computeNodeUniformityScore,
+    computeAngularResolutionScore: computeAngularResolutionScore,
     computeUniformFaceAreaScore: computeUniformFaceAreaScore,
     computeUniformFaceAreaScoreFromCy: computeUniformFaceAreaScoreFromCy,
-    computeUniformEdgeLengthScore: computeUniformEdgeLengthScore,
+    computeConvexityScore: computeConvexityScore,
+    computeEdgeLengthDeviationScore: computeEdgeLengthDeviationScore,
     computeEdgeLengthRatio: computeEdgeLengthRatio,
-    computeUnweightedEdgeHorizontalityScore: computeUnweightedEdgeHorizontalityScore,
-    computeWeightedEdgeHorizontalityScore: computeWeightedEdgeHorizontalityScore,
+    computeEdgeOrthogonalityScore: computeEdgeOrthogonalityScore,
     computeAxisAlignmentScore: computeAxisAlignmentScore,
     computeSpacingUniformityScore: computeSpacingUniformityScore,
-    computeUniformAngleResolutionScore: computeUniformAngleResolutionScore,
     computeUniformityScore: computeUniformityScore,
     computeDistributionQuality: computeDistributionQuality,
     isBipartiteGraph: isBipartiteGraph

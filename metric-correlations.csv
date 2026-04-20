@@ -1,0 +1,79 @@
+metricA,labelA,metricB,labelB,n,pearson,spearman
+edgeRatio,Edge-Length Ratio,nodeResolution,Node Resolution,305,0.740182,0.959820
+angleUniformity,Angle Uniformity,angularResolution,Angular Resolution,305,0.946744,0.920400
+edgeRatio,Edge-Length Ratio,nodeUniformity,Node Uniformity,305,0.542910,0.829081
+edgeLengthDeviation,Edge-Length Deviation,nodeUniformity,Node Uniformity,305,0.747152,0.820381
+nodeResolution,Node Resolution,nodeUniformity,Node Uniformity,305,0.698506,0.800151
+edgeLengthDeviation,Edge-Length Deviation,edgeRatio,Edge-Length Ratio,305,0.870933,0.793713
+edgeRatio,Edge-Length Ratio,spacing,Spacing-Uniformity,305,0.608459,0.788183
+spacing,Spacing-Uniformity,nodeResolution,Node Resolution,305,0.694711,0.766118
+edgeLengthDeviation,Edge-Length Deviation,nodeResolution,Node Resolution,305,0.723449,0.735355
+spacing,Spacing-Uniformity,nodeUniformity,Node Uniformity,305,0.750075,0.723178
+face,Face Areas,spacing,Spacing-Uniformity,305,0.703059,0.711706
+edgeUniformity,Edge Length Uniformity,edgeLengthDeviation,Edge-Length Deviation,305,0.675593,0.662300
+angularResolution,Angular Resolution,edgeRatio,Edge-Length Ratio,305,0.704570,0.652294
+angularResolution,Angular Resolution,nodeResolution,Node Resolution,305,0.640519,0.639114
+face,Face Areas,nodeUniformity,Node Uniformity,305,0.677328,0.635416
+angleUniformity,Angle Uniformity,spacing,Spacing-Uniformity,305,0.661257,0.628890
+edgeLengthDeviation,Edge-Length Deviation,spacing,Spacing-Uniformity,305,0.657948,0.615367
+angleUniformity,Angle Uniformity,edgeRatio,Edge-Length Ratio,305,0.704526,0.604842
+angularResolution,Angular Resolution,spacing,Spacing-Uniformity,305,0.622119,0.598252
+face,Face Areas,edgeRatio,Edge-Length Ratio,305,0.392021,0.591247
+angularResolution,Angular Resolution,nodeUniformity,Node Uniformity,305,0.561738,0.566448
+face,Face Areas,edgeUniformity,Edge Length Uniformity,305,0.422586,0.565294
+face,Face Areas,nodeResolution,Node Resolution,305,0.432799,0.561534
+angleUniformity,Angle Uniformity,nodeResolution,Node Resolution,305,0.597338,0.560559
+angleUniformity,Angle Uniformity,nodeUniformity,Node Uniformity,305,0.559147,0.549987
+angularResolution,Angular Resolution,face,Face Areas,305,0.540530,0.529282
+face,Face Areas,edgeLengthDeviation,Edge-Length Deviation,305,0.491102,0.527708
+angleUniformity,Angle Uniformity,face,Face Areas,305,0.539735,0.523377
+edgeUniformity,Edge Length Uniformity,nodeUniformity,Node Uniformity,305,0.445245,0.489648
+edgeUniformity,Edge Length Uniformity,spacing,Spacing-Uniformity,305,0.408155,0.457358
+edgeUniformity,Edge Length Uniformity,aspectRatio,Aspect Ratio,305,0.400268,0.406781
+edgeLengthDeviation,Edge-Length Deviation,aspectRatio,Aspect Ratio,305,0.308930,0.398901
+alignment,Axis Alignment,nodeUniformity,Node Uniformity,305,-0.426387,-0.395250
+edgeUniformity,Edge Length Uniformity,edgeRatio,Edge-Length Ratio,305,0.508522,0.394117
+edgeLengthDeviation,Edge-Length Deviation,alignment,Axis Alignment,305,-0.396329,-0.390617
+angularResolution,Angular Resolution,edgeLengthDeviation,Edge-Length Deviation,305,0.578495,0.386018
+aspectRatio,Aspect Ratio,nodeUniformity,Node Uniformity,305,0.287890,0.344932
+alignment,Axis Alignment,nodeResolution,Node Resolution,305,-0.343873,-0.328295
+edgeRatio,Edge-Length Ratio,alignment,Axis Alignment,305,-0.241134,-0.318962
+angleUniformity,Angle Uniformity,edgeLengthDeviation,Edge-Length Deviation,305,0.553339,0.317538
+edgeRatio,Edge-Length Ratio,aspectRatio,Aspect Ratio,305,0.182503,0.279141
+edgeUniformity,Edge Length Uniformity,nodeResolution,Node Resolution,305,0.261652,0.270441
+edgeUniformity,Edge Length Uniformity,alignment,Axis Alignment,305,-0.316946,-0.267793
+spacing,Spacing-Uniformity,alignment,Axis Alignment,305,-0.212432,-0.243728
+face,Face Areas,alignment,Axis Alignment,305,-0.129524,-0.238900
+aspectRatio,Aspect Ratio,nodeResolution,Node Resolution,305,0.217486,0.236331
+face,Face Areas,aspectRatio,Aspect Ratio,305,0.143579,0.233332
+edgeHorizontality,Edge Horizontality,aspectRatio,Aspect Ratio,305,-0.208831,-0.213934
+spacing,Spacing-Uniformity,aspectRatio,Aspect Ratio,305,0.127720,0.196486
+edgeHorizontality,Edge Horizontality,nodeUniformity,Node Uniformity,305,-0.146921,-0.191797
+edgeLengthDeviation,Edge-Length Deviation,edgeHorizontality,Edge Horizontality,305,-0.132245,-0.190171
+alignment,Axis Alignment,aspectRatio,Aspect Ratio,305,-0.373044,-0.182298
+angleUniformity,Angle Uniformity,edgeUniformity,Edge Length Uniformity,305,0.203534,0.181361
+edgeUniformity,Edge Length Uniformity,edgeOrthogonality,Edge Orthogonality,305,-0.070105,-0.164335
+edgeUniformity,Edge Length Uniformity,edgeHorizontality,Edge Horizontality,305,-0.173957,-0.149653
+angleUniformity,Angle Uniformity,aspectRatio,Aspect Ratio,305,0.042522,0.143098
+angularResolution,Angular Resolution,edgeUniformity,Edge Length Uniformity,305,0.164528,0.129691
+edgeHorizontality,Edge Horizontality,nodeResolution,Node Resolution,305,-0.105513,-0.125879
+angularResolution,Angular Resolution,edgeHorizontality,Edge Horizontality,305,-0.074184,-0.122907
+edgeRatio,Edge-Length Ratio,edgeHorizontality,Edge Horizontality,305,-0.054735,-0.122655
+angularResolution,Angular Resolution,aspectRatio,Aspect Ratio,305,0.036572,0.119613
+angleUniformity,Angle Uniformity,edgeHorizontality,Edge Horizontality,305,-0.072872,-0.110600
+edgeLengthDeviation,Edge-Length Deviation,edgeOrthogonality,Edge Orthogonality,305,-0.083434,-0.087895
+spacing,Spacing-Uniformity,edgeHorizontality,Edge Horizontality,305,-0.089404,-0.067888
+face,Face Areas,edgeHorizontality,Edge Horizontality,305,-0.096638,-0.053422
+edgeOrthogonality,Edge Orthogonality,nodeUniformity,Node Uniformity,305,0.068783,0.043585
+angularResolution,Angular Resolution,edgeOrthogonality,Edge Orthogonality,305,0.025389,0.042916
+edgeOrthogonality,Edge Orthogonality,alignment,Axis Alignment,305,-0.030414,-0.042880
+angularResolution,Angular Resolution,alignment,Axis Alignment,305,-0.027950,-0.034281
+edgeHorizontality,Edge Horizontality,alignment,Axis Alignment,305,0.013543,0.032203
+angleUniformity,Angle Uniformity,edgeOrthogonality,Edge Orthogonality,305,0.031156,0.028991
+edgeOrthogonality,Edge Orthogonality,aspectRatio,Aspect Ratio,305,-0.080956,-0.022465
+edgeHorizontality,Edge Horizontality,edgeOrthogonality,Edge Orthogonality,305,0.026179,-0.022245
+spacing,Spacing-Uniformity,edgeOrthogonality,Edge Orthogonality,305,0.100035,0.016888
+angleUniformity,Angle Uniformity,alignment,Axis Alignment,305,-0.026809,0.015626
+face,Face Areas,edgeOrthogonality,Edge Orthogonality,305,0.101519,0.012230
+edgeRatio,Edge-Length Ratio,edgeOrthogonality,Edge Orthogonality,305,-0.125896,0.005848
+edgeOrthogonality,Edge Orthogonality,nodeResolution,Node Resolution,305,0.005448,0.004683

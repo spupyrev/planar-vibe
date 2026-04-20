@@ -169,23 +169,6 @@ test('computeUniformityScore: custom ideal accepts non-uniform target', () => {
   assert.ok(different >= 0);
 });
 
-test('computeUniformEdgeLengthScore normalizes and sorts edge lengths', () => {
-  const edges = [['1', '2'], ['2', '3']];
-  const posById = {
-    '1': { x: 0, y: 0 },
-    '2': { x: 1, y: 0 },
-    '3': { x: 3, y: 0 }
-  };
-
-  const result = Metrics.computeUniformEdgeLengthScore(edges, posById);
-  assert.equal(result.ok, true);
-  assert.equal(result.values.length, 2);
-  assert.ok(Math.abs(result.values[0] - 1 / 3) < 1e-9);
-  assert.ok(Math.abs(result.values[1] - 2 / 3) < 1e-9);
-  assert.equal(result.ideal, 0.5);
-  assert.ok(Math.abs(result.quality - Metrics.computeDistributionQuality(result.values)) < 1e-12);
-});
-
 test('computeEdgeLengthRatio returns shortest/longest ratio', () => {
   const edges = [['1', '2'], ['2', '3']];
   const posById = {
@@ -208,6 +191,61 @@ test('computeEdgeLengthRatio fails with no valid lengths', () => {
   };
   const result = Metrics.computeEdgeLengthRatio(edges, posById);
   assert.equal(result.ok, false);
+});
+
+test('computeAspectRatioScore returns width-height ratio of the bounding box', () => {
+  const nodeIds = ['1', '2', '3', '4'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 2, y: 1 },
+    '4': { x: 0, y: 1 }
+  };
+  const result = Metrics.computeAspectRatioScore(nodeIds, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.width - 2) < 1e-12);
+  assert.ok(Math.abs(result.height - 1) < 1e-12);
+  assert.ok(Math.abs(result.score - 0.5) < 1e-12);
+});
+
+test('computeAspectRatioScore follows metrics.md on degenerate bounding boxes', () => {
+  const nodeIds = ['1', '2', '3'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 0, y: 1 },
+    '3': { x: 0, y: 5 }
+  };
+  const result = Metrics.computeAspectRatioScore(nodeIds, posById);
+  assert.equal(result.ok, true);
+  assert.equal(result.score, 1);
+});
+
+test('computeNodeUniformityScore is 1 when nodes fill the grid evenly', () => {
+  const nodeIds = ['1', '2', '3', '4'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 0, y: 2 },
+    '4': { x: 2, y: 2 }
+  };
+  const result = Metrics.computeNodeUniformityScore(nodeIds, posById);
+  assert.equal(result.ok, true);
+  assert.equal(result.rows, 2);
+  assert.equal(result.cols, 2);
+  assert.equal(result.score, 1);
+});
+
+test('computeNodeUniformityScore matches the metrics.md worst-case normalization', () => {
+  const nodeIds = ['1', '2', '3', '4'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 0, y: 0 },
+    '3': { x: 0, y: 0 },
+    '4': { x: 0, y: 0 }
+  };
+  const result = Metrics.computeNodeUniformityScore(nodeIds, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.score - 0) < 1e-12);
 });
 
 test('computeUniformFaceAreaScore uses bounded-face weights from the embedding', () => {
@@ -294,6 +332,67 @@ test('computeUniformFaceAreaScore requires embedding', () => {
   assert.equal(result.reason, 'Planar embedding required');
 });
 
+test('computeConvexityScore is 1 when every bounded face is convex', () => {
+  const nodeIds = ['o1', 'o2', 'o3', 'a', 'b', 'c'];
+  const posById = {
+    o1: { x: -10, y: -10 },
+    o2: { x: 10, y: -10 },
+    o3: { x: 0, y: 10 },
+    a: { x: 0, y: 0 },
+    b: { x: 2, y: 0 },
+    c: { x: 1, y: 2 }
+  };
+  const embedding = {
+    ok: true,
+    faces: [
+      ['o1', 'o2', 'o3'],
+      ['a', 'b', 'c']
+    ],
+    outerFace: ['o1', 'o2', 'o3']
+  };
+  const result = Metrics.computeConvexityScore(nodeIds, [], posById, embedding);
+  assert.equal(result.ok, true);
+  assert.equal(result.faceCount, 1);
+  assert.equal(result.convexFaceCount, 1);
+  assert.equal(result.score, 1);
+});
+
+test('computeConvexityScore detects a non-convex bounded face', () => {
+  const nodeIds = ['o1', 'o2', 'o3', '1', '2', '3', '4'];
+  const posById = {
+    o1: { x: -10, y: -10 },
+    o2: { x: 10, y: -10 },
+    o3: { x: 0, y: 10 },
+    '1': { x: 0, y: 0 },
+    '2': { x: 2, y: 0 },
+    '3': { x: 1, y: 0.5 },
+    '4': { x: 0, y: 2 }
+  };
+  const embedding = {
+    ok: true,
+    faces: [
+      ['o1', 'o2', 'o3'],
+      ['1', '2', '3', '4']
+    ],
+    outerFace: ['o1', 'o2', 'o3']
+  };
+  const result = Metrics.computeConvexityScore(nodeIds, [], posById, embedding);
+  assert.equal(result.ok, true);
+  assert.equal(result.faceCount, 1);
+  assert.equal(result.convexFaceCount, 0);
+  assert.equal(result.score, 0);
+});
+
+test('computeConvexityScore requires embedding', () => {
+  const result = Metrics.computeConvexityScore(['1', '2', '3'], [], {
+    '1': { x: 0, y: 0 },
+    '2': { x: 1, y: 0 },
+    '3': { x: 0, y: 1 }
+  }, null);
+  assert.equal(result.ok, false);
+  assert.equal(result.reason, 'Planar embedding required');
+});
+
 test('hasCrossingsFromPositions detects crossing and non-crossing drawings', () => {
   const crossingEdges = [['1', '2'], ['3', '4']];
   const crossingPos = {
@@ -327,7 +426,7 @@ test('isBipartiteGraph works for even cycle and odd cycle', () => {
   assert.equal(Metrics.isBipartiteGraph(oddGraph), false);
 });
 
-test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K4', () => {
+test('computeAngularResolutionScore is better on symmetric K4 than skewed K4', () => {
   const graph = GraphUtils.createGraph(
     ['1', '2', '3', '4'],
     [
@@ -350,8 +449,8 @@ test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K
     '4': { x: 0.2, y: 0.1 }
   };
 
-  const symmetric = Metrics.computeUniformAngleResolutionScore(graph, posById);
-  const skewed = Metrics.computeUniformAngleResolutionScore(graph, skewedPosById);
+  const symmetric = Metrics.computeAngularResolutionScore(graph, posById);
+  const skewed = Metrics.computeAngularResolutionScore(graph, skewedPosById);
 
   assert.equal(symmetric.ok, true);
   assert.equal(skewed.ok, true);
@@ -360,7 +459,40 @@ test('computeUniformAngleResolutionScore is better on symmetric K4 than skewed K
   assert.ok(symmetric.score > skewed.score + 0.01);
 });
 
-test('computeUniformAngleResolutionScore does not require extracting a plane embedding', () => {
+test('computeAngularResolutionScore is 1 when each eligible vertex reaches its ideal minimum angle', () => {
+  const graph = GraphUtils.createGraph(
+    ['c', 'a', 'b', 'd'],
+    [['c', 'a'], ['c', 'b'], ['c', 'd']]
+  );
+  const sqrt3 = Math.sqrt(3);
+  const posById = {
+    c: { x: 0, y: 0 },
+    a: { x: 1, y: 0 },
+    b: { x: -0.5, y: sqrt3 / 2 },
+    d: { x: -0.5, y: -sqrt3 / 2 }
+  };
+  const result = Metrics.computeAngularResolutionScore(graph, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.score - 1) < 1e-12);
+});
+
+test('computeAngularResolutionScore decreases when the minimum incident angle shrinks', () => {
+  const graph = GraphUtils.createGraph(
+    ['c', 'a', 'b', 'd'],
+    [['c', 'a'], ['c', 'b'], ['c', 'd']]
+  );
+  const posById = {
+    c: { x: 0, y: 0 },
+    a: { x: 1, y: 0 },
+    b: { x: 0.99, y: 0.1 },
+    d: { x: -1, y: 0 }
+  };
+  const result = Metrics.computeAngularResolutionScore(graph, posById);
+  assert.equal(result.ok, true);
+  assert.ok(result.score < 0.1);
+});
+
+test('computeAngularResolutionScore does not require extracting a plane embedding', () => {
   const graph = GraphUtils.createGraph(
     ['1', '2', '3', '4'],
     [
@@ -377,9 +509,10 @@ test('computeUniformAngleResolutionScore does not require extracting a plane emb
     '4': { x: 1, y: 0 }
   };
 
-  const result = Metrics.computeUniformAngleResolutionScore(graph, posById);
+  const result = Metrics.computeAngularResolutionScore(graph, posById);
   assert.equal(result.ok, true);
-  assert.equal(result.angleCount, 8);
+  assert.equal(result.usedNodeCount, 4);
+  assert.equal(result.values.length, 4);
   assert.equal(result.reason, undefined);
 });
 
@@ -424,81 +557,69 @@ test('computeSpacingUniformityScore returns no-data for insufficient valid dista
   assert.equal(result.reason, 'Not enough valid nearest-neighbor distances');
 });
 
-test('computeUnweightedEdgeHorizontalityScore is 1 when all edges are horizontal', () => {
+test('computeSpacingUniformityScore accepts a single positive nearest-neighbor distance', () => {
+  const nodeIds = ['1', '2'];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 3, y: 4 }
+  };
+  const result = Metrics.computeSpacingUniformityScore(nodeIds, posById);
+  assert.equal(result.ok, true);
+  assert.equal(result.usedNodeCount, 2);
+  assert.equal(result.meanNN, 5);
+  assert.equal(result.stdNN, 0);
+  assert.equal(result.cv, 0);
+  assert.equal(result.score, 1);
+});
+
+test('computeEdgeLengthDeviationScore is 1 for equal edge lengths', () => {
   const edgePairs = [['1', '2'], ['2', '3']];
   const posById = {
     '1': { x: 0, y: 0 },
-    '2': { x: 2, y: 0 },
-    '3': { x: 5, y: 0 }
+    '2': { x: 1, y: 0 },
+    '3': { x: 2, y: 0 }
   };
-  const result = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, posById);
+  const result = Metrics.computeEdgeLengthDeviationScore(edgePairs, posById);
   assert.equal(result.ok, true);
   assert.ok(Math.abs(result.score - 1) < 1e-12);
-  assert.ok(Math.abs(result.penalty) < 1e-12);
 });
 
-test('computeUnweightedEdgeHorizontalityScore prefers an equilateral triangle with one side horizontal', () => {
-  const sqrt3 = Math.sqrt(3);
-  const edgePairs = [['1', '2'], ['2', '3'], ['3', '1']];
-  const flatPosById = {
-    '1': { x: 0, y: 0 },
-    '2': { x: 2, y: 0 },
-    '3': { x: 1, y: sqrt3 }
-  };
-  const rotatedPosById = GeometryUtils.rotatePositionMap(flatPosById, { x: 1, y: sqrt3 / 3 }, Math.PI / 6);
-
-  const flat = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, flatPosById);
-  const rotated = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, rotatedPosById);
-
-  assert.equal(flat.ok, true);
-  assert.equal(rotated.ok, true);
-  assert.ok(flat.score > rotated.score + 1e-6);
-});
-
-test('computeWeightedEdgeHorizontalityScore weights longer edges more strongly', () => {
-  const edgePairs = [['1', '2'], ['3', '4']];
-  const mostlyFlat = {
-    '1': { x: 0, y: 0 },
-    '2': { x: 10, y: 0 },
-    '3': { x: 0, y: 1 },
-    '4': { x: 1, y: 2 }
-  };
-  const mostlySteep = {
-    '1': { x: 0, y: 0 },
-    '2': { x: 0, y: 10 },
-    '3': { x: 0, y: 1 },
-    '4': { x: 1, y: 1 }
-  };
-
-  const flat = Metrics.computeWeightedEdgeHorizontalityScore(edgePairs, mostlyFlat);
-  const steep = Metrics.computeWeightedEdgeHorizontalityScore(edgePairs, mostlySteep);
-
-  assert.equal(flat.ok, true);
-  assert.equal(steep.ok, true);
-  assert.ok(flat.score > steep.score + 0.4);
-});
-
-test('computeUnweightedEdgeHorizontalityScore ignores edge stretching across drawings', () => {
-  const edgePairs = [['1', '2'], ['3', '4']];
-  const base = {
+test('computeEdgeLengthDeviationScore matches the metrics.md formula', () => {
+  const edgePairs = [['1', '2'], ['2', '3']];
+  const posById = {
     '1': { x: 0, y: 0 },
     '2': { x: 1, y: 0 },
-    '3': { x: 0, y: 1 },
-    '4': { x: 1, y: 2 }
+    '3': { x: 3, y: 0 }
   };
-  const stretched = {
+  const result = Metrics.computeEdgeLengthDeviationScore(edgePairs, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.meanLength - 1.5) < 1e-12);
+  assert.ok(Math.abs(result.avgRelativeDeviation - (1 / 3)) < 1e-12);
+  assert.ok(Math.abs(result.score - 0.75) < 1e-12);
+});
+
+test('computeEdgeOrthogonalityScore is 1 for horizontal and vertical edges', () => {
+  const edgePairs = [['1', '2'], ['3', '4']];
+  const posById = {
     '1': { x: 0, y: 0 },
-    '2': { x: 100, y: 0 },
-    '3': { x: 0, y: 1 },
-    '4': { x: 1, y: 2 }
+    '2': { x: 2, y: 0 },
+    '3': { x: 0, y: 0 },
+    '4': { x: 0, y: 3 }
   };
+  const result = Metrics.computeEdgeOrthogonalityScore(edgePairs, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.score - 1) < 1e-12);
+});
 
-  const a = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, base);
-  const b = Metrics.computeUnweightedEdgeHorizontalityScore(edgePairs, stretched);
-
-  assert.equal(a.ok, true);
-  assert.equal(b.ok, true);
-  assert.ok(Math.abs(a.score - b.score) < 1e-12);
+test('computeEdgeOrthogonalityScore is 0 for a 45-degree edge', () => {
+  const edgePairs = [['1', '2']];
+  const posById = {
+    '1': { x: 0, y: 0 },
+    '2': { x: 1, y: 1 }
+  };
+  const result = Metrics.computeEdgeOrthogonalityScore(edgePairs, posById);
+  assert.equal(result.ok, true);
+  assert.ok(Math.abs(result.score - 0) < 1e-12);
 });
 
 test('computeOptimalWeightedEdgeRotation prefers an equilateral triangle with one side horizontal', () => {
