@@ -526,10 +526,7 @@
         }
       }
 
-      var hasCrossings = false;
-      if (Metrics) {
-        hasCrossings = hasPositionCrossings(posById, g.edgePairs);
-      }
+      var hasCrossings = hasPositionCrossings(posById, g.edgePairs);
       if (hasCrossings) {
         // Prefer reverting only vertices involved in crossing pairs.
         var rollbackResult = resolveCrossingsByVertexRollback(posById, prevPosById, g.edgePairs, fixedOuter);
@@ -542,7 +539,7 @@
             velocityById[vid].y *= fullRollbackVelocityDamp;
           }
           hasCrossings = false;
-        } else if (Metrics) {
+        } else {
           rollbackResult.rolledBack.forEach(function (rv) {
             if (velocityById[rv]) {
               velocityById[rv].x *= rollbackVelocityDamp;
@@ -559,8 +556,6 @@
             }
             hasCrossings = false;
           }
-        } else {
-          hasCrossings = false;
         }
       }
 

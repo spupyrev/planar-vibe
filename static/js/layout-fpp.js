@@ -8,6 +8,7 @@
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
+  var edgeKey = GraphUtils.edgeKey;
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
 
@@ -182,10 +183,6 @@
       return walk.concat(interior);
     }
 
-    function undirectedKey(u, v) {
-      return String(u) < String(v) ? String(u) + '::' + String(v) : String(v) + '::' + String(u);
-    }
-
     function computeChordCounts(outerCycle, remaining) {
       var outerSet = new Set(outerCycle);
       var boundaryEdgeSet = new Set();
@@ -193,7 +190,7 @@
       for (i = 0; i < outerCycle.length; i += 1) {
         var a = outerCycle[i];
         var b = outerCycle[(i + 1) % outerCycle.length];
-        boundaryEdgeSet.add(undirectedKey(a, b));
+        boundaryEdgeSet.add(edgeKey(String(a), String(b)));
       }
 
       var chords = {};
@@ -207,7 +204,7 @@
           if (!remaining.has(u) || !outerSet.has(u) || u === v) {
             continue;
           }
-          var ek = undirectedKey(v, u);
+          var ek = edgeKey(String(v), String(u));
           if (boundaryEdgeSet.has(ek) || seen.has(u)) {
             continue;
           }

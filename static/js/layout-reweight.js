@@ -18,6 +18,7 @@
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
   var createGraph = GraphUtils.createGraph;
   var edgeKey = GraphUtils.edgeKey;
+  var filterPositions = GeometryUtils.filterPositionMap;
   var findOuterFaceIndex = global.PlanarGraphUtils.findOuterFaceIndex;
   var polygonAreaAbs = GeometryUtils.polygonAreaAbs;
   var resolveFloatOption = GraphUtils.resolveFloatOption;
@@ -25,7 +26,7 @@
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
 
-  function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, maxIters, fixedOuterPos) {
+  function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, fixedOuterPos) {
     return Tutte.computeBarycentricPositions(createGraph(nodeIds, []), outerFace, {
       adjacency: adj,
       weights: weights,
@@ -82,7 +83,7 @@
     return next;
   }
 
-  function adjustWeights(edgePairs, outerFace, faces, faceAreas, desired, oldWeights, facePressure, e2f, boundedSet, pressureBeta, scaleMin, scaleMax, pressureScaleMin, pressureScaleMax) {
+  function adjustWeights(edgePairs, outerFace, faceAreas, desired, oldWeights, facePressure, e2f, boundedSet, pressureBeta, scaleMin, scaleMax, pressureScaleMin, pressureScaleMax) {
     var outerSet = new Set((outerFace || []).map(String));
     var newWeights = {};
     var sumW = 0;
@@ -215,8 +216,6 @@
     options.pressureStep = resolveFloatOption(options.pressureStep, 0.16, 0);
     options.pressureClamp = resolveFloatOption(options.pressureClamp, 1.20, 0.05);
     options.pressureBeta = resolveFloatOption(options.pressureBeta, 0.18, 0);
-    options.innerIters = resolveIntOption(options.innerIters, 3000, 1);
-    options.finalIters = resolveIntOption(options.finalIters, 3000, 1);
     options.pressureDeltaClamp = resolveFloatOption(options.pressureDeltaClamp, 0.75, 0.05);
     options.scaleMin = scaleMin;
     options.scaleMax = resolveFloatOption(options.scaleMax, 10.0, scaleMin);
@@ -348,7 +347,7 @@
 
     for (var iter = 0; iter < options.maxOuterIters; iter += 1) {
       var prevPos = currentPos;
-      var inner = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, options.innerIters, fixedOuterPos);
+      var inner = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, fixedOuterPos);
       totalInnerIters += inner.iters;
       performedOuterIters = iter + 1;
 
@@ -373,7 +372,6 @@
       weights = adjustWeights(
         augmented.graph.edgePairs,
         outer,
-        faces,
         faceAreas,
         desired,
         weights,
@@ -411,15 +409,17 @@
       }
     }
 
-    var finalLayout = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, options.finalIters, fixedOuterPos);
+    var finalLayout = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, fixedOuterPos);
     totalInnerIters += finalLayout.iters;
+    var finalPositions = filterPositions(finalLayout.positions, g.nodeIds);
 
     return buildLayoutResult({
       ok: true,
       graph: g,
       outerFace: outer,
       augmented: augmented,
-      positions: finalLayout.positions,
+      positions: finalPositions,
+      debugPositions: finalLayout.positions,
       iters: totalInnerIters,
       stopReason: stopReason,
       totalInnerIters: totalInnerIters,
@@ -463,7 +463,7 @@
           debugState: createAugmentationDebugState(
             result.graph,
             result.augmented,
-            result.positions
+            result.debugPositions || result.positions
           )
         };
       },

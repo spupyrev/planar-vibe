@@ -28,29 +28,41 @@
   var vecSub = GeometryUtils.vecSub;
 
   var TWO_PI = 2 * Math.PI;
-  var ANGLE_AREA_TOL = 1e-15;
-  var ANGLE_WEDGE_TOL = 1e-8;
-  var ANGLE_BARRIER_WEIGHT = 0.05;
-  var ANGLE_FACE_BARRIER_WEIGHT = 0.02;
-  var ANGLE_GRAD_TOL = 1e-5;
-  var ANGLE_STEP_TOL = 1e-10;
-  var ANGLE_LBFGS_MEMORY = 10;
-  var ANGLE_MAX_STEP_NORM = 2.0;
-  var ANGLE_LINE_SEARCH_C1 = 1e-4;
-  var ANGLE_LINE_SEARCH_TAU = 0.5;
-  var ANGLE_STABLE_ITER_LIMIT = 8;
-  var ANGLE_MOVEMENT_STOP_TOL = 1e-6;
-  var ANGLE_AVG_MOVEMENT_STOP_TOL = 2e-7;
-  var ANGLE_MAX_POSITION_STEP_RATIO = 0.01;
-  function fillAngleSettings(options) {
-    if (options.augmentationMethod === undefined) {
-      options.augmentationMethod = null;
-    }
-    options.augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
-      ? Object.assign({}, options.augmentationOptions)
-      : null;
-    options.maxIters = 200;
-    options.onIteration = typeof options.onIteration === 'function' ? options.onIteration : null;
+  var ANGLE_CONFIG = {
+    areaTol: 1e-15,
+    wedgeTol: 1e-8,
+    angleBarrierWeight: 0.05,
+    faceBarrierWeight: 0.02,
+    faceWeight: 0,
+    angleWeight: 0,
+    edgeBarrierWeight: 0,
+    edgeUniformWeight: 0,
+    minFaceAreaFactor: 0.2,
+    gradTol: 1e-5,
+    stepTol: 1e-10,
+    lbfgsMemory: 10,
+    maxStepNorm: 2.0,
+    lineSearchC1: 1e-4,
+    lineSearchTau: 0.5,
+    maxIters: 200,
+    minItersBeforeStop: 40,
+    stableIterLimit: 8,
+    movementStopTol: 1e-6,
+    avgMovementStopTol: 2e-7,
+    maxPositionStepRatio: 0.01
+  };
+
+  function normalizeAngleOptions(options) {
+    options = options || {};
+    return {
+      preparedSeed: options.preparedSeed,
+      currentPositions: options.currentPositions,
+      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
+      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
+        ? Object.assign({}, options.augmentationOptions)
+        : null,
+      onIteration: typeof options.onIteration === 'function' ? options.onIteration : null
+    };
   }
 
   function softmaxInto(q, start, length, out) {
@@ -274,21 +286,21 @@
       wedgeStart: wedgeStart,
       wedgeCount: wedgeCount,
       wedges: wedges,
-      areaTol: ANGLE_AREA_TOL,
-      angleTol: ANGLE_WEDGE_TOL,
-      angleBarrierWeight: ANGLE_BARRIER_WEIGHT,
-      faceBarrierWeight: ANGLE_FACE_BARRIER_WEIGHT,
-      edgeBarrierWeight: Number.isFinite(input.edgeBarrierWeight) ? Math.max(0, input.edgeBarrierWeight) : 0,
-      edgeUniformWeight: Number.isFinite(input.edgeUniformWeight) ? Math.max(0, input.edgeUniformWeight) : 0,
+      areaTol: input.areaTol,
+      angleTol: input.angleTol,
+      angleBarrierWeight: Math.max(0, input.angleBarrierWeight),
+      faceBarrierWeight: Math.max(0, input.faceBarrierWeight),
+      edgeBarrierWeight: Math.max(0, input.edgeBarrierWeight),
+      edgeUniformWeight: Math.max(0, input.edgeUniformWeight),
       edgeBarrierScale2: edgeScaleCount > 0 ? (edgeScaleSum / edgeScaleCount) : 1,
       initialMinEdgeLength2: Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0,
       initialAvgFaceArea: initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1,
       initialMinFaceArea: Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0,
       initialMinAngleRatio: Number.isFinite(initialMinAngleRatio) ? initialMinAngleRatio : 0,
       initialMaxAngleResidual: initialMaxAngleResidual,
-      minFaceArea: Number.isFinite(input.minFaceArea) ? Math.max(0, input.minFaceArea) : 0,
-      faceWeight: Number.isFinite(input.faceWeight) ? Math.max(0, input.faceWeight) : 0,
-      angleWeight: Number.isFinite(input.angleWeight) ? Math.max(0, input.angleWeight) : 0
+      minFaceArea: Math.max(0, input.minFaceArea),
+      faceWeight: Math.max(0, input.faceWeight),
+      angleWeight: Math.max(0, input.angleWeight)
     });
   }
 
@@ -691,7 +703,7 @@
     var completedIters = 0;
 
     for (var iter = 1; iter <= maxIters; iter += 1) {
-      if (current.gradNorm <= ANGLE_GRAD_TOL) {
+      if (current.gradNorm <= ANGLE_CONFIG.gradTol) {
         stopReason = 'grad-converged';
         break;
       }
@@ -701,8 +713,8 @@
       var d = lbfgsDirection(current.gradVec, S, Y, Rho);
       if (!(vecDot(current.gradVec, d) < 0)) d = vecScale(current.gradVec, -1);
       var directionNorm = vecNorm(d);
-      if (directionNorm > ANGLE_MAX_STEP_NORM) {
-        d = vecScale(d, ANGLE_MAX_STEP_NORM / directionNorm);
+      if (directionNorm > ANGLE_CONFIG.maxStepNorm) {
+        d = vecScale(d, ANGLE_CONFIG.maxStepNorm / directionNorm);
       }
 
       var gtd = vecDot(current.gradVec, d);
@@ -713,8 +725,8 @@
         if (lineSearchAttempt === 1) {
           searchDir = vecScale(current.gradVec, -1);
           directionNorm = vecNorm(searchDir);
-          if (directionNorm > ANGLE_MAX_STEP_NORM) {
-            searchDir = vecScale(searchDir, ANGLE_MAX_STEP_NORM / directionNorm);
+          if (directionNorm > ANGLE_CONFIG.maxStepNorm) {
+            searchDir = vecScale(searchDir, ANGLE_CONFIG.maxStepNorm / directionNorm);
           }
           gtd = vecDot(current.gradVec, searchDir);
           if (!(gtd < 0)) {
@@ -733,15 +745,15 @@
           if (trial.ok) {
             var trialMoveStats = computeInteriorMoveStats(data, current.x, current.y, trial.x, trial.y);
             if (trialMoveStats.maxMove > maxPositionStep) {
-              alpha *= ANGLE_LINE_SEARCH_TAU;
+              alpha *= ANGLE_CONFIG.lineSearchTau;
               continue;
             }
           }
-          if (trial.ok && trial.E <= current.E + ANGLE_LINE_SEARCH_C1 * alpha * gtd) {
+          if (trial.ok && trial.E <= current.E + ANGLE_CONFIG.lineSearchC1 * alpha * gtd) {
             accepted = { q: qTrial, eval: trial };
             break;
           }
-          alpha *= ANGLE_LINE_SEARCH_TAU;
+          alpha *= ANGLE_CONFIG.lineSearchTau;
         }
       }
       if (!accepted) {
@@ -786,14 +798,14 @@
         stopReason = movementStatus.reason || 'movement-converged';
         break;
       }
-      if (stepNorm < ANGLE_STEP_TOL) {
+      if (stepNorm < ANGLE_CONFIG.stepTol) {
         stopReason = 'step-converged';
         break;
       }
 
       var ys = vecDot(y, s);
       if (ys > 1e-14) {
-        if (S.length === ANGLE_LBFGS_MEMORY) {
+        if (S.length === ANGLE_CONFIG.lbfgsMemory) {
           S.shift();
           Y.shift();
           Rho.shift();
@@ -819,7 +831,7 @@
   }
 
   async function computeAngleBalancerPositions(graph, options) {
-    fillAngleSettings(options);
+    options = normalizeAngleOptions(options);
     var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
       preparedSeed: options.preparedSeed,
       augmentationMethod: options.augmentationMethod
@@ -849,10 +861,15 @@
       initPos: initPos,
       objectiveGraph: g,
       baseEmbedding: baseEmbedding,
-      areaTol: ANGLE_AREA_TOL,
-      angleTol: ANGLE_WEDGE_TOL,
-      angleBarrierWeight: ANGLE_BARRIER_WEIGHT,
-      faceBarrierWeight: ANGLE_FACE_BARRIER_WEIGHT
+      areaTol: ANGLE_CONFIG.areaTol,
+      angleTol: ANGLE_CONFIG.wedgeTol,
+      angleBarrierWeight: ANGLE_CONFIG.angleBarrierWeight,
+      faceBarrierWeight: ANGLE_CONFIG.faceBarrierWeight,
+      edgeBarrierWeight: ANGLE_CONFIG.edgeBarrierWeight,
+      edgeUniformWeight: ANGLE_CONFIG.edgeUniformWeight,
+      minFaceArea: 0,
+      faceWeight: ANGLE_CONFIG.faceWeight,
+      angleWeight: ANGLE_CONFIG.angleWeight
     });
     if (!data.ok) {
       return buildLayoutError({
@@ -862,7 +879,7 @@
         augmented: augmented
       });
     }
-    data.minFaceArea = Math.max(0, 0.2 * data.initialMinFaceArea);
+    data.minFaceArea = Math.max(0, ANGLE_CONFIG.minFaceAreaFactor * data.initialMinFaceArea);
     if (!(data.objectiveVertexIds.length > 0) || !(data.wedges.length > 0)) {
       var staticPositions = {};
       for (var si = 0; si < g.nodeIds.length; si += 1) {
@@ -911,18 +928,18 @@
 
     var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
     var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
-      minItersBeforeStop: Math.max(20, Math.min(options.maxIters, 40)),
-      stableIterLimit: ANGLE_STABLE_ITER_LIMIT,
-      maxMoveTol: ANGLE_MOVEMENT_STOP_TOL * movementScale,
-      avgMoveTol: ANGLE_AVG_MOVEMENT_STOP_TOL * movementScale
+      minItersBeforeStop: ANGLE_CONFIG.minItersBeforeStop,
+      stableIterLimit: ANGLE_CONFIG.stableIterLimit,
+      maxMoveTol: ANGLE_CONFIG.movementStopTol * movementScale,
+      avgMoveTol: ANGLE_CONFIG.avgMovementStopTol * movementScale
     });
 
     var result = await runAngleBalancerOptimization(q0, data, {
-      maxIters: options.maxIters,
-      maxPositionStep: ANGLE_MAX_POSITION_STEP_RATIO * movementScale,
+      maxIters: ANGLE_CONFIG.maxIters,
+      maxPositionStep: ANGLE_CONFIG.maxPositionStepRatio * movementScale,
       movementTracker: movementTracker,
       onIteration: async function (progress) {
-        if (typeof options.onIteration === 'function') {
+        if (options.onIteration) {
           var positions = {};
           for (var pi = 0; pi < g.nodeIds.length; pi += 1) {
             var pid = String(g.nodeIds[pi]);

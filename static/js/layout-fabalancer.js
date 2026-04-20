@@ -15,6 +15,7 @@
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var computeMoveStats = global.GraphUtils.computeMoveStats;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
+  var copyPositions = GeometryUtils.copyPositionMap;
   var polygonArea2 = GeometryUtils.polygonArea2;
   var orientFaceCCW = GeometryUtils.orientFaceCCW;
   var luFactorize = LinearAlgebraUtils.luFactorize;
@@ -29,33 +30,60 @@
   var vecSub = GeometryUtils.vecSub;
 
   var TWO_PI = 2 * Math.PI;
-  var HYBRID_AREA_TOL = 1e-15;
-  var HYBRID_GRAD_TOL = 1e-5;
-  var HYBRID_STEP_TOL = 1e-10;
-  var HYBRID_ANGLE_TOL = 1e-8;
-  var HYBRID_ANGLE_BARRIER_WEIGHT = 0.05;
-  var HYBRID_FACE_BARRIER_WEIGHT = 0.02;
-  var HYBRID_FACE_WEIGHT = 0.05;
-  var HYBRID_ANGLE_WEIGHT = 1.0;
-  var HYBRID_HORIZONTALITY_WEIGHT = 0.5;
-  var HYBRID_EDGE_BARRIER_WEIGHT = 0.005;
-  var HYBRID_EDGE_UNIFORM_WEIGHT = 0.002;
-  var HYBRID_MAX_STEP_NORM = 2.0;
-  var HYBRID_LBFGS_MEMORY = 10;
-  var HYBRID_LINE_SEARCH_C1 = 1e-4;
-  var HYBRID_LINE_SEARCH_TAU = 0.5;
-  var HYBRID_STABLE_ITER_LIMIT = 8;
-  var HYBRID_MOVEMENT_STOP_TOL = 1e-6;
-  var HYBRID_AVG_MOVEMENT_STOP_TOL = 2e-7;
-  var HYBRID_MAX_ITERS = 180;
-  var HYBRID_FACE_WARM_START_ITERS = 20;
-  var HYBRID_FACE_WARM_FACE_BARRIER_WEIGHT = 0.2;
-  var HYBRID_FACE_WARM_EDGE_BARRIER_WEIGHT = 0.05;
-  var HYBRID_FACE_WARM_EDGE_UNIFORM_WEIGHT = 0.02;
-  var HYBRID_FACE_WARM_STABLE_ITER_LIMIT = 6;
-  var HYBRID_FACE_WARM_MAX_POSITION_STEP_RATIO = 0.02;
-  var HYBRID_ANGLE_STAGE_MAX_POSITION_STEP_RATIO = 0.01;
-  var HYBRID_ALIGN_MAX_PASSES = 3;
+  var HYBRID_CONFIG = {
+    areaTol: 1e-15,
+    angleTol: 1e-8,
+    gradTol: 1e-5,
+    stepTol: 1e-10,
+    maxStepNorm: 2.0,
+    lbfgsMemory: 10,
+    lineSearchC1: 1e-4,
+    lineSearchTau: 0.5,
+    movementStopTol: 1e-6,
+    avgMovementStopTol: 2e-7,
+    alignMaxPasses: 3,
+    faceWarmStage: {
+      maxIters: 20,
+      minItersBeforeStop: 20,
+      stableIterLimit: 6,
+      maxPositionStepRatio: 0.02,
+      minFaceAreaFactor: 0.25,
+      faceBarrierWeight: 0.2,
+      edgeBarrierWeight: 0.05,
+      edgeUniformWeight: 0.02,
+      faceWeight: 1.0,
+      angleWeight: 0,
+      angleBarrierWeight: 0,
+      horizontalityWeight: 0
+    },
+    angleStage: {
+      maxIters: 180,
+      minItersBeforeStop: 40,
+      stableIterLimit: 8,
+      maxPositionStepRatio: 0.01,
+      minFaceAreaFactor: 0.2,
+      angleBarrierWeight: 0.05,
+      faceBarrierWeight: 0.02,
+      faceWeight: 0,
+      angleWeight: 1.0,
+      horizontalityWeight: 0.5,
+      edgeBarrierWeight: 0.005,
+      edgeUniformWeight: 0.002
+    }
+  };
+
+  function normalizeHybridOptions(options) {
+    options = options || {};
+    return {
+      preparedSeed: options.preparedSeed,
+      currentPositions: options.currentPositions,
+      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
+      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
+        ? Object.assign({}, options.augmentationOptions)
+        : null,
+      onIteration: typeof options.onIteration === 'function' ? options.onIteration : null
+    };
+  }
   
   function softmaxInto(q, start, length, out) {
     var m = -Infinity;
@@ -112,13 +140,13 @@
     var initPos = input.initPos;
     var objectiveGraph = input.objectiveGraph;
     var baseEmbedding = input.baseEmbedding;
-    var angleBarrierWeight = Number.isFinite(input.angleBarrierWeight) ? input.angleBarrierWeight : HYBRID_ANGLE_BARRIER_WEIGHT;
-    var faceBarrierWeight = Number.isFinite(input.faceBarrierWeight) ? input.faceBarrierWeight : HYBRID_FACE_BARRIER_WEIGHT;
-    var faceWeight = Number.isFinite(input.faceWeight) ? input.faceWeight : HYBRID_FACE_WEIGHT;
-    var angleWeight = Number.isFinite(input.angleWeight) ? input.angleWeight : HYBRID_ANGLE_WEIGHT;
-    var horizontalityWeight = Number.isFinite(input.horizontalityWeight) ? input.horizontalityWeight : 0;
-    var edgeBarrierWeight = Number.isFinite(input.edgeBarrierWeight) ? input.edgeBarrierWeight : HYBRID_EDGE_BARRIER_WEIGHT;
-    var edgeUniformWeight = Number.isFinite(input.edgeUniformWeight) ? input.edgeUniformWeight : HYBRID_EDGE_UNIFORM_WEIGHT;
+    var angleBarrierWeight = input.angleBarrierWeight;
+    var faceBarrierWeight = input.faceBarrierWeight;
+    var faceWeight = input.faceWeight;
+    var angleWeight = input.angleWeight;
+    var horizontalityWeight = input.horizontalityWeight;
+    var edgeBarrierWeight = input.edgeBarrierWeight;
+    var edgeUniformWeight = input.edgeUniformWeight;
     var augIds = augmentedEmbedding.idByIndex.map(String);
     var augIndexById = {};
     var i;
@@ -302,8 +330,8 @@
       objectiveEdges: objectiveEdges,
       objectiveEdgeWeights: objectiveEdgeWeights,
       objectiveEdgeWeightSum: objectiveEdgeWeightSum,
-      areaTol: HYBRID_AREA_TOL,
-      angleTol: HYBRID_ANGLE_TOL,
+      areaTol: input.areaTol,
+      angleTol: input.angleTol,
       angleBarrierWeight: angleBarrierWeight,
       faceBarrierWeight: faceBarrierWeight,
       horizontalityWeight: horizontalityWeight,
@@ -456,18 +484,6 @@
     return Math.sqrt(faceAreaScore * angleResolutionScore);
   }
 
-  function copyPositionMap(posById) {
-    var out = {};
-    var ids = Object.keys(posById || {});
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      var p = posById[id];
-      if (!p) continue;
-      out[id] = { x: p.x, y: p.y };
-    }
-    return out;
-  }
-
   function computeHybridStageMetrics(graph, embedding, posById) {
     var positions = GeometryUtils.filterPositionMap(posById || {}, graph.nodeIds);
     var angleStats = computeAngleStats(graph, positions);
@@ -487,12 +503,12 @@
         ok: true,
         changed: false,
         passes: 0,
-        positions: copyPositionMap(posById),
+        positions: copyPositions(posById),
         results: []
       });
     }
     var limit = Number.isFinite(maxPasses) ? Math.max(1, Math.floor(maxPasses)) : 1;
-    var working = copyPositionMap(posById);
+    var working = copyPositions(posById);
     var results = [];
     var changedAny = false;
     for (var pass = 0; pass < limit; pass += 1) {
@@ -1188,7 +1204,7 @@
     var completedIters = 0;
 
     for (var iter = 1; iter <= maxIters; iter += 1) {
-      if (current.gradNorm <= HYBRID_GRAD_TOL) {
+      if (current.gradNorm <= HYBRID_CONFIG.gradTol) {
         stopReason = 'grad-converged';
         break;
       }
@@ -1198,8 +1214,8 @@
       var d = lbfgsDirection(current.gradVec, S, Y, Rho);
       if (!(vecDot(current.gradVec, d) < 0)) d = vecScale(current.gradVec, -1);
       var directionNorm = vecNorm(d);
-      if (directionNorm > HYBRID_MAX_STEP_NORM) {
-        d = vecScale(d, HYBRID_MAX_STEP_NORM / directionNorm);
+      if (directionNorm > HYBRID_CONFIG.maxStepNorm) {
+        d = vecScale(d, HYBRID_CONFIG.maxStepNorm / directionNorm);
       }
 
       var gtd = vecDot(current.gradVec, d);
@@ -1210,8 +1226,8 @@
         if (lineSearchAttempt === 1) {
           searchDir = vecScale(current.gradVec, -1);
           directionNorm = vecNorm(searchDir);
-          if (directionNorm > HYBRID_MAX_STEP_NORM) {
-            searchDir = vecScale(searchDir, HYBRID_MAX_STEP_NORM / directionNorm);
+          if (directionNorm > HYBRID_CONFIG.maxStepNorm) {
+            searchDir = vecScale(searchDir, HYBRID_CONFIG.maxStepNorm / directionNorm);
           }
           gtd = vecDot(current.gradVec, searchDir);
           if (!(gtd < 0)) {
@@ -1230,15 +1246,15 @@
           if (trial.ok) {
             var trialMoveStats = computeInteriorMoveStats(data, current.x, current.y, trial.x, trial.y);
             if (trialMoveStats.maxMove > maxPositionStep) {
-              alpha *= HYBRID_LINE_SEARCH_TAU;
+              alpha *= HYBRID_CONFIG.lineSearchTau;
               continue;
             }
           }
-          if (trial.ok && trial.E <= current.E + HYBRID_LINE_SEARCH_C1 * alpha * gtd) {
+          if (trial.ok && trial.E <= current.E + HYBRID_CONFIG.lineSearchC1 * alpha * gtd) {
             accepted = { q: qTrial, eval: trial };
             break;
           }
-          alpha *= HYBRID_LINE_SEARCH_TAU;
+          alpha *= HYBRID_CONFIG.lineSearchTau;
         }
       }
       if (!accepted) {
@@ -1288,14 +1304,14 @@
         stopReason = movementStatus.reason || 'movement-converged';
         break;
       }
-      if (stepNorm < HYBRID_STEP_TOL) {
+      if (stepNorm < HYBRID_CONFIG.stepTol) {
         stopReason = 'step-converged';
         break;
       }
 
       var ys = vecDot(y, s);
       if (ys > 1e-14) {
-        if (S.length === HYBRID_LBFGS_MEMORY) {
+        if (S.length === HYBRID_CONFIG.lbfgsMemory) {
           S.shift();
           Y.shift();
           Rho.shift();
@@ -1338,8 +1354,8 @@
     return global.GraphUtils.createMovementConvergenceTracker({
       minItersBeforeStop: minItersBeforeStop,
       stableIterLimit: stableIterLimit,
-      maxMoveTol: HYBRID_MOVEMENT_STOP_TOL * scale,
-      avgMoveTol: HYBRID_AVG_MOVEMENT_STOP_TOL * scale
+      maxMoveTol: HYBRID_CONFIG.movementStopTol * scale,
+      avgMoveTol: HYBRID_CONFIG.avgMovementStopTol * scale
     });
   }
 
@@ -1363,7 +1379,9 @@
       outerFace: outerFace,
       initPos: initPos,
       objectiveGraph: objectiveGraph,
-      baseEmbedding: baseEmbedding
+      baseEmbedding: baseEmbedding,
+      areaTol: HYBRID_CONFIG.areaTol,
+      angleTol: HYBRID_CONFIG.angleTol
     }, overrides || {}));
   }
 
@@ -1441,12 +1459,10 @@
   }
 
   async function computeHybridPositions(graph, options) {
-    options = options || {};
-    var augmentationMethod = options.augmentationMethod === undefined ? null : options.augmentationMethod;
-    var augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
-      ? Object.assign({}, options.augmentationOptions)
-      : null;
-    var onIteration = options.onIteration || null;
+    options = normalizeHybridOptions(options);
+    var augmentationMethod = options.augmentationMethod;
+    var augmentationOptions = options.augmentationOptions;
+    var onIteration = options.onIteration;
     var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
       preparedSeed: options.preparedSeed,
       augmentationMethod: augmentationMethod
@@ -1518,7 +1534,7 @@
       });
     }
 
-    if (HYBRID_FACE_WARM_START_ITERS > 0) {
+    if (HYBRID_CONFIG.faceWarmStage.maxIters > 0) {
       var faceWarmSetup = await runHybridStage({
         augmented: augmented,
         outerFace: outerFace,
@@ -1526,14 +1542,16 @@
         objectiveGraph: g,
         baseEmbedding: baseEmbedding,
         dataOverrides: {
-          faceBarrierWeight: HYBRID_FACE_WARM_FACE_BARRIER_WEIGHT,
-          edgeBarrierWeight: HYBRID_FACE_WARM_EDGE_BARRIER_WEIGHT,
-          edgeUniformWeight: HYBRID_FACE_WARM_EDGE_UNIFORM_WEIGHT,
-          faceWeight: 1.0,
-          angleWeight: 0
+          angleBarrierWeight: HYBRID_CONFIG.faceWarmStage.angleBarrierWeight,
+          faceBarrierWeight: HYBRID_CONFIG.faceWarmStage.faceBarrierWeight,
+          edgeBarrierWeight: HYBRID_CONFIG.faceWarmStage.edgeBarrierWeight,
+          edgeUniformWeight: HYBRID_CONFIG.faceWarmStage.edgeUniformWeight,
+          faceWeight: HYBRID_CONFIG.faceWarmStage.faceWeight,
+          angleWeight: HYBRID_CONFIG.faceWarmStage.angleWeight,
+          horizontalityWeight: HYBRID_CONFIG.faceWarmStage.horizontalityWeight
         },
         prepareData: function (data) {
-          data.minFaceArea = Math.max(0, 0.25 * data.initialMinFaceArea);
+          data.minFaceArea = Math.max(0, HYBRID_CONFIG.faceWarmStage.minFaceAreaFactor * data.initialMinFaceArea);
         },
         requireData: function (data) {
           return data.boundedFaceKeys.length > 0;
@@ -1543,10 +1561,10 @@
         },
         evaluate: evaluateHybridObjectiveAndGradient,
         run: runHybridFaceOptimization,
-        maxIters: HYBRID_FACE_WARM_START_ITERS,
-        maxPositionStepRatio: HYBRID_FACE_WARM_MAX_POSITION_STEP_RATIO,
-        minItersBeforeStop: Math.max(10, Math.min(HYBRID_FACE_WARM_START_ITERS, 20)),
-        stableIterLimit: HYBRID_FACE_WARM_STABLE_ITER_LIMIT,
+        maxIters: HYBRID_CONFIG.faceWarmStage.maxIters,
+        maxPositionStepRatio: HYBRID_CONFIG.faceWarmStage.maxPositionStepRatio,
+        minItersBeforeStop: HYBRID_CONFIG.faceWarmStage.minItersBeforeStop,
+        stableIterLimit: HYBRID_CONFIG.faceWarmStage.stableIterLimit,
         onIteration: async function (progress) {
           await emitStageProgress('face-warm', 'face', 1, progress);
         }
@@ -1565,14 +1583,16 @@
       objectiveGraph: g,
       baseEmbedding: baseEmbedding,
       dataOverrides: {
-        angleBarrierWeight: HYBRID_ANGLE_BARRIER_WEIGHT,
-        faceBarrierWeight: HYBRID_FACE_BARRIER_WEIGHT,
-        faceWeight: 0,
-        angleWeight: 1.0,
-        horizontalityWeight: HYBRID_HORIZONTALITY_WEIGHT
+        angleBarrierWeight: HYBRID_CONFIG.angleStage.angleBarrierWeight,
+        faceBarrierWeight: HYBRID_CONFIG.angleStage.faceBarrierWeight,
+        edgeBarrierWeight: HYBRID_CONFIG.angleStage.edgeBarrierWeight,
+        edgeUniformWeight: HYBRID_CONFIG.angleStage.edgeUniformWeight,
+        faceWeight: HYBRID_CONFIG.angleStage.faceWeight,
+        angleWeight: HYBRID_CONFIG.angleStage.angleWeight,
+        horizontalityWeight: HYBRID_CONFIG.angleStage.horizontalityWeight
       },
       prepareData: function (data) {
-        data.minFaceArea = Math.max(0, 0.2 * data.initialMinFaceArea);
+        data.minFaceArea = Math.max(0, HYBRID_CONFIG.angleStage.minFaceAreaFactor * data.initialMinFaceArea);
         if (!(data.objectiveVertexIds.length > 0) || !(data.wedges.length > 0)) {
           data.angleWeight = 0;
         }
@@ -1585,10 +1605,10 @@
       },
       evaluate: evaluateHybridAngleStageObjectiveAndGradient,
       run: runAngleStageOptimization,
-      maxIters: HYBRID_MAX_ITERS,
-      maxPositionStepRatio: HYBRID_ANGLE_STAGE_MAX_POSITION_STEP_RATIO,
-      minItersBeforeStop: Math.max(20, Math.min(HYBRID_MAX_ITERS, 40)),
-      stableIterLimit: HYBRID_STABLE_ITER_LIMIT,
+      maxIters: HYBRID_CONFIG.angleStage.maxIters,
+      maxPositionStepRatio: HYBRID_CONFIG.angleStage.maxPositionStepRatio,
+      minItersBeforeStop: HYBRID_CONFIG.angleStage.minItersBeforeStop,
+      stableIterLimit: HYBRID_CONFIG.angleStage.stableIterLimit,
       onIteration: async function (progress) {
         await emitStageProgress('angle', 'angle', 2, progress);
       }
@@ -1642,7 +1662,7 @@
         message: 'Hybrid produced a non-plane drawing'
       });
     }
-    var alignStage = applyHybridAxisAlignment(g, finalPositions, HYBRID_ALIGN_MAX_PASSES);
+    var alignStage = applyHybridAxisAlignment(g, finalPositions, HYBRID_CONFIG.alignMaxPasses);
     if (!alignStage.ok) {
       return buildLayoutError({
         message: alignStage.reason || alignStage.message || 'Hybrid axis-align failed',

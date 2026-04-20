@@ -307,6 +307,9 @@
       pe.indexById[dummy] = pe.nodeIds.length;
       pe.nodeIds.push(dummy);
       pe.rotationById[dummy] = [];
+      if (Array.isArray(opts.createdDummyIds)) {
+        opts.createdDummyIds.push(dummy);
+      }
       return dummy;
     }
 
@@ -395,17 +398,21 @@
     if (!opts.triangulateOuterFace || !outerFace || outerFace.length <= 3) {
       return {
         ok: true,
-        dummyCount: 0
+        dummyCount: 0,
+        outerDummyIds: []
       };
     }
     try {
+      var outerDummyIds = [];
       var dummyCount = triangulateFace(pe, outerFace, {
         dummyPrefix: '@outerDummy',
-        newOuterFace: true
+        newOuterFace: true,
+        createdDummyIds: outerDummyIds
       });
       return {
         ok: true,
-        dummyCount: dummyCount
+        dummyCount: dummyCount,
+        outerDummyIds: outerDummyIds
       };
     } catch (err) {
       return {
@@ -447,7 +454,8 @@
       ok: true,
       graph: finalGraph,
       dummyCount: interior.dummyCount + outer.dummyCount,
-      embedding: finalEmbedding
+      embedding: finalEmbedding,
+      outerDummyIds: Array.isArray(outer.outerDummyIds) ? outer.outerDummyIds.slice().map(String) : []
     };
   }
 
@@ -501,7 +509,8 @@
       ok: true,
       graph: finalGraph,
       dummyCount: dummyCount,
-      embedding: finalEmbedding
+      embedding: finalEmbedding,
+      outerDummyIds: outerDummyIds.concat(Array.isArray(outer.outerDummyIds) ? outer.outerDummyIds : []).map(String)
     };
   }
 

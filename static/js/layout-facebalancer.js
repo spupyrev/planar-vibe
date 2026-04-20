@@ -12,22 +12,50 @@
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var computeMoveStats = global.GraphUtils.computeMoveStats;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
+  var filterPositions = GeometryUtils.filterPositionMap;
   var polygonArea2 = GeometryUtils.polygonArea2;
   var orientFaceCCW = GeometryUtils.orientFaceCCW;
   var luFactorize = LinearAlgebraUtils.luFactorize;
   var segmentsIntersectStrict = GeometryUtils.segmentsIntersectStrict;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
   var solveTransposeLUWithTwoRhs = LinearAlgebraUtils.solveTransposeLUWithTwoRhs;
-  var resolveFloatOption = global.GraphUtils.resolveFloatOption;
-  var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
-  var resolveIntOption = global.GraphUtils.resolveIntOption;
-  var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
   var createZeroVector = GeometryUtils.createZeroVector;
   var vecAddScaled = GeometryUtils.vecAddScaled;
   var vecDot = GeometryUtils.vecDot;
   var vecNorm = GeometryUtils.vecNorm;
   var vecScale = GeometryUtils.vecScale;
   var vecSub = GeometryUtils.vecSub;
+  var FACE_CONFIG = {
+    areaTol: 1e-15,
+    faceBarrierWeight: 0.2,
+    edgeBarrierWeight: 0.05,
+    edgeUniformWeight: 0.02,
+    minFaceAreaFactor: 0.25,
+    minEdgeLength2: 0,
+    maxIters: 80,
+    gradTol: 1e-5,
+    stepTol: 1e-6,
+    lbfgsMemory: 10,
+    lineSearchC1: 1e-4,
+    lineSearchTau: 0.5,
+    minItersBeforeStop: 40,
+    stableIterLimit: 8,
+    movementStopTol: 1e-6,
+    avgMovementStopTol: 2e-7
+  };
+
+  function normalizeFaceOptions(options) {
+    options = options || {};
+    return {
+      preparedSeed: options.preparedSeed,
+      currentPositions: options.currentPositions,
+      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
+      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
+        ? Object.assign({}, options.augmentationOptions)
+        : null,
+      onIteration: typeof options.onIteration === 'function' ? options.onIteration : null
+    };
+  }
   function softmaxInto(q, start, length, out) {
     var m = -Infinity;
     var i;
@@ -176,16 +204,16 @@
       boundedFaces: boundedFaces,
       boundedFaceKeys: boundedFaceKeys,
       edges: edges,
-      areaTol: Number.isFinite(input.areaTol) ? Math.max(0, input.areaTol) : 0,
-      faceBarrierWeight: Number.isFinite(input.faceBarrierWeight) ? Math.max(0, input.faceBarrierWeight) : 0,
-      edgeBarrierWeight: Number.isFinite(input.edgeBarrierWeight) ? Math.max(0, input.edgeBarrierWeight) : 0,
-      edgeUniformWeight: Number.isFinite(input.edgeUniformWeight) ? Math.max(0, input.edgeUniformWeight) : 0,
+      areaTol: Math.max(0, input.areaTol),
+      faceBarrierWeight: Math.max(0, input.faceBarrierWeight),
+      edgeBarrierWeight: Math.max(0, input.edgeBarrierWeight),
+      edgeUniformWeight: Math.max(0, input.edgeUniformWeight),
       edgeBarrierScale2: edgeScaleCount > 0 ? (edgeScaleSum / edgeScaleCount) : 1,
       initialMinEdgeLength2: Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0,
       initialAvgFaceArea: initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1,
       initialMinFaceArea: Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0,
-      minFaceArea: Number.isFinite(input.minFaceArea) ? Math.max(0, input.minFaceArea) : 0,
-      minEdgeLength2: Number.isFinite(input.minEdgeLength2) ? Math.max(0, input.minEdgeLength2) : 0
+      minFaceArea: Math.max(0, input.minFaceArea),
+      minEdgeLength2: Math.max(0, input.minEdgeLength2)
     });
   }
 
@@ -521,12 +549,12 @@
   }
 
   async function runFaceBalancerOptimization(q0, data, opts) {
-    var maxIters = resolveIntOption(opts.maxIters, 80, 1);
-    var gradTol = resolveFloatOption(opts.gradTol, 1e-5, 0);
-    var stepTol = resolveFloatOption(opts.stepTol, 1e-10, 0);
-    var memory = resolveIntOption(opts.lbfgsMemory, 10, 1);
-    var lineSearchC1 = resolveFloatOption(opts.lineSearchC1, 1e-4, 0);
-    var lineSearchTau = resolveFloatOption(opts.lineSearchTau, 0.5, 0.1, 0.9);
+    var maxIters = opts.maxIters;
+    var gradTol = opts.gradTol;
+    var stepTol = opts.stepTol;
+    var memory = opts.lbfgsMemory;
+    var lineSearchC1 = opts.lineSearchC1;
+    var lineSearchTau = opts.lineSearchTau;
     var q = q0.slice();
     var current = evaluateObjectiveAndGradient(q, data);
     if (!current.ok) return current;
@@ -534,7 +562,7 @@
     var S = [];
     var Y = [];
     var Rho = [];
-    var onIteration = resolveFunctionOption(opts.onIteration, null);
+    var onIteration = typeof opts.onIteration === 'function' ? opts.onIteration : null;
     var movementTracker = opts.movementTracker || null;
     var movementStatus = { stableIterations: 0, stableIterLimit: 0, converged: false };
     var stopReason = 'max-iters';
@@ -638,15 +666,16 @@
   }
 
   async function computeFaceBalancerPositions(graph, options) {
-    var maxIters = resolveIntOption(options.maxIters, 80, 1);
+    options = normalizeFaceOptions(options);
     var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
       preparedSeed: options.preparedSeed,
-      augmentationMethod: options.augmentationMethod || null
+      augmentationMethod: options.augmentationMethod
     });
     if (!context) {
       context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
         failureLabel: 'FaceBalancer layout',
-        augmentationMethod: options.augmentationMethod || null,
+        augmentationMethod: options.augmentationMethod,
+        augmentationOptions: options.augmentationOptions,
         currentPositions: options.currentPositions
       });
     }
@@ -658,20 +687,17 @@
     var outerFace = context.augmentedOuterFace || context.outerFace;
     var augmented = context.augmented;
     var initPos = context.posById;
-    var hasExplicitMinFaceArea = Number.isFinite(options.minFaceArea) && options.minFaceArea >= 0;
-    var hasExplicitMinEdgeLength2 = Number.isFinite(options.minEdgeLength2) && options.minEdgeLength2 >= 0;
-    var areaTol = resolveNonNegativeOption(options.areaTol, 1e-15);
     var data = buildFaceBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
       outerFace: outerFace,
       initPos: initPos,
-      areaTol: areaTol,
-      faceBarrierWeight: resolveFloatOption(options.faceBarrierWeight, 0.2, 0),
-      edgeBarrierWeight: resolveFloatOption(options.edgeBarrierWeight, 0.05, 0),
-      edgeUniformWeight: resolveFloatOption(options.edgeUniformWeight, 0.02, 0),
-      minFaceArea: resolveNonNegativeOption(options.minFaceArea, 0),
-      minEdgeLength2: resolveNonNegativeOption(options.minEdgeLength2, 0)
+      areaTol: FACE_CONFIG.areaTol,
+      faceBarrierWeight: FACE_CONFIG.faceBarrierWeight,
+      edgeBarrierWeight: FACE_CONFIG.edgeBarrierWeight,
+      edgeUniformWeight: FACE_CONFIG.edgeUniformWeight,
+      minFaceArea: 0,
+      minEdgeLength2: FACE_CONFIG.minEdgeLength2
     });
     if (!data.ok) {
       return buildLayoutError({
@@ -689,13 +715,10 @@
         augmented: augmented
       });
     }
-    if (!hasExplicitMinFaceArea) {
-      data.minFaceArea = Math.max(0, 0.25 * data.initialMinFaceArea);
-    }
-    if (!hasExplicitMinEdgeLength2) {
-      data.minEdgeLength2 = 0;
-    }
+    data.minFaceArea = Math.max(0, FACE_CONFIG.minFaceAreaFactor * data.initialMinFaceArea);
+    data.minEdgeLength2 = FACE_CONFIG.minEdgeLength2;
     if (data.boundedFaceKeys.length === 0) {
+      var staticPositions = filterPositions(initPos, g.nodeIds);
       return buildLayoutResult({
         ok: true,
         nodeIds: g.nodeIds,
@@ -703,7 +726,8 @@
         outerFace: outerFace,
         graph: g,
         augmented: augmented,
-        positions: initPos,
+        positions: staticPositions,
+        debugPositions: initPos,
         stopReason: 'no-bounded-faces',
         iters: 0,
         objective: 0,
@@ -713,7 +737,7 @@
     }
 
     var q0 = createZeroVector(data.qSize);
-    if (!hasExplicitMinFaceArea && data.minFaceArea > 0) {
+    if (data.minFaceArea > 0) {
       var minFaceAreaProbe = evaluateObjectiveAndGradient(q0, data);
       while (!minFaceAreaProbe.ok &&
              minFaceAreaProbe.reason === 'invalid-face-step' &&
@@ -724,20 +748,22 @@
     }
     var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
     var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
-      minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, Math.max(20, Math.min(maxIters, 40)), 1),
-      stableIterLimit: resolveIntOption(options.stableIterLimit, 8, 1),
-      maxMoveTol: resolveNonNegativeOption(options.movementStopTol, 1e-6 * movementScale),
-      avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 2e-7 * movementScale)
+      minItersBeforeStop: FACE_CONFIG.minItersBeforeStop,
+      stableIterLimit: FACE_CONFIG.stableIterLimit,
+      maxMoveTol: FACE_CONFIG.movementStopTol * movementScale,
+      avgMoveTol: FACE_CONFIG.avgMovementStopTol * movementScale
     });
 
     var result = await runFaceBalancerOptimization(q0, data, {
-      maxIters: maxIters,
-      gradTol: resolveFloatOption(options.gradTol, 1e-5, 0),
-      stepTol: resolveFloatOption(options.stepTol, 1e-6, 0),
-      lbfgsMemory: resolveIntOption(options.lbfgsMemory, 10, 1),
+      maxIters: FACE_CONFIG.maxIters,
+      gradTol: FACE_CONFIG.gradTol,
+      stepTol: FACE_CONFIG.stepTol,
+      lbfgsMemory: FACE_CONFIG.lbfgsMemory,
+      lineSearchC1: FACE_CONFIG.lineSearchC1,
+      lineSearchTau: FACE_CONFIG.lineSearchTau,
       movementTracker: movementTracker,
       onIteration: async function (progress) {
-        if (typeof options.onIteration === 'function') {
+        if (options.onIteration) {
           await options.onIteration(progress);
         }
       }
@@ -750,7 +776,8 @@
         augmented: augmented
       });
     }
-    var hasCrossings = hasPositionCrossings(result.positions, g.edgePairs);
+    var finalPositions = filterPositions(result.positions, g.nodeIds);
+    var hasCrossings = hasPositionCrossings(finalPositions, g.edgePairs);
     if (hasCrossings) {
       return buildLayoutError({
         stopReason: result.stopReason,
@@ -760,7 +787,7 @@
         message: 'FaceBalancer produced a non-plane drawing'
       });
     }
-    var faceScore = Metrics.computeUniformFaceAreaScore(g.nodeIds, g.edgePairs, result.positions, context.baseEmbedding);
+    var faceScore = Metrics.computeUniformFaceAreaScore(g.nodeIds, g.edgePairs, finalPositions, context.baseEmbedding);
     return buildLayoutResult({
       ok: true,
       nodeIds: g.nodeIds,
@@ -768,7 +795,8 @@
       outerFace: outerFace,
       graph: g,
       augmented: augmented,
-      positions: result.positions,
+      positions: finalPositions,
+      debugPositions: result.positions,
       stopReason: result.stopReason,
       iters: result.iters,
       objective: result.E,
@@ -801,7 +829,7 @@
           debugState: LayoutPreprocessing.createAugmentationDebugState(
             result.graph,
             result.augmented,
-            result.positions
+            result.debugPositions || result.positions
           )
         };
       },

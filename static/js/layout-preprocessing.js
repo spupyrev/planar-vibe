@@ -11,11 +11,18 @@
       return { ok: false, reason: (augmented && augmented.reason) || (label + ' augmentation failed') };
     }
     var dummyFaceVerticesById = augmented.dummyFaceVerticesById || {};
+    var outerDummyIds = Array.isArray(augmented.outerDummyIds)
+      ? augmented.outerDummyIds.slice().map(String)
+      : [];
+    if (augmented.graph && typeof augmented.graph === 'object') {
+      augmented.graph.outerDummyIds = outerDummyIds.slice();
+    }
     return {
       ok: true,
       graph: augmented.graph,
       dummyCount: augmented.dummyCount || 0,
       dummyFaceVerticesById: dummyFaceVerticesById,
+      outerDummyIds: outerDummyIds,
       embedding: augmented.embedding,
       outerFace: augmented.embedding && Array.isArray(augmented.embedding.outerFace)
         ? augmented.embedding.outerFace.slice().map(String)

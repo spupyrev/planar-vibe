@@ -43,15 +43,13 @@
     return degreeById;
   }
 
-  function isOuterDummyVertexId(id) {
-    return String(id).indexOf('@outerDummy') === 0;
-  }
-
   function buildTutteWeights(graph, augmentedGraph) {
     var originalPairs = graph.edgePairs;
     var augmentedPairs = augmentedGraph.edgePairs;
     var degreeById = buildDegreeMap(augmentedGraph);
     var originalEdgeSet = {};
+    var outerDummyIds = Array.isArray(augmentedGraph.outerDummyIds) ? augmentedGraph.outerDummyIds : [];
+    var outerDummySet = {};
     var weights = {};
     var originalWeight = 1;
     var internalDummyWeight = 1;
@@ -61,12 +59,15 @@
     for (i = 0; i < originalPairs.length; i += 1) {
       originalEdgeSet[edgeKey(originalPairs[i][0], originalPairs[i][1])] = true;
     }
+    for (i = 0; i < outerDummyIds.length; i += 1) {
+      outerDummySet[String(outerDummyIds[i])] = true;
+    }
 
     for (i = 0; i < augmentedPairs.length; i += 1) {
       var u = augmentedPairs[i][0];
       var v = augmentedPairs[i][1];
       var key = edgeKey(u, v);
-      var touchesOuterDummy = isOuterDummyVertexId(u) || isOuterDummyVertexId(v);
+      var touchesOuterDummy = !!outerDummySet[String(u)] || !!outerDummySet[String(v)];
       var baseWeight = originalEdgeSet[key]
         ? originalWeight
         : (touchesOuterDummy ? outerDummyWeight : internalDummyWeight);

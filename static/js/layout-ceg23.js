@@ -520,7 +520,7 @@
     });
   }
 
-  function solveAugmentedWeightedLayout(state, weights, maxIters, initOptions) {
+  function solveAugmentedWeightedLayout(state, weights, initOptions) {
     return Tutte.computeBarycentricPositions(
       state.augmentedGraph,
       state.augmentedOuterFace,
@@ -580,10 +580,8 @@
 
     var A = resolvePositiveOption(options.a, 1.0);
     var R = resolveGreaterThanOption(options.r, 1.35, 1);
-    var MAX_ITERS = resolveIntOption(options.maxIters, 4000, 1);
-
     var baseWeights = buildUniformWeights(state.augmentedPairs, 1);
-    var base = solveAugmentedWeightedLayout(state, baseWeights, MAX_ITERS);
+    var base = solveAugmentedWeightedLayout(state, baseWeights);
     if (!base.ok) {
       return buildLayoutError({
         message: base.message || 'CEG23-bfs baseline solve failed',
@@ -595,7 +593,7 @@
 
     var depthById = bfsDepthFromOuter(state.augmentedIds, state.adjacency, state.augmentedOuterFace);
     var weights = buildDepthWeights(state.augmentedPairs, depthById, A, R);
-    var out = solveAugmentedWeightedLayout(state, weights, MAX_ITERS);
+    var out = solveAugmentedWeightedLayout(state, weights);
     if (!out.ok) {
       return buildLayoutError({
         message: out.message || 'CEG23-bfs solver failed',
@@ -620,11 +618,10 @@
       return state;
     }
 
-    var maxIters = resolveIntOption(options.maxIters, 2500, 1);
     var lambdaX = resolveFiniteOption(options.lambdaX, 0.5);
 
     var uniformWeights = buildUniformWeights(state.augmentedPairs, 1);
-    var base = solveAugmentedWeightedLayout(state, uniformWeights, maxIters);
+    var base = solveAugmentedWeightedLayout(state, uniformWeights);
     if (!base.ok) {
       return buildLayoutError({
         message: base.message || 'CEG23-xy baseline solve failed',
@@ -644,7 +641,7 @@
 
     var wxy = combineWeights(state.augmentedPairs, xSpread.weights, ySpread.weights, lambdaX);
     var fixedOuterPos = buildFixedOuterPositions(state.augmentedOuterFace, base.positions);
-    var xySolve = solveAugmentedWeightedLayout(state, wxy, maxIters, {
+    var xySolve = solveAugmentedWeightedLayout(state, wxy, {
       fixedOuterPos: fixedOuterPos
     });
     if (!xySolve.ok) {

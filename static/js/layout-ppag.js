@@ -11,6 +11,7 @@
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
   var copyPositions = GeometryUtils.copyPositionMap;
+  var filterPositions = GeometryUtils.filterPositionMap;
   var findOuterFaceIndex = global.PlanarGraphUtils.findOuterFaceIndex;
   var resolveFloatOption = GraphUtils.resolveFloatOption;
   var resolveFunctionOption = GraphUtils.resolveFunctionOption;
@@ -291,6 +292,7 @@
         ok: true,
         opts: options,
         graph: context.graph,
+        baseEmbedding: context.baseEmbedding,
         outerFace: context.augmentedOuterFace || context.outerFace,
         augmented: context.augmented,
         posById: context.posById,
@@ -312,6 +314,7 @@
       ok: true,
       opts: options,
       graph: context.graph,
+      baseEmbedding: context.baseEmbedding,
       outerFace: context.augmentedOuterFace || context.outerFace,
       augmented: context.augmented,
       posById: context.posById,
@@ -412,8 +415,7 @@
             acceptedCount: acceptedCount,
             acceptedStep: acceptedCount > 0 ? (acceptedStepSum / acceptedCount) : 0,
             lineSearchSteps: lineSearchSteps,
-            boundedFaceCount: ppagData.triangles.length,
-            gradNorm: state.gradNorm
+            boundedFaceCount: ppagData.triangles.length
           }
         });
       }
@@ -451,12 +453,14 @@
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'PPAG setup failed' });
     }
+    var finalPositions = filterPositions(prepared.posById, prepared.graph.nodeIds);
 
     if (prepared.ppagData.triangles.length === 0) {
       return buildLayoutResult({
         ok: true,
         status: 'realized',
-        positions: prepared.posById,
+        positions: finalPositions,
+        debugPositions: prepared.posById,
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
@@ -494,11 +498,13 @@
       ? Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById, prepared.baseEmbedding)
       : null;
     var lastStats = result.stats || {};
+    finalPositions = filterPositions(prepared.posById, prepared.graph.nodeIds);
 
     return buildLayoutResult({
       ok: true,
       status: result.status,
-      positions: prepared.posById,
+      positions: finalPositions,
+      debugPositions: prepared.posById,
       graph: prepared.graph,
       outerFace: prepared.outerFace,
       augmented: prepared.augmented,
@@ -538,7 +544,7 @@
             ? LayoutPreprocessing.createAugmentationDebugState(
               result.graph,
               result.augmented,
-              result.positions
+              result.debugPositions || result.positions
             )
             : null
         };
