@@ -533,7 +533,7 @@
       return buildLayoutError({
         message: canonical.reason,
         graph: graph,
-        outerFace: prepared.outerFace || null
+        outerFace: prepared.outerFace
       });
     }
 

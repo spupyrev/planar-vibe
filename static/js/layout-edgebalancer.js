@@ -880,24 +880,18 @@
 
   async function computeEdgeBalancerPositions(graph, options) {
     options = normalizeEdgeOptions(options);
-    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
-      preparedSeed: options.preparedSeed,
-      augmentationMethod: options.augmentationMethod
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'EdgeBalancer layout',
+      augmentationMethod: options.augmentationMethod,
+      augmentationOptions: options.augmentationOptions,
+      currentPositions: options.currentPositions
     });
-    if (!context) {
-      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-        failureLabel: 'EdgeBalancer layout',
-        augmentationMethod: options.augmentationMethod,
-        augmentationOptions: options.augmentationOptions,
-        currentPositions: options.currentPositions
-      });
-    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'EdgeBalancer setup failed' });
     }
 
     var g = context.graph;
-    var outerFace = context.augmentedOuterFace || context.outerFace;
+    var outerFace = context.augmentedOuterFace;
     var augmented = context.augmented;
     var initPos = context.posById;
     var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);

@@ -35,7 +35,7 @@ function loadBrowserModules() {
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
-    'static/js/layout-fabalancer.js',
+    'static/js/layout-hybridbalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',

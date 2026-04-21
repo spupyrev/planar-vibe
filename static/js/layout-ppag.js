@@ -263,24 +263,18 @@
 
   function preparePPAGState(graph, options) {
     fillPPAGSettings(options);
-    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
-      preparedSeed: options.preparedSeed,
-      augmentationMethod: options.augmentationMethod
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'PPAG layout',
+      augmentationMethod: options.augmentationMethod,
+      currentPositions: options.currentPositions
     });
-    if (!context) {
-      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-        failureLabel: 'PPAG layout',
-        augmentationMethod: options.augmentationMethod,
-        currentPositions: options.currentPositions
-      });
-    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'PPAG setup failed' });
     }
 
     var ppagData = buildPPAGData(
       context.augmented.embedding,
-      context.augmentedOuterFace || context.outerFace,
+      context.augmentedOuterFace,
       context.posById
     );
     if (!ppagData.ok) {
@@ -293,7 +287,7 @@
         opts: options,
         graph: context.graph,
         baseEmbedding: context.baseEmbedding,
-        outerFace: context.augmentedOuterFace || context.outerFace,
+        outerFace: context.augmentedOuterFace,
         augmented: context.augmented,
         posById: context.posById,
         ppagData: ppagData,
@@ -315,7 +309,7 @@
       opts: options,
       graph: context.graph,
       baseEmbedding: context.baseEmbedding,
-      outerFace: context.augmentedOuterFace || context.outerFace,
+      outerFace: context.augmentedOuterFace,
       augmented: context.augmented,
       posById: context.posById,
       ppagData: ppagData,
@@ -328,7 +322,7 @@
     var posById = prepared.posById;
     var ppagData = prepared.ppagData;
     var movableVertices = prepared.movableVertices || [];
-    var outerDiameter = outerFaceDiameter(posById, prepared.outerFace || ppagData.outerFace || []);
+    var outerDiameter = outerFaceDiameter(posById, prepared.outerFace);
     options.maxVertexMove = options.maxVertexMoveRel * outerDiameter;
     options.minTriangleArea = effectiveMinTriangleArea(ppagData, options);
     var status = 'max_iters';

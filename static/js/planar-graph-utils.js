@@ -292,6 +292,100 @@
     return findFaceIndex(faces, outerFace, true);
   }
 
+  function splitFaceIntoSegments(face) {
+    if (!Array.isArray(face) || face.length === 0) {
+      return [];
+    }
+    var original = face.slice().map(String);
+    var walk = original.slice();
+    if (walk[walk.length - 1] !== walk[0]) {
+      walk.push(walk[0]);
+    }
+
+    var segments = [];
+    var current = [];
+    var seen = new Set();
+    var counts = Object.create(null);
+    for (var c = 0; c < original.length; c += 1) {
+      counts[original[c]] = (counts[original[c]] || 0) + 1;
+    }
+
+    for (var i = 0; i < walk.length; i += 1) {
+      var vertex = walk[i];
+      if (!seen.has(vertex)) {
+        current.push(vertex);
+        seen.add(vertex);
+        continue;
+      }
+      if (current.length > 0) {
+        segments.push(current.slice());
+      }
+      current = [vertex];
+      seen = new Set([vertex]);
+    }
+
+    if (
+      current.length > 1 ||
+      (current.length === 1 && current[0] !== walk[0]) ||
+      (current.length === 1 && current[0] === walk[0] && (counts[current[0]] || 0) > 1)
+    ) {
+      segments.push(current.slice());
+    }
+
+    return segments;
+  }
+
+  function analyzeInternallyTriangulated(embedding, outerFace) {
+    if (!embedding || !embedding.ok) {
+      return {
+        ok: false,
+        reason: 'Embedding is not internally triangulated: valid embedding required'
+      };
+    }
+    if (!Array.isArray(embedding.faces)) {
+      return {
+        ok: false,
+        reason: 'Embedding is not internally triangulated: faces are missing'
+      };
+    }
+    var selectedOuterFace = Array.isArray(outerFace) && outerFace.length >= 3
+      ? outerFace.slice().map(String)
+      : (Array.isArray(embedding.outerFace) && embedding.outerFace.length >= 3
+        ? embedding.outerFace.slice().map(String)
+        : null);
+    if (!selectedOuterFace) {
+      return {
+        ok: false,
+        reason: 'Embedding is not internally triangulated: outer face is missing'
+      };
+    }
+    var outerIndex = findFaceIndex(embedding.faces, selectedOuterFace, true);
+    if (outerIndex < 0) {
+      return {
+        ok: false,
+        reason: 'Embedding is not internally triangulated: outer face not found in embedding'
+      };
+    }
+    for (var i = 0; i < embedding.faces.length; i += 1) {
+      if (i === outerIndex) {
+        continue;
+      }
+      var face = embedding.faces[i];
+      if (!Array.isArray(face) || face.length !== 3) {
+        return {
+          ok: false,
+          reason: 'Embedding is not internally triangulated: non-outer face has length ' + ((face && face.length) || 0),
+          witness: {
+            type: 'non-triangular-face',
+            face: Array.isArray(face) ? face.slice().map(String) : null,
+            faceIndex: i
+          }
+        };
+      }
+    }
+    return { ok: true };
+  }
+
   function triangulateFace(pe, face, options) {
     var opts = options || {};
     var matchedFace = pe.getFace(face);
@@ -330,38 +424,58 @@
     }
 
     var prefix = opts.dummyPrefix || '@dummy';
-    var firstDummyId = createDummy(prefix);
-    var currentDummyId = firstDummyId;
-    var currentSeen = new Set();
+    var segments = splitFaceIntoSegments(matchedFace);
     var firstVertex = String(matchedFace[0]);
     var previousBoundary = String(matchedFace[matchedFace.length - 1]);
-    var dummyCount = 1;
+    var dummyIds = [];
+    var dummyCount = 0;
 
-    for (var i = 0; i < matchedFace.length; i += 1) {
-      var vertex = String(matchedFace[i]);
-      if (currentSeen.has(vertex)) {
-        var previousDummyId = currentDummyId;
-        var nextDummyId = createDummy(prefix);
-        linkDummyToDummy(previousDummyId, nextDummyId);
-        currentDummyId = nextDummyId;
-        currentSeen = new Set();
-        linkDummyToBoundary(currentDummyId, previousBoundary, previousDummyId);
-        currentSeen.add(previousBoundary);
-        dummyCount += 1;
+    for (var i = 0; i < segments.length; i += 1) {
+      var dummyId = createDummy(prefix);
+      dummyIds.push(dummyId);
+      dummyCount += 1;
+
+      if (i > 0) {
+        var prevDummyId = dummyIds[i - 1];
+        var prevSegment = segments[i - 1];
+        var prevSegmentLast = String(prevSegment[prevSegment.length - 1]);
+        linkDummyToDummy(prevDummyId, dummyId);
+        linkDummyToBoundary(dummyId, prevSegmentLast, prevDummyId);
       }
-      linkDummyToBoundary(currentDummyId, vertex, previousBoundary);
-      currentSeen.add(vertex);
-      previousBoundary = vertex;
+
+      previousBoundary = i > 0
+        ? String(segments[i - 1][segments[i - 1].length - 1])
+        : String(matchedFace[matchedFace.length - 1]);
+
+      for (var j = 0; j < segments[i].length; j += 1) {
+        var vertex = String(segments[i][j]);
+        linkDummyToBoundary(dummyId, vertex, previousBoundary);
+        previousBoundary = vertex;
+      }
     }
 
-    if (!currentSeen.has(firstVertex)) {
-      linkDummyToBoundary(currentDummyId, firstVertex, previousBoundary);
+    if (dummyIds.length > 2) {
+      var centerDummyId = createDummy(prefix);
+      dummyCount += 1;
+      if (!pe._addEdge(centerDummyId, firstVertex)) {
+        throw new Error('Face triangulation still produced a multi-edge');
+      }
+      insertBefore(pe.rotationById[firstVertex], dummyIds[dummyIds.length - 1], centerDummyId);
+      pe.rotationById[centerDummyId].push(firstVertex);
+
+      for (i = 0; i < dummyIds.length; i += 1) {
+        if (!pe._addEdge(centerDummyId, dummyIds[i])) {
+          throw new Error('Face triangulation still produced a multi-edge');
+        }
+        pe.rotationById[dummyIds[i]].push(centerDummyId);
+        pe.rotationById[centerDummyId].push(dummyIds[i]);
+      }
     }
 
     pe.recomputeFaces();
 
     if (opts.newOuterFace) {
-      pe.setOuterFace([firstDummyId, matchedFace[0], matchedFace[1]]);
+      pe.setOuterFace([dummyIds[0], matchedFace[0], matchedFace[1]]);
     }
 
     return dummyCount;
@@ -375,7 +489,7 @@
       if (!face || face.length <= 3) {
         continue;
       }
-      if (sameCyclicDirection(face, outerFace)) {
+      if (sameCyclicEitherDirection(face, outerFace)) {
         continue;
       }
       try {
@@ -505,6 +619,18 @@
 
     var finalEmbedding = pe.toEmbeddingObject();
     var finalGraph = pe.toGraph();
+    var triangulated = analyzeInternallyTriangulated(
+      finalEmbedding,
+      finalEmbedding && Array.isArray(finalEmbedding.outerFace) ? finalEmbedding.outerFace : selectedOuterFace
+    );
+    if (!triangulated || !triangulated.ok) {
+      return {
+        ok: false,
+        reason: (triangulated && triangulated.reason)
+          ? ('Outer-cycle augmentation did not produce an internally triangulated embedding: ' + triangulated.reason)
+          : 'Outer-cycle augmentation did not produce an internally triangulated embedding'
+      };
+    }
     return {
       ok: true,
       graph: finalGraph,
@@ -781,7 +907,9 @@
     sameCyclicDirection: sameCyclicDirection,
     sameCyclicEitherDirection: sameCyclicEitherDirection,
     findOuterFaceIndex: findOuterFaceIndex,
+    splitFaceIntoSegments: splitFaceIntoSegments,
     embeddingHasFace: embeddingHasFace,
+    analyzeInternallyTriangulated: analyzeInternallyTriangulated,
     extractEmbeddingFromPositions: extractEmbeddingFromPositions,
     chooseOuterFaceFromPositions: chooseOuterFaceFromPositions,
     chooseOuterFaceFromEmbedding: chooseOuterFaceFromEmbedding,

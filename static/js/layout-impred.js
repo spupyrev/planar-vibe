@@ -397,9 +397,9 @@
         ok: true,
         graph: g,
         baseEmbedding: currentEmbedding,
-        outerFace: currentEmbedding.outerFace ? currentEmbedding.outerFace.slice().map(String) : null,
+        outerFace: currentEmbedding.outerFace.slice().map(String),
         posById: currentPositions,
-        movableVertices: GraphUtils.collectMovableVertices(g.nodeIds, currentEmbedding.outerFace || []),
+        movableVertices: GraphUtils.collectMovableVertices(g.nodeIds, currentEmbedding.outerFace),
         initSource: 'current-plane'
       };
     } else {
@@ -425,7 +425,7 @@
     var posById = copyPositions(seed.posById || {});
     var adj = g.adjacency;
     var emb = seed.baseEmbedding || null;
-    var fixedOuter = new Set((seed.outerFace || []).map(String));
+    var fixedOuter = new Set(seed.outerFace.map(String));
     var delta = resolvePositiveOption(options.delta, estimateDelta(g.edgePairs, posById));
     var maxIters = resolveIntOption(options.maxIters, 600, 1);
     var startMaxMove = resolvePositiveOption(options.maxMove, 3 * delta);

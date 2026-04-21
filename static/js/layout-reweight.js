@@ -84,7 +84,7 @@
   }
 
   function adjustWeights(edgePairs, outerFace, faceAreas, desired, oldWeights, facePressure, e2f, boundedSet, pressureBeta, scaleMin, scaleMax, pressureScaleMin, pressureScaleMax) {
-    var outerSet = new Set((outerFace || []).map(String));
+    var outerSet = new Set(outerFace.map(String));
     var newWeights = {};
     var sumW = 0;
     var cnt = 0;
@@ -230,17 +230,11 @@
 
   function prepareReweightState(graph, options) {
     fillReweightSettings(options);
-    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
-      preparedSeed: options.preparedSeed,
-      augmentationMethod: options.augmentationMethod
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'ReweightTutte',
+      augmentationMethod: options.augmentationMethod,
+      currentPositions: options.currentPositions
     });
-    if (!context) {
-      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-        failureLabel: 'ReweightTutte',
-        augmentationMethod: options.augmentationMethod,
-        currentPositions: options.currentPositions
-      });
-    }
     if (!context || !context.ok) {
       return buildLayoutError(context || {
         message: 'ReweightTutte setup failed',
@@ -249,7 +243,7 @@
     }
 
     var g = context.graph;
-    var outer = context.augmentedOuterFace || context.outerFace;
+    var outer = context.augmentedOuterFace;
     var augmented = context.augmented;
     var embAug = augmented.embedding;
 

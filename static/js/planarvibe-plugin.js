@@ -273,7 +273,7 @@
     var unavailableLayoutMessages = {};
 
     function computeNodeFontSize(vertexSize) {
-      return Math.max(6, Math.round(vertexSize * 0.45));
+      return Math.max(4, Math.round(vertexSize * 0.9));
     }
 
     var cy = null;
@@ -2615,7 +2615,7 @@
           missingMessage: 'FaceBalancer layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
             graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],

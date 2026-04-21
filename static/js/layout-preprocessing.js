@@ -112,110 +112,6 @@
     return null;
   }
 
-  function graphMatchesPreparedSeed(graph, seedGraph) {
-    if (!graph || !seedGraph) {
-      return false;
-    }
-    var graphNodeIds = Array.isArray(graph.nodeIds) ? graph.nodeIds : [];
-    var seedNodeIds = Array.isArray(seedGraph.nodeIds) ? seedGraph.nodeIds : [];
-    var graphEdges = Array.isArray(graph.edgePairs) ? graph.edgePairs : [];
-    var seedEdges = Array.isArray(seedGraph.edgePairs) ? seedGraph.edgePairs : [];
-    if (graphNodeIds.length !== seedNodeIds.length || graphEdges.length !== seedEdges.length) {
-      return false;
-    }
-
-    var nodeSet = {};
-    var i;
-    for (i = 0; i < graphNodeIds.length; i += 1) {
-      nodeSet[String(graphNodeIds[i])] = true;
-    }
-    for (i = 0; i < seedNodeIds.length; i += 1) {
-      if (!nodeSet[String(seedNodeIds[i])]) {
-        return false;
-      }
-    }
-
-    var edgeSet = {};
-    for (i = 0; i < graphEdges.length; i += 1) {
-      edgeSet[GraphUtils.edgeKey(graphEdges[i][0], graphEdges[i][1])] = true;
-    }
-    for (i = 0; i < seedEdges.length; i += 1) {
-      if (!edgeSet[GraphUtils.edgeKey(seedEdges[i][0], seedEdges[i][1])]) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  function clonePreparedGraphData(seed) {
-    var augmentedGraph = seed.augmentedGraph || (seed.augmented && seed.augmented.graph) || null;
-    var augmented = seed.augmented || null;
-    return {
-      ok: true,
-      graph: seed.graph,
-      baseEmbedding: seed.baseEmbedding || null,
-      outerFace: Array.isArray(seed.outerFace) ? seed.outerFace.slice().map(String) : null,
-      augmentedOuterFace: Array.isArray(seed.augmentedOuterFace) ? seed.augmentedOuterFace.slice().map(String) : null,
-      augmented: augmented,
-      augmentedGraph: augmentedGraph,
-      embedding: seed.embedding || (augmented && augmented.embedding) || null,
-      augmentationMethod: seed.augmentationMethod || null,
-      augmentedNodeIds: augmentedGraph && Array.isArray(augmentedGraph.nodeIds)
-        ? augmentedGraph.nodeIds.slice().map(String)
-        : [],
-      augmentedEdgePairs: augmentedGraph && Array.isArray(augmentedGraph.edgePairs)
-        ? GraphUtils.cloneEdgePairs(augmentedGraph.edgePairs)
-        : [],
-      augmentedDummyCount: Number.isFinite(seed.augmentedDummyCount)
-        ? seed.augmentedDummyCount
-        : (augmented && Number.isFinite(augmented.dummyCount) ? augmented.dummyCount : 0)
-    };
-  }
-
-  function reusePreparedGraphData(graph, config) {
-    var seed = config && config.preparedSeed;
-    if (!seed || !seed.ok) {
-      return null;
-    }
-    if (!graphMatchesPreparedSeed(graph, seed.graph)) {
-      return null;
-    }
-    var requestedMethod = resolveAugmentationMethod(config && config.augmentationMethod);
-    if (requestedMethod && seed.augmentationMethod && seed.augmentationMethod !== requestedMethod) {
-      return null;
-    }
-    return clonePreparedGraphData(seed);
-  }
-
-  function reusePreparedLayoutData(graph, config) {
-    var seed = config && config.preparedSeed;
-    var cloned = reusePreparedGraphData(graph, config);
-    if (!seed || !cloned || !seed.posById) {
-      return null;
-    }
-    return {
-      ok: true,
-      graph: cloned.graph,
-      baseEmbedding: cloned.baseEmbedding,
-      outerFace: cloned.outerFace,
-      augmentedOuterFace: cloned.augmentedOuterFace,
-      augmented: cloned.augmented,
-      augmentedGraph: cloned.augmentedGraph,
-      posById: GeometryUtils.copyPositionMap(seed.posById),
-      movableVertices: Array.isArray(seed.movableVertices)
-        ? seed.movableVertices.slice().map(String)
-        : GraphUtils.collectMovableVertices(
-          cloned.augmentedGraph && Array.isArray(cloned.augmentedGraph.nodeIds) ? cloned.augmentedGraph.nodeIds : [],
-          cloned.augmentedOuterFace || cloned.outerFace || []
-        ),
-      initResult: seed.initResult
-        ? Object.assign({}, seed.initResult, {
-          positions: seed.initResult.positions ? GeometryUtils.copyPositionMap(seed.initResult.positions) : null
-        })
-        : null
-    };
-  }
-
   function prepareGraphData(graph, config) {
     var label = String(config.failureLabel || 'Layout');
     if (!graph || !Array.isArray(graph.nodeIds) || !Array.isArray(graph.edgePairs)) {
@@ -229,12 +125,6 @@
     var augmentationMethod = resolveAugmentationMethod(config.augmentationMethod);
     if (!augmentationMethod) {
       return { ok: false, message: 'Unknown augmentation method: ' + String(config.augmentationMethod) };
-    }
-
-    var reused = reusePreparedGraphData(graph, config);
-    if (reused) {
-      reused.augmentationMethod = reused.augmentationMethod || augmentationMethod;
-      return reused;
     }
 
     var drawingEmbedding = PlanarGraphUtils.extractEmbeddingFromPositions(
@@ -448,10 +338,6 @@
 
   function prepareGraphAndLayoutData(graph, config) {
     var label = String(config.failureLabel || 'Layout');
-    var reused = reusePreparedLayoutData(graph, config);
-    if (reused) {
-      return reused;
-    }
     var prepared = prepareGraphData(graph, config);
     if (!prepared || !prepared.ok) {
       return prepared;
@@ -459,7 +345,7 @@
     var normalizedGraph = prepared.graph;
     var baseEmbedding = prepared.baseEmbedding;
     var outerFace = prepared.outerFace;
-    var augmentedOuterFace = prepared.augmentedOuterFace || prepared.outerFace;
+    var augmentedOuterFace = prepared.augmentedOuterFace;
     var augmented = prepared.augmented;
 
     var init = computeInitialPositions(
@@ -497,8 +383,6 @@
     createAugmentationDebugState: createAugmentationDebugState,
     computeInitialPositions: computeInitialPositions,
     verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
-    reusePreparedGraphData: reusePreparedGraphData,
-    reusePreparedLayoutData: reusePreparedLayoutData,
     prepareGraphData: prepareGraphData,
     prepareGraphAndLayoutData: prepareGraphAndLayoutData
   };

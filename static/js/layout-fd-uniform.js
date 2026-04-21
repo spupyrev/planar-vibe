@@ -404,17 +404,11 @@
     var evalEvery = resolveIntOption(options.evalEvery, 10, 1);
     var onIteration = resolveFunctionOption(options.onIteration, null);
 
-    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
-      preparedSeed: options.preparedSeed,
-      augmentationMethod: options.augmentationMethod || null
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'FD-uniform',
+      augmentationMethod: options.augmentationMethod || null,
+      currentPositions: options.currentPositions
     });
-    if (!context) {
-      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-        failureLabel: 'FD-uniform',
-        augmentationMethod: options.augmentationMethod || null,
-        currentPositions: options.currentPositions
-      });
-    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'FD-uniform setup failed' });
     }

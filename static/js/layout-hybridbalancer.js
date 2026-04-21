@@ -1463,24 +1463,18 @@
     var augmentationMethod = options.augmentationMethod;
     var augmentationOptions = options.augmentationOptions;
     var onIteration = options.onIteration;
-    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
-      preparedSeed: options.preparedSeed,
-      augmentationMethod: augmentationMethod
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'Hybrid layout',
+      augmentationMethod: augmentationMethod,
+      augmentationOptions: augmentationOptions,
+      currentPositions: options.currentPositions
     });
-    if (!context) {
-      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-        failureLabel: 'Hybrid layout',
-        augmentationMethod: augmentationMethod,
-        augmentationOptions: augmentationOptions,
-        currentPositions: options.currentPositions
-      });
-    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'Hybrid setup failed' });
     }
 
     var g = context.graph;
-    var outerFace = context.augmentedOuterFace || context.outerFace;
+    var outerFace = context.augmentedOuterFace;
     var augmented = context.augmented;
     var initPos = context.posById;
     var baseEmbedding = context.baseEmbedding;

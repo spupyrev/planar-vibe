@@ -98,7 +98,7 @@ function loadBrowserModules() {
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
-    'static/js/layout-fabalancer.js',
+    'static/js/layout-hybridbalancer.js',
     'static/js/layout-ceg23.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -142,6 +142,28 @@ const FDUniform = modules.PlanarVibeFDUniform;
 const CEG23Bfs = modules.PlanarVibeCEG23Bfs;
 const Random = modules.PlanarVibeRandom;
 const CyRuntime = modules.CyRuntime;
+
+const TUTTE_OUTER_CYCLE_REGRESSION_GRAPH = {
+  nodeIds: ['0', '1', '2', '3', '12', '7', '11', '10', '9', '5', '8', '6', '4'],
+  edgePairs: [
+    ['0', '1'],
+    ['1', '2'],
+    ['3', '2'],
+    ['12', '0'],
+    ['12', '7'],
+    ['11', '0'],
+    ['10', '0'],
+    ['9', '7'],
+    ['9', '5'],
+    ['8', '7'],
+    ['8', '5'],
+    ['6', '7'],
+    ['6', '2'],
+    ['6', '5'],
+    ['4', '5'],
+    ['4', '2']
+  ]
+};
 
 function buildMockCy(nodeIds, edgePairs) {
   const nodeMap = new Map();
@@ -741,6 +763,59 @@ test('prepareGraphData can use the outer-cycle augmentation on a drawing with re
   assert.equal(new Set(prepared.augmentedOuterFace).size, prepared.augmentedOuterFace.length, 'outer dummy cycle should use distinct dummy vertices');
 });
 
+test('outer-cycle augmentation fully triangulates the Tutte regression instance', () => {
+  const prepared = LayoutPreprocessing.prepareGraphData(TUTTE_OUTER_CYCLE_REGRESSION_GRAPH, {
+    failureLabel: 'Tutte regression'
+  });
+
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
+  const internal = PlanarGraphUtils.analyzeInternallyTriangulated(
+    prepared.embedding,
+    prepared.augmentedOuterFace
+  );
+  assert.equal(internal && internal.ok, true, internal && internal.reason ? internal.reason : 'embedding should be internally triangulated');
+});
+
+test('splitFaceIntoSegments splits the Tutte regression face at repeats', () => {
+  const face = ['0', '12', '7', '6', '2', '1', '0', '10', '0', '11'];
+  const segments = PlanarGraphUtils.splitFaceIntoSegments(face);
+
+  assert.equal(
+    JSON.stringify(segments),
+    JSON.stringify([
+      ['0', '12', '7', '6', '2', '1'],
+      ['0', '10'],
+      ['0', '11'],
+      ['0']
+    ])
+  );
+});
+
+test('splitFaceIntoSegments keeps a simple face as a single segment', () => {
+  const face = ['a', 'b', 'c', 'd'];
+  const segments = PlanarGraphUtils.splitFaceIntoSegments(face);
+
+  assert.equal(
+    JSON.stringify(segments),
+    JSON.stringify([
+      ['a', 'b', 'c', 'd']
+    ])
+  );
+});
+
+test('splitFaceIntoSegments splits once at a repeated articulation and closes in the final segment', () => {
+  const face = ['a', 'b', 'c', 'b', 'd'];
+  const segments = PlanarGraphUtils.splitFaceIntoSegments(face);
+
+  assert.equal(
+    JSON.stringify(segments),
+    JSON.stringify([
+      ['a', 'b', 'c'],
+      ['b', 'd', 'a']
+    ])
+  );
+});
+
 test('prepareGraphData rejects unknown augmentation methods', () => {
   const prepared = LayoutPreprocessing.prepareGraphData({
     nodeIds: ['1', '2', '3'],
@@ -892,7 +967,7 @@ test('shared layout runner passes the original positions and prepared seed into 
   assert.deepEqual(GeometryUtils.filterPositionMap(computePreparedSeed.posById, graph.nodeIds), preparedSeed.positions || GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds));
 });
 
-test('AngleBalancer UI path reuses the shared prepared seed instead of preparing twice', async () => {
+test('AngleBalancer UI path prepares twice when shared-seed reuse is disabled', async () => {
   const graph = {
     nodeIds: ['a', 'b', 'c'],
     edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a']]
@@ -908,26 +983,18 @@ test('AngleBalancer UI path reuses the shared prepared seed instead of preparing
   });
 
   const originalPrepareGraphAndLayoutData = LayoutPreprocessing.prepareGraphAndLayoutData;
-  const originalReusePreparedLayoutData = LayoutPreprocessing.reusePreparedLayoutData;
   let prepareCount = 0;
-  let reuseCount = 0;
   LayoutPreprocessing.prepareGraphAndLayoutData = function (...args) {
     prepareCount += 1;
     return originalPrepareGraphAndLayoutData.apply(this, args);
-  };
-  LayoutPreprocessing.reusePreparedLayoutData = function (...args) {
-    reuseCount += 1;
-    return originalReusePreparedLayoutData.apply(this, args);
   };
 
   try {
     const result = await AngleBalancer.applyAngleBalancerLayout(cy, {});
     assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer apply failed'));
-    assert.equal(prepareCount, 1, 'AngleBalancer should prepare only once through the shared seed path');
-    assert.ok(reuseCount >= 1, 'AngleBalancer should attempt to reuse the shared prepared seed');
+    assert.equal(prepareCount, 2, 'AngleBalancer should prepare once for the shared seed and once inside the algorithm');
   } finally {
     LayoutPreprocessing.prepareGraphAndLayoutData = originalPrepareGraphAndLayoutData;
-    LayoutPreprocessing.reusePreparedLayoutData = originalReusePreparedLayoutData;
   }
 });
 
@@ -1207,10 +1274,11 @@ test('ReweightTutte preserves the shared augmented outer-face seed coordinates',
   const reweight = await Reweight.computeReweightTuttePositions(graph, {});
   assert.equal(reweight.ok, true, reweight.message || 'Reweight failed');
   assert.deepEqual(reweight.outerFace, outer);
+  assert.ok(reweight.debugPositions, 'expected ReweightTutte to expose augmented coordinates via debugPositions');
 
   for (const v of outer) {
     const seedPos = prepared.posById[v];
-    const finalPos = reweight.positions[v];
+    const finalPos = reweight.debugPositions[v];
     assert.ok(Math.abs(seedPos.x - finalPos.x) < 1e-9, `outer x mismatch for vertex ${v}`);
     assert.ok(Math.abs(seedPos.y - finalPos.y) < 1e-9, `outer y mismatch for vertex ${v}`);
   }

@@ -832,24 +832,18 @@
 
   async function computeAngleBalancerPositions(graph, options) {
     options = normalizeAngleOptions(options);
-    var context = LayoutPreprocessing.reusePreparedLayoutData(graph, {
-      preparedSeed: options.preparedSeed,
-      augmentationMethod: options.augmentationMethod
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'AngleBalancer layout',
+      augmentationMethod: options.augmentationMethod,
+      augmentationOptions: options.augmentationOptions,
+      currentPositions: options.currentPositions
     });
-    if (!context) {
-      context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-        failureLabel: 'AngleBalancer layout',
-        augmentationMethod: options.augmentationMethod,
-        augmentationOptions: options.augmentationOptions,
-        currentPositions: options.currentPositions
-      });
-    }
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'AngleBalancer setup failed' });
     }
 
     var g = context.graph;
-    var outerFace = context.augmentedOuterFace || context.outerFace;
+    var outerFace = context.augmentedOuterFace;
     var augmented = context.augmented;
     var initPos = context.posById;
     var baseEmbedding = context.baseEmbedding;

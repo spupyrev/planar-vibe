@@ -279,7 +279,7 @@
     }
 
     var augmentedGraph = prepared.augmentedGraph;
-    var augmentedOuterFace = prepared.augmentedOuterFace || prepared.outerFace;
+    var augmentedOuterFace = prepared.augmentedOuterFace;
     var barycentric = computeBarycentricPositions(
       augmentedGraph,
       augmentedOuterFace,

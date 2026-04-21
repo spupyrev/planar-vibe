@@ -314,6 +314,17 @@
       }
     }
 
+    if (areas.length === 0) {
+      return {
+        ok: true,
+        values: [],
+        ideal: null,
+        idealValues: [],
+        quality: 1,
+        faceCount: 0
+      };
+    }
+
     var result = buildWeightedDistributionResult(areas, idealWeights, 'No bounded face areas available', 'Degenerate face areas');
     if (!result.ok) {
       return result;
@@ -375,7 +386,12 @@
     }
 
     if (faceCount === 0) {
-      return { ok: false, reason: 'No bounded faces available' };
+      return {
+        ok: true,
+        score: 1,
+        convexFaceCount: 0,
+        faceCount: 0
+      };
     }
     return {
       ok: true,
