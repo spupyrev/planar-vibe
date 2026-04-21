@@ -7,6 +7,7 @@
   var Metrics = global.PlanarVibeMetrics;
   var GeometryUtils = global.GeometryUtils;
   var LinearAlgebraUtils = global.LinearAlgebraUtils;
+  var edgeKey = global.GraphUtils.edgeKey;
   var faceKey = global.GraphUtils.faceKey;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
@@ -253,6 +254,44 @@
     };
   }
 
+  function buildInitialLogitSeed(data, weights) {
+    var q0 = createZeroVector(data.qSize);
+    for (var i = 0; i < data.interiorAugIndices.length; i += 1) {
+      var augIdx = data.interiorAugIndices[i];
+      var vertexId = data.augIds[augIdx];
+      var rowOffset = data.rowStart[i];
+      var neighbors = data.neighborAugIndices[i];
+      if (!(neighbors && neighbors.length > 0)) {
+        continue;
+      }
+      var rowWeightSum = 0;
+      var rowWeights = new Array(neighbors.length);
+      for (var k = 0; k < neighbors.length; k += 1) {
+        var neighborId = data.augIds[neighbors[k]];
+        var rowWeight = weights[edgeKey(vertexId, neighborId)];
+        if (!Number.isFinite(rowWeight) || !(rowWeight > 0)) {
+          return buildLayoutError({
+            reason: 'FaceBalancer initialization requires positive Tutte weights',
+            vertexId: vertexId,
+            neighborId: neighborId
+          });
+        }
+        rowWeights[k] = rowWeight;
+        rowWeightSum += rowWeight;
+      }
+      if (!(rowWeightSum > 0)) {
+        return buildLayoutError({
+          reason: 'FaceBalancer initialization requires positive Tutte row weight sum',
+          vertexId: vertexId
+        });
+      }
+      for (k = 0; k < neighbors.length; k += 1) {
+        q0[rowOffset + k] = Math.log(rowWeights[k] / rowWeightSum);
+      }
+    }
+    return buildLayoutResult({ ok: true, q0: q0 });
+  }
+
   function realizeFaceBalancerState(q, data) {
     var nI = data.interiorAugIndices.length;
     var lambda = createZeroVector(data.qSize);
@@ -300,8 +339,7 @@
     });
   }
 
-  function initializeFaceBalancerBaseline(data) {
-    var q0 = createZeroVector(data.qSize);
+  function initializeFaceBalancerBaseline(data, q0) {
     var realized = realizeFaceBalancerState(q0, data);
     if (!realized || !realized.ok) {
       return realized || buildLayoutError({ reason: 'FaceBalancer initialization failed' });
@@ -752,7 +790,18 @@
         augmented: augmented
       });
     }
-    var baseline = initializeFaceBalancerBaseline(data);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, prepared.augmentedGraph);
+    var q0Result = buildInitialLogitSeed(data, tutteWeights);
+    if (!q0Result.ok) {
+      return buildLayoutError({
+        message: q0Result.reason || 'FaceBalancer initialization failed',
+        graph: g,
+        outerFace: outerFace,
+        augmented: augmented
+      });
+    }
+    var q0 = q0Result.q0;
+    var baseline = initializeFaceBalancerBaseline(data, q0);
     if (!baseline || !baseline.ok || !baseline.positions) {
       return buildLayoutError({
         message: baseline && baseline.reason ? baseline.reason : 'FaceBalancer initialization failed',
@@ -789,7 +838,6 @@
     }
     data.minFaceArea = Math.max(0, FACE_CONFIG.minFaceAreaFactor * data.initialMinFaceArea);
     data.minEdgeLength2 = FACE_CONFIG.minEdgeLength2;
-    var q0 = baseline.q0 || createZeroVector(data.qSize);
     if (data.minFaceArea > 0) {
       var minFaceAreaProbe = evaluateObjectiveAndGradient(q0, data);
       while (!minFaceAreaProbe.ok &&

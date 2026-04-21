@@ -14,8 +14,6 @@
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var computeMoveStats = global.GraphUtils.computeMoveStats;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
-  var polygonArea2 = GeometryUtils.polygonArea2;
-  var orientFaceCCW = GeometryUtils.orientFaceCCW;
   var luFactorize = LinearAlgebraUtils.luFactorize;
   var segmentsIntersectStrict = GeometryUtils.segmentsIntersectStrict;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
@@ -51,19 +49,6 @@
     avgMovementStopTol: 2e-7,
     maxPositionStepRatio: 0.01
   };
-
-  function normalizeAngleOptions(options) {
-    options = options || {};
-    return {
-      preparedSeed: options.preparedSeed,
-      currentPositions: options.currentPositions,
-      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
-      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
-        ? Object.assign({}, options.augmentationOptions)
-        : null,
-      onIteration: typeof options.onIteration === 'function' ? options.onIteration : null
-    };
-  }
 
   function softmaxInto(q, start, length, out) {
     var m = -Infinity;
@@ -117,7 +102,7 @@
     var augmentedEdgePairs = input.augmentedEdgePairs;
     var augmentedEmbedding = input.augmentedEmbedding;
     var outerFace = input.outerFace;
-    var initPos = input.initPos;
+    var outerPos = input.outerPos || {};
     var objectiveGraph = input.objectiveGraph;
     var baseEmbedding = input.baseEmbedding;
     var augIds = augmentedEmbedding.idByIndex.map(String);
@@ -128,54 +113,36 @@
     var x0 = new Array(augIds.length);
     var y0 = new Array(augIds.length);
     for (i = 0; i < augIds.length; i += 1) {
-      var p = initPos[augIds[i]];
+      var p = outerPos[augIds[i]];
       x0[i] = p ? p.x : 0;
       y0[i] = p ? p.y : 0;
     }
 
     var edges = [];
-    var edgeScaleSum = 0;
-    var edgeScaleCount = 0;
-    var initialMinEdgeLength2 = Infinity;
     var outerKey = faceKey(outerFace);
     var boundedFaceKeys = [];
     var boundedFaces = [];
-    var initialFaceMinArea = Infinity;
-    var initialFaceAreaSum = 0;
-    var initialFaceCount = 0;
     for (i = 0; i < augmentedEdgePairs.length; i += 1) {
       var u = augIndexById[String(augmentedEdgePairs[i][0])];
       var v = augIndexById[String(augmentedEdgePairs[i][1])];
       if (u === undefined || v === undefined || u === v) continue;
       edges.push([u, v]);
-      var dx0 = x0[u] - x0[v];
-      var dy0 = y0[u] - y0[v];
-      var len20 = dx0 * dx0 + dy0 * dy0;
-      if (len20 > 1e-12) {
-        edgeScaleSum += len20;
-        edgeScaleCount += 1;
-        if (len20 < initialMinEdgeLength2) initialMinEdgeLength2 = len20;
-      }
     }
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
-      var orientedFace = orientFaceCCW(augmentedEmbedding.faces[i], initPos);
-      var faceK = faceKey(orientedFace);
+      var rawFace = Array.isArray(augmentedEmbedding.faces[i])
+        ? augmentedEmbedding.faces[i].slice().map(String)
+        : [];
+      var faceK = faceKey(rawFace);
       if (faceK === outerKey) continue;
-      if (!orientedFace || orientedFace.length < 3) {
+      if (!rawFace || rawFace.length < 3) {
         return buildLayoutError({ reason: 'AngleBalancer requires a valid triangulated augmentation' });
       }
-      if (orientedFace.length !== 3) {
+      if (rawFace.length !== 3) {
         return buildLayoutError({ reason: 'AngleBalancer requires all non-outer augmented faces to be triangles' });
       }
       boundedFaceKeys.push(faceK);
-      var boundedFace = orientedFace.map(function (id) { return augIndexById[String(id)]; });
+      var boundedFace = rawFace.map(function (id) { return augIndexById[String(id)]; });
       boundedFaces.push(boundedFace);
-      var boundedArea = Math.abs(polygonArea2(orientedFace, initPos)) / 2;
-      if (boundedArea > 1e-12) {
-        if (boundedArea < initialFaceMinArea) initialFaceMinArea = boundedArea;
-        initialFaceAreaSum += boundedArea;
-        initialFaceCount += 1;
-      }
     }
 
     var triangles = [];
@@ -225,49 +192,10 @@
     var baseIndexById = {};
     for (i = 0; i < baseIds.length; i += 1) baseIndexById[baseIds[i]] = i;
 
-    var objectiveVertexIds = [];
-    var wedgeStart = [];
-    var wedgeCount = [];
-    var wedges = [];
-    var initialMinAngleRatio = Infinity;
-    var initialMaxAngleResidual = 0;
-    for (i = 0; i < objectiveGraph.nodeIds.length; i += 1) {
-      var centerId = String(objectiveGraph.nodeIds[i]);
-      var centerBaseIdx = baseIndexById[centerId];
-      var centerAugIdx = augIndexById[centerId];
-      if (centerBaseIdx === undefined || centerAugIdx === undefined) continue;
-      var objectiveRotation = baseEmbedding.rotation[centerBaseIdx] || [];
-      if (objectiveRotation.length < 2) continue;
-      var objectiveNeighbors = [];
-      for (k = 0; k < objectiveRotation.length; k += 1) {
-        var neighborAugIdx = augIndexById[String(objectiveRotation[k])];
-        if (neighborAugIdx !== undefined) {
-          objectiveNeighbors.push(neighborAugIdx);
-        }
-      }
-      if (objectiveNeighbors.length < 2) continue;
-      objectiveNeighbors = chooseCCWNeighborOrder(centerAugIdx, objectiveNeighbors, x0, y0);
-      var targetAngle = TWO_PI / objectiveNeighbors.length;
-      wedgeStart.push(wedges.length);
-      wedgeCount.push(objectiveNeighbors.length);
-      objectiveVertexIds.push(centerId);
-      for (k = 0; k < objectiveNeighbors.length; k += 1) {
-        var leftAugIdx = objectiveNeighbors[k];
-        var rightAugIdx = objectiveNeighbors[(k + 1) % objectiveNeighbors.length];
-        wedges.push([centerAugIdx, leftAugIdx, rightAugIdx, targetAngle, objectiveVertexIds.length - 1]);
-        var leftAngle = Math.atan2(y0[leftAugIdx] - y0[centerAugIdx], x0[leftAugIdx] - x0[centerAugIdx]);
-        var rightAngle = Math.atan2(y0[rightAugIdx] - y0[centerAugIdx], x0[rightAugIdx] - x0[centerAugIdx]);
-        var initialAngle = computePositiveTurn(leftAngle, rightAngle);
-        var initialRatio = initialAngle / targetAngle;
-        if (initialRatio < initialMinAngleRatio) initialMinAngleRatio = initialRatio;
-        var initialResidual = Math.abs(initialRatio - 1);
-        if (initialResidual > initialMaxAngleResidual) initialMaxAngleResidual = initialResidual;
-      }
-    }
-
     return buildLayoutResult({
       ok: true,
       augIds: augIds,
+      augIndexById: augIndexById,
       x0: x0,
       y0: y0,
       interiorAugIndices: interiorAugIndices,
@@ -282,25 +210,29 @@
       boundedFaces: boundedFaces,
       boundedFaceKeys: boundedFaceKeys,
       edges: edges,
-      objectiveVertexIds: objectiveVertexIds,
-      wedgeStart: wedgeStart,
-      wedgeCount: wedgeCount,
-      wedges: wedges,
       areaTol: input.areaTol,
       angleTol: input.angleTol,
       angleBarrierWeight: Math.max(0, input.angleBarrierWeight),
       faceBarrierWeight: Math.max(0, input.faceBarrierWeight),
       edgeBarrierWeight: Math.max(0, input.edgeBarrierWeight),
       edgeUniformWeight: Math.max(0, input.edgeUniformWeight),
-      edgeBarrierScale2: edgeScaleCount > 0 ? (edgeScaleSum / edgeScaleCount) : 1,
-      initialMinEdgeLength2: Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0,
-      initialAvgFaceArea: initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1,
-      initialMinFaceArea: Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0,
-      initialMinAngleRatio: Number.isFinite(initialMinAngleRatio) ? initialMinAngleRatio : 0,
-      initialMaxAngleResidual: initialMaxAngleResidual,
+      edgeBarrierScale2: 1,
+      initialMinEdgeLength2: 0,
+      initialAvgFaceArea: 1,
+      initialMinFaceArea: 0,
+      initialMinAngleRatio: 0,
+      initialMaxAngleResidual: 0,
       minFaceArea: Math.max(0, input.minFaceArea),
       faceWeight: Math.max(0, input.faceWeight),
-      angleWeight: Math.max(0, input.angleWeight)
+      angleWeight: Math.max(0, input.angleWeight),
+      objectiveGraph: objectiveGraph,
+      baseEmbedding: baseEmbedding,
+      baseIds: baseIds,
+      baseIndexById: baseIndexById,
+      objectiveVertexIds: [],
+      wedgeStart: [],
+      wedgeCount: [],
+      wedges: []
     });
   }
 
@@ -407,6 +339,150 @@
     return function (index) {
       return { x: x[index], y: y[index] };
     };
+  }
+
+  function realizeAngleBalancerState(q, data) {
+    var nI = data.interiorAugIndices.length;
+    var lambda = createZeroVector(data.qSize);
+    var L = new Array(nI);
+    var bx = createZeroVector(nI);
+    var by = createZeroVector(nI);
+    var i;
+    for (i = 0; i < nI; i += 1) {
+      L[i] = createZeroVector(nI);
+      L[i][i] = 1;
+      softmaxInto(q, data.rowStart[i], data.rowLength[i], lambda);
+      var neighbors = data.neighborAugIndices[i];
+      var interiorNeighbors = data.neighborInteriorIndices[i];
+      for (var k = 0; k < neighbors.length; k += 1) {
+        var w = lambda[data.rowStart[i] + k];
+        var augIdx = neighbors[k];
+        var interiorIdx = interiorNeighbors[k];
+        if (interiorIdx >= 0) {
+          L[i][interiorIdx] -= w;
+        } else {
+          bx[i] += w * data.x0[augIdx];
+          by[i] += w * data.y0[augIdx];
+        }
+      }
+    }
+
+    var factor = luFactorize(L);
+    if (!factor) return buildLayoutError({ reason: 'AngleBalancer linear solve failed' });
+    var primal = solveLUWithTwoRhs(factor, bx, by);
+    if (!primal) return buildLayoutError({ reason: 'AngleBalancer linear solve failed' });
+
+    var x = data.x0.slice();
+    var y = data.y0.slice();
+    for (i = 0; i < nI; i += 1) {
+      var aug = data.interiorAugIndices[i];
+      x[aug] = primal.x1[i];
+      y[aug] = primal.x2[i];
+    }
+    return buildLayoutResult({
+      ok: true,
+      lambda: lambda,
+      factor: factor,
+      x: x,
+      y: y
+    });
+  }
+
+  function initializeAngleBalancerBaseline(data, q0) {
+    var realized = realizeAngleBalancerState(q0, data);
+    if (!realized || !realized.ok) {
+      return realized || buildLayoutError({ reason: 'AngleBalancer initialization failed' });
+    }
+
+    var x = realized.x;
+    var y = realized.y;
+    var edgeScaleSum = 0;
+    var edgeScaleCount = 0;
+    var initialMinEdgeLength2 = Infinity;
+    var i;
+    for (i = 0; i < data.edges.length; i += 1) {
+      var edge = data.edges[i];
+      var dx = x[edge[0]] - x[edge[1]];
+      var dy = y[edge[0]] - y[edge[1]];
+      var len2 = dx * dx + dy * dy;
+      if (len2 > 1e-12) {
+        edgeScaleSum += len2;
+        edgeScaleCount += 1;
+        if (len2 < initialMinEdgeLength2) initialMinEdgeLength2 = len2;
+      }
+    }
+    data.edgeBarrierScale2 = edgeScaleCount > 0 ? (edgeScaleSum / edgeScaleCount) : 1;
+    data.initialMinEdgeLength2 = Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0;
+
+    var initialFaceMinArea = Infinity;
+    var initialFaceAreaSum = 0;
+    var initialFaceCount = 0;
+    for (i = 0; i < data.boundedFaces.length; i += 1) {
+      var face = data.boundedFaces[i];
+      if (polygonArea2FromArrays(face, x, y) < 0) {
+        face.reverse();
+      }
+      var area = Math.abs(polygonArea2FromArrays(face, x, y)) / 2;
+      if (area > 1e-12) {
+        initialFaceAreaSum += area;
+        initialFaceCount += 1;
+        if (area < initialFaceMinArea) initialFaceMinArea = area;
+      }
+      data.triangles[i] = [face[0], face[1], face[2], i];
+    }
+    data.initialAvgFaceArea = initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1;
+    data.initialMinFaceArea = Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0;
+
+    var objectiveVertexIds = [];
+    var wedgeStart = [];
+    var wedgeCount = [];
+    var wedges = [];
+    var initialMinAngleRatio = Infinity;
+    var initialMaxAngleResidual = 0;
+    for (i = 0; i < data.objectiveGraph.nodeIds.length; i += 1) {
+      var centerId = String(data.objectiveGraph.nodeIds[i]);
+      var centerBaseIdx = data.baseIndexById[centerId];
+      var centerAugIdx = data.augIndexById[centerId];
+      if (centerBaseIdx === undefined || centerAugIdx === undefined) continue;
+      var objectiveRotation = data.baseEmbedding.rotation[centerBaseIdx] || [];
+      if (objectiveRotation.length < 2) continue;
+      var objectiveNeighbors = [];
+      for (var k = 0; k < objectiveRotation.length; k += 1) {
+        var neighborAugIdx = data.augIndexById[String(objectiveRotation[k])];
+        if (neighborAugIdx !== undefined) {
+          objectiveNeighbors.push(neighborAugIdx);
+        }
+      }
+      if (objectiveNeighbors.length < 2) continue;
+      objectiveNeighbors = chooseCCWNeighborOrder(centerAugIdx, objectiveNeighbors, x, y);
+      var targetAngle = TWO_PI / objectiveNeighbors.length;
+      wedgeStart.push(wedges.length);
+      wedgeCount.push(objectiveNeighbors.length);
+      objectiveVertexIds.push(centerId);
+      for (k = 0; k < objectiveNeighbors.length; k += 1) {
+        var leftAugIdx = objectiveNeighbors[k];
+        var rightAugIdx = objectiveNeighbors[(k + 1) % objectiveNeighbors.length];
+        wedges.push([centerAugIdx, leftAugIdx, rightAugIdx, targetAngle, objectiveVertexIds.length - 1]);
+        var leftAngle = Math.atan2(y[leftAugIdx] - y[centerAugIdx], x[leftAugIdx] - x[centerAugIdx]);
+        var rightAngle = Math.atan2(y[rightAugIdx] - y[centerAugIdx], x[rightAugIdx] - x[centerAugIdx]);
+        var initialAngle = computePositiveTurn(leftAngle, rightAngle);
+        var initialRatio = initialAngle / targetAngle;
+        if (initialRatio < initialMinAngleRatio) initialMinAngleRatio = initialRatio;
+        var initialResidual = Math.abs(initialRatio - 1);
+        if (initialResidual > initialMaxAngleResidual) initialMaxAngleResidual = initialResidual;
+      }
+    }
+    data.objectiveVertexIds = objectiveVertexIds;
+    data.wedgeStart = wedgeStart;
+    data.wedgeCount = wedgeCount;
+    data.wedges = wedges;
+    data.initialMinAngleRatio = Number.isFinite(initialMinAngleRatio) ? initialMinAngleRatio : 0;
+    data.initialMaxAngleResidual = initialMaxAngleResidual;
+
+    return buildLayoutResult({
+      ok: true,
+      positions: buildPositionMap(data, x, y)
+    });
   }
 
   function addPointGradient(data, augIdx, gx, gy, zX, zY) {
@@ -519,43 +595,16 @@
 
   function evaluateObjectiveAndGradient(q, data) {
     var triangleSlack = Math.max(data.areaTol, 1e-12);
-    var nI = data.interiorAugIndices.length;
-    var lambda = createZeroVector(data.qSize);
-    var L = new Array(nI);
-    var bx = createZeroVector(nI);
-    var by = createZeroVector(nI);
     var i;
-    for (i = 0; i < nI; i += 1) {
-      L[i] = createZeroVector(nI);
-      L[i][i] = 1;
-      softmaxInto(q, data.rowStart[i], data.rowLength[i], lambda);
-      var neighbors = data.neighborAugIndices[i];
-      var interiorNeighbors = data.neighborInteriorIndices[i];
-      for (var k = 0; k < neighbors.length; k += 1) {
-        var w = lambda[data.rowStart[i] + k];
-        var augIdx = neighbors[k];
-        var interiorIdx = interiorNeighbors[k];
-        if (interiorIdx >= 0) {
-          L[i][interiorIdx] -= w;
-        } else {
-          bx[i] += w * data.x0[augIdx];
-          by[i] += w * data.y0[augIdx];
-        }
-      }
+    var nI = data.interiorAugIndices.length;
+    var realized = realizeAngleBalancerState(q, data);
+    if (!realized || !realized.ok) {
+      return realized || buildLayoutError({ reason: 'AngleBalancer linear solve failed' });
     }
-
-    var factor = luFactorize(L);
-    if (!factor) return buildLayoutError({ reason: 'AngleBalancer linear solve failed' });
-    var primal = solveLUWithTwoRhs(factor, bx, by);
-    if (!primal) return buildLayoutError({ reason: 'AngleBalancer linear solve failed' });
-
-    var x = data.x0.slice();
-    var y = data.y0.slice();
-    for (i = 0; i < nI; i += 1) {
-      var aug = data.interiorAugIndices[i];
-      x[aug] = primal.x1[i];
-      y[aug] = primal.x2[i];
-    }
+    var lambda = realized.lambda;
+    var factor = realized.factor;
+    var x = realized.x;
+    var y = realized.y;
     var getPoint = getIndexedPoint(x, y);
 
     var faceAreas = createZeroVector(data.boundedFaceKeys.length);
@@ -628,10 +677,11 @@
       var rowOffset = data.rowStart[i];
       var meanx = 0;
       var meany = 0;
-      neighbors = data.neighborAugIndices[i];
+      var neighbors = data.neighborAugIndices[i];
+      var k;
       for (k = 0; k < neighbors.length; k += 1) {
-        w = lambda[rowOffset + k];
-        augIdx = neighbors[k];
+        var w = lambda[rowOffset + k];
+        var augIdx = neighbors[k];
         meanx += w * x[augIdx];
         meany += w * y[augIdx];
       }
@@ -831,11 +881,13 @@
   }
 
   async function computeAngleBalancerPositions(graph, options) {
-    options = normalizeAngleOptions(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+    options = options || {};
+    var context = LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'AngleBalancer layout',
-      augmentationMethod: options.augmentationMethod,
-      augmentationOptions: options.augmentationOptions,
+      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
+      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
+        ? Object.assign({}, options.augmentationOptions)
+        : null,
       currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
@@ -845,14 +897,17 @@
     var g = context.graph;
     var outerFace = context.augmentedOuterFace;
     var augmented = context.augmented;
-    var initPos = context.posById;
     var baseEmbedding = context.baseEmbedding;
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
+    var outerPos = PlanarVibeTutte.placeOuterFaceVertices(
+      context.augmentedGraph.nodeIds,
+      outerFace,
+      PlanarVibeTutte.defaultOuterPlacementOptions()
+    );
     var data = buildAngleBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
       outerFace: outerFace,
-      initPos: initPos,
+      outerPos: outerPos,
       objectiveGraph: g,
       baseEmbedding: baseEmbedding,
       areaTol: ANGLE_CONFIG.areaTol,
@@ -873,33 +928,7 @@
         augmented: augmented
       });
     }
-    data.minFaceArea = Math.max(0, ANGLE_CONFIG.minFaceAreaFactor * data.initialMinFaceArea);
-    if (!(data.objectiveVertexIds.length > 0) || !(data.wedges.length > 0)) {
-      var staticPositions = {};
-      for (var si = 0; si < g.nodeIds.length; si += 1) {
-        var sid = String(g.nodeIds[si]);
-        if (initPos[sid]) {
-          staticPositions[sid] = { x: initPos[sid].x, y: initPos[sid].y };
-        }
-      }
-      var staticStats = computeAngleStats(g, staticPositions);
-      return buildLayoutResult({
-        ok: true,
-        nodeIds: g.nodeIds,
-        edgePairs: g.edgePairs,
-        outerFace: context.outerFace,
-        graph: g,
-        augmented: augmented,
-        positions: staticPositions,
-        debugPositions: initPos,
-        stopReason: 'no-objective-angles',
-        iters: 0,
-        objective: 0,
-        angleResolutionScore: staticStats.angleResolutionScore,
-        angleCount: staticStats.angleCount
-      });
-    }
-
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
     var q0Result = buildInitialLogitSeed(data, tutteWeights);
     if (!q0Result.ok) {
       return buildLayoutError({
@@ -910,6 +939,42 @@
       });
     }
     var q0 = q0Result.q0;
+    var baseline = initializeAngleBalancerBaseline(data, q0);
+    if (!baseline || !baseline.ok || !baseline.positions) {
+      return buildLayoutError({
+        message: baseline && baseline.reason ? baseline.reason : 'AngleBalancer initialization failed',
+        graph: g,
+        outerFace: outerFace,
+        augmented: augmented
+      });
+    }
+    data.minFaceArea = Math.max(0, ANGLE_CONFIG.minFaceAreaFactor * data.initialMinFaceArea);
+    if (!(data.objectiveVertexIds.length > 0) || !(data.wedges.length > 0)) {
+      var staticPositions = {};
+      for (var si = 0; si < g.nodeIds.length; si += 1) {
+        var sid = String(g.nodeIds[si]);
+        if (baseline.positions[sid]) {
+          staticPositions[sid] = { x: baseline.positions[sid].x, y: baseline.positions[sid].y };
+        }
+      }
+      var staticStats = computeAngleStats(g, staticPositions);
+      return buildLayoutResult({
+        ok: true,
+        nodeIds: g.nodeIds,
+        edgePairs: g.edgePairs,
+        outerFace: outerFace,
+        graph: g,
+        augmented: augmented,
+        positions: staticPositions,
+        debugPositions: baseline.positions,
+        stopReason: 'no-objective-angles',
+        iters: 0,
+        objective: 0,
+        angleResolutionScore: staticStats.angleResolutionScore,
+        angleCount: staticStats.angleCount
+      });
+    }
+
     if (data.minFaceArea > 0) {
       var minFaceAreaProbe = evaluateObjectiveAndGradient(q0, data);
       while (!minFaceAreaProbe.ok &&
@@ -920,7 +985,7 @@
       }
     }
 
-    var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, initPos);
+    var movementScale = GeometryUtils.computeDrawingDiameter(augmented.graph.nodeIds, baseline.positions);
     var movementTracker = global.GraphUtils.createMovementConvergenceTracker({
       minItersBeforeStop: ANGLE_CONFIG.minItersBeforeStop,
       stableIterLimit: ANGLE_CONFIG.stableIterLimit,
@@ -971,7 +1036,7 @@
       return buildLayoutError({
         stopReason: result.stopReason,
         graph: g,
-        outerFace: context.outerFace,
+        outerFace: outerFace,
         augmented: augmented,
         message: 'AngleBalancer produced a non-plane drawing'
       });
@@ -981,7 +1046,7 @@
       ok: true,
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
-      outerFace: context.outerFace,
+      outerFace: outerFace,
       graph: g,
       augmented: augmented,
       positions: finalPositions,
@@ -998,8 +1063,6 @@
 
   async function applyAngleBalancerLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      useSharedPreparedSeed: true,
-      sharedSeedFailureLabel: 'AngleBalancer layout',
       compute: computeAngleBalancerPositions,
       buildResult: function (ctx) {
         var result = ctx.result;

@@ -2630,7 +2630,7 @@
           missingMessage: 'EdgeBalancer layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
             graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
@@ -2645,7 +2645,7 @@
           missingMessage: 'AngleBalancer layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             geometry: ['computeDrawingDiameter', 'copyPositionMap', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointScale'],
             graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace']

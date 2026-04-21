@@ -967,34 +967,22 @@ test('shared layout runner passes the original positions and prepared seed into 
   assert.deepEqual(GeometryUtils.filterPositionMap(computePreparedSeed.posById, graph.nodeIds), preparedSeed.positions || GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds));
 });
 
-test('AngleBalancer UI path prepares twice when shared-seed reuse is disabled', async () => {
-  const graph = {
-    nodeIds: ['a', 'b', 'c'],
-    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a']]
+test('AngleBalancer does not opt into the shared prepared seed', async () => {
+  const originalRunLayout = CyRuntime.runLayout;
+  const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
+  let capturedSpec = null;
+  CyRuntime.runLayout = function (_cy, _options, spec) {
+    capturedSpec = spec;
+    return Promise.resolve({ ok: true, message: 'ok' });
   };
-  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-  cy.nodes().forEach((node, index) => {
-    const positions = [
-      { x: 0, y: 0 },
-      { x: 100, y: 0 },
-      { x: 50, y: 80 }
-    ];
-    node.position(positions[index]);
-  });
-
-  const originalPrepareGraphAndLayoutData = LayoutPreprocessing.prepareGraphAndLayoutData;
-  let prepareCount = 0;
-  LayoutPreprocessing.prepareGraphAndLayoutData = function (...args) {
-    prepareCount += 1;
-    return originalPrepareGraphAndLayoutData.apply(this, args);
-  };
-
   try {
     const result = await AngleBalancer.applyAngleBalancerLayout(cy, {});
-    assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer apply failed'));
-    assert.equal(prepareCount, 2, 'AngleBalancer should prepare once for the shared seed and once inside the algorithm');
+    assert.equal(result && result.ok, true);
+    assert.ok(capturedSpec, 'expected AngleBalancer to call CyRuntime.runLayout');
+    assert.equal(capturedSpec.useSharedPreparedSeed, undefined);
+    assert.equal(capturedSpec.sharedSeedFailureLabel, undefined);
   } finally {
-    LayoutPreprocessing.prepareGraphAndLayoutData = originalPrepareGraphAndLayoutData;
+    CyRuntime.runLayout = originalRunLayout;
   }
 });
 
