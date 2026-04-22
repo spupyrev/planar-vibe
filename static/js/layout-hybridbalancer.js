@@ -1517,19 +1517,13 @@
     });
   }
 
-  async function computeHybridPositions(graph, options) {
+  async function computeHybridPositionsFromPrepared(options, context) {
     options = options || {};
     var augmentationMethod = options.augmentationMethod === undefined ? null : options.augmentationMethod;
     var augmentationOptions = typeof options.augmentationOptions === 'object' && options.augmentationOptions
       ? Object.assign({}, options.augmentationOptions)
       : null;
     var onIteration = typeof options.onIteration === 'function' ? options.onIteration : null;
-    var context = LayoutPreprocessing.prepareGraphData(graph, {
-      failureLabel: 'Hybrid layout',
-      augmentationMethod: augmentationMethod,
-      augmentationOptions: augmentationOptions,
-      currentPositions: options.currentPositions
-    });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'Hybrid setup failed' });
     }
@@ -1538,11 +1532,7 @@
     var outerFace = context.augmentedOuterFace;
     var augmented = context.augmented;
     var baseEmbedding = context.baseEmbedding;
-    var outerPos = PlanarVibeTutte.placeOuterFaceVertices(
-      context.augmentedGraph.nodeIds,
-      outerFace,
-      PlanarVibeTutte.defaultOuterPlacementOptions()
-    );
+    var outerPos = buildHybridOuterPositions(context);
     var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
     var STAGE_COUNT = 3;
 
@@ -1741,9 +1731,47 @@
     });
   }
 
+  function buildHybridOuterPositions(prepared) {
+    if (!prepared || !prepared.ok) {
+      throw new Error('buildHybridOuterPositions requires prepared graph data');
+    }
+    var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
+      prepared.augmentedGraph.nodeIds,
+      prepared.augmentedOuterFace,
+      PlanarVibeTutte.defaultOuterPlacementOptions()
+    );
+    var outerPos = {};
+    for (var i = 0; i < prepared.augmentedOuterFace.length; i += 1) {
+      var id = String(prepared.augmentedOuterFace[i]);
+      if (fullPos[id] && Number.isFinite(fullPos[id].x) && Number.isFinite(fullPos[id].y)) {
+        outerPos[id] = { x: fullPos[id].x, y: fullPos[id].y };
+      }
+    }
+    return outerPos;
+  }
+
+  async function computeHybridPositions(graph, options) {
+    options = options || {};
+    return computeHybridPositionsFromPrepared(options, LayoutPreprocessing.prepareGraphData(graph, {
+      failureLabel: 'Hybrid layout',
+      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
+      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
+        ? Object.assign({}, options.augmentationOptions)
+        : null,
+      currentPositions: options.currentPositions
+    }));
+  }
+
   async function applyHybridLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeHybridPositions,
+      prepareMode: 'graph',
+      prepareFailureLabel: 'Hybrid layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(buildHybridOuterPositions(ctx.prepared));
+      },
+      computePositions: function (_graph, computeOptions, prepared) {
+        return computeHybridPositionsFromPrepared(computeOptions || {}, prepared);
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('Hybrid', {

@@ -261,17 +261,12 @@
     options.renderEvery = 2;
   }
 
-  function preparePPAGState(graph, options) {
+  function buildPPAGStateFromPrepared(context, options) {
     fillPPAGSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'PPAG layout',
-      augmentationMethod: options.augmentationMethod,
-      currentPositions: options.currentPositions
-    });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'PPAG setup failed' });
     }
-
+    
     var ppagData = buildPPAGData(
       context.augmented.embedding,
       context.augmentedOuterFace,
@@ -315,6 +310,16 @@
       ppagData: ppagData,
       movableVertices: context.movableVertices
     });
+  }
+
+  function preparePPAGState(graph, options) {
+    fillPPAGSettings(options);
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'PPAG layout',
+      augmentationMethod: options.augmentationMethod,
+      currentPositions: options.currentPositions
+    });
+    return buildPPAGStateFromPrepared(context, options);
   }
 
   async function runPPAGIterations(prepared, options) {
@@ -511,11 +516,83 @@
     });
   }
 
+  async function computePPAGPositionsFromPrepared(_graph, options, prepared) {
+    var state = buildPPAGStateFromPrepared(prepared, options);
+    if (!state || !state.ok) {
+      return buildLayoutError(state || { message: 'PPAG setup failed' });
+    }
+    var finalPositions = filterPositions(state.posById, state.graph.nodeIds);
+
+    if (state.ppagData.triangles.length === 0) {
+      return buildLayoutResult({
+        ok: true,
+        status: 'realized',
+        positions: finalPositions,
+        debugPositions: state.posById,
+        graph: state.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented,
+        ppagData: state.ppagData,
+        boundedFaceCount: 0,
+        dummyCount: state.augmented.dummyCount,
+        iters: 0,
+        maxRelError: 0,
+        faceAreaScore: null
+      });
+    }
+
+    var result = await runPPAGIterations(state, state.opts || options || {});
+
+    if (!result.ok && result.reason) {
+      return buildLayoutError({
+        status: result.status,
+        graph: state.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented,
+        message: result.reason
+      });
+    }
+    if (result.hasCrossings) {
+      return buildLayoutError({
+        status: result.status,
+        graph: state.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented,
+        message: 'PPAG produced a non-plane drawing'
+      });
+    }
+
+    var faceScore = Metrics && Metrics.computeUniformFaceAreaScore
+      ? Metrics.computeUniformFaceAreaScore(state.graph.nodeIds, state.graph.edgePairs, state.posById, state.baseEmbedding)
+      : null;
+    var lastStats = result.stats || {};
+    finalPositions = filterPositions(state.posById, state.graph.nodeIds);
+
+    return buildLayoutResult({
+      ok: true,
+      status: result.status,
+      positions: finalPositions,
+      debugPositions: state.posById,
+      graph: state.graph,
+      outerFace: state.outerFace,
+      augmented: state.augmented,
+      ppagData: state.ppagData,
+      iters: result.iters,
+      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
+      maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
+      boundedFaceCount: state.ppagData.triangles.length,
+      dummyCount: state.augmented.dummyCount
+    });
+  }
+
   async function applyPPAGLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      useSharedPreparedSeed: true,
-      sharedSeedFailureLabel: 'PPAG layout',
-      compute: computePPAGPositions,
+      prepareMode: 'graph+layout',
+      prepareFailureLabel: 'PPAG layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(ctx.prepared.posById);
+      },
+      computePositions: computePPAGPositionsFromPrepared,
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('PPAG', {

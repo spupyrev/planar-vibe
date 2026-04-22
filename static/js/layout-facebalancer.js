@@ -748,16 +748,8 @@
     });
   }
 
-  async function computeFaceBalancerPositions(graph, options) {
+  async function computeFaceBalancerPositionsFromPrepared(options, prepared) {
     options = options || {};
-    var prepared = LayoutPreprocessing.prepareGraphData(graph, {
-      failureLabel: 'FaceBalancer layout',
-      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
-      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
-        ? Object.assign({}, options.augmentationOptions)
-        : null,
-      currentPositions: options.currentPositions
-    });
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'FaceBalancer setup failed' });
     }
@@ -765,11 +757,7 @@
     var g = prepared.graph;
     var outerFace = prepared.augmentedOuterFace;
     var augmented = prepared.augmented;
-    var outerPos = PlanarVibeTutte.placeOuterFaceVertices(
-      prepared.augmentedGraph.nodeIds,
-      outerFace,
-      PlanarVibeTutte.defaultOuterPlacementOptions()
-    );
+    var outerPos = buildFaceBalancerOuterPositions(prepared);
     var data = buildFaceBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
@@ -906,9 +894,47 @@
     });
   }
 
+  function buildFaceBalancerOuterPositions(prepared) {
+    if (!prepared || !prepared.ok) {
+      throw new Error('buildFaceBalancerOuterPositions requires prepared graph data');
+    }
+    var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
+      prepared.augmentedGraph.nodeIds,
+      prepared.augmentedOuterFace,
+      PlanarVibeTutte.defaultOuterPlacementOptions()
+    );
+    var outerPos = {};
+    for (var i = 0; i < prepared.augmentedOuterFace.length; i += 1) {
+      var id = String(prepared.augmentedOuterFace[i]);
+      if (fullPos[id] && Number.isFinite(fullPos[id].x) && Number.isFinite(fullPos[id].y)) {
+        outerPos[id] = { x: fullPos[id].x, y: fullPos[id].y };
+      }
+    }
+    return outerPos;
+  }
+
+  async function computeFaceBalancerPositions(graph, options) {
+    options = options || {};
+    return computeFaceBalancerPositionsFromPrepared(options, LayoutPreprocessing.prepareGraphData(graph, {
+      failureLabel: 'FaceBalancer layout',
+      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
+      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
+        ? Object.assign({}, options.augmentationOptions)
+        : null,
+      currentPositions: options.currentPositions
+    }));
+  }
+
   async function applyFaceBalancerLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeFaceBalancerPositions,
+      prepareMode: 'graph',
+      prepareFailureLabel: 'FaceBalancer layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(buildFaceBalancerOuterPositions(ctx.prepared));
+      },
+      computePositions: function (_graph, computeOptions, prepared) {
+        return computeFaceBalancerPositionsFromPrepared(computeOptions || {}, prepared);
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = result.boundedFaceCount === 0

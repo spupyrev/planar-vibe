@@ -228,17 +228,12 @@
     options.onIteration = resolveFunctionOption(options.onIteration, null);
   }
 
-  function prepareReweightState(graph, options) {
+  function buildReweightStateFromPrepared(context, options) {
     fillReweightSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'ReweightTutte',
-      augmentationMethod: options.augmentationMethod,
-      currentPositions: options.currentPositions
-    });
     if (!context || !context.ok) {
       return buildLayoutError(context || {
         message: 'ReweightTutte setup failed',
-        graph: graph
+        graph: context && context.graph ? context.graph : null
       });
     }
 
@@ -316,6 +311,16 @@
       movableVertices: movableVertices,
       movementTracker: movementTracker
     };
+  }
+
+  function prepareReweightState(graph, options) {
+    fillReweightSettings(options);
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'ReweightTutte',
+      augmentationMethod: options.augmentationMethod,
+      currentPositions: options.currentPositions
+    });
+    return buildReweightStateFromPrepared(context, options);
   }
 
   async function runReweightIterations(prepared, options) {
@@ -433,11 +438,24 @@
     return runReweightIterations(prepared, prepared.opts);
   }
 
+  async function computeReweightTuttePositionsFromPrepared(_graph, options, prepared) {
+    var opts = options || {};
+    fillReweightSettings(opts);
+    var state = buildReweightStateFromPrepared(prepared, opts);
+    if (!state || !state.ok) {
+      return buildLayoutError(state || { message: 'ReweightTutte setup failed' });
+    }
+    return runReweightIterations(state, state.opts);
+  }
+
   async function applyReweightTutteLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      useSharedPreparedSeed: true,
-      sharedSeedFailureLabel: 'ReweightTutte layout',
-      compute: computeReweightTuttePositions,
+      prepareMode: 'graph+layout',
+      prepareFailureLabel: 'ReweightTutte layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(ctx.prepared.posById);
+      },
+      computePositions: computeReweightTuttePositionsFromPrepared,
       buildResult: function (ctx) {
         var result = ctx.result;
         return {

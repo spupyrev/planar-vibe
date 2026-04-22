@@ -175,10 +175,7 @@
 
   function createLayoutRenderer(config) {
     var cy = config.cy;
-    var getPositions = typeof config.getPositions === 'function' ? config.getPositions : function () { return {}; };
-    var hasInitialPositions = typeof config.hasInitialPositions === 'function'
-      ? config.hasInitialPositions
-      : function () { return false; };
+    var state = config.state || { livePositions: {} };
     var timing = resolveLayoutTimingOptions(config, {
       delayMs: 0,
       renderEvery: 2,
@@ -192,7 +189,7 @@
     var didFit = false;
 
     function renderCurrent(fitIfFirstVisible) {
-      applyPositionsToCy(cy, getPositions());
+      applyPositionsToCy(cy, state.livePositions || {});
       if (fitIfFirstVisible && !didFit) {
         fitCy(cy, fitPadding, initialFitBounds);
         didFit = true;
@@ -200,7 +197,7 @@
     }
 
     async function begin() {
-      if (!hasInitialPositions()) {
+      if (!initialFitBounds) {
         return;
       }
       renderCurrent(true);
@@ -308,37 +305,58 @@
     var fitPadding = DEFAULT_FIT_PADDING;
     var didStreamProgress = false;
     var initialFitBounds = null;
-    var sharedPreparedSeed = null;
+    var preparedLayoutInput = null;
+    var prepareMode = cfg.prepareMode || null;
+    var rendererState = { livePositions: livePositions };
 
-    if (cfg.useSharedPreparedSeed) {
-      sharedPreparedSeed = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-        failureLabel: String(cfg.sharedSeedFailureLabel || cfg.failureMessage || 'Layout'),
+    if (prepareMode === 'graph' || prepareMode === 'graph+layout') {
+      var specPrepareOptions = cfg.prepareOptions || {};
+      var prepareConfig = {
+        failureLabel: String(cfg.prepareFailureLabel || cfg.failureMessage || 'Layout'),
         currentPositions: initialCurrentPositions,
-        augmentationMethod: opts.augmentationMethod
-      });
-      if (!sharedPreparedSeed || !sharedPreparedSeed.ok || !sharedPreparedSeed.posById) {
-        return Promise.resolve(finalizeResult(sharedPreparedSeed || {
+        augmentationMethod: specPrepareOptions.augmentationMethod !== undefined
+          ? specPrepareOptions.augmentationMethod
+          : opts.augmentationMethod,
+        augmentationOptions: specPrepareOptions.augmentationOptions !== undefined
+          ? specPrepareOptions.augmentationOptions
+          : opts.augmentationOptions
+      };
+      preparedLayoutInput = prepareMode === 'graph'
+        ? LayoutPreprocessing.prepareGraphData(graph, prepareConfig)
+        : LayoutPreprocessing.prepareGraphAndLayoutData(graph, prepareConfig);
+      if (!preparedLayoutInput || !preparedLayoutInput.ok) {
+        return Promise.resolve(finalizeResult(preparedLayoutInput || {
           ok: false,
-          message: String(cfg.sharedSeedFailureLabel || cfg.failureMessage || 'Layout') + ' shared seed failed'
+          message: String(cfg.prepareFailureLabel || cfg.failureMessage || 'Layout') + ' preparation failed'
         }));
       }
-      livePositions = sharedPreparedSeed.posById;
-      initialFitBounds = computePositionBounds(livePositions);
+      if (prepareMode === 'graph+layout') {
+        livePositions = preparedLayoutInput.posById;
+        rendererState.livePositions = livePositions;
+      }
+    }
+
+    if (typeof cfg.initialFitBounds !== 'function') {
+      throw new Error('runLayout requires spec.initialFitBounds');
+    }
+    initialFitBounds = cfg.initialFitBounds({
+      graph: graph,
+      cy: cy,
+      options: opts,
+      currentPositions: initialCurrentPositions,
+      prepared: preparedLayoutInput
+    });
+    if (!initialFitBounds ||
+        !Number.isFinite(initialFitBounds.x1) ||
+        !Number.isFinite(initialFitBounds.y1) ||
+        !Number.isFinite(initialFitBounds.x2) ||
+        !Number.isFinite(initialFitBounds.y2)) {
+      throw new Error('runLayout requires finite initialFitBounds');
     }
 
     var renderer = createLayoutRenderer({
       cy: cy,
-      getPositions: function () { return livePositions; },
-      hasInitialPositions: function () {
-        var ids = Object.keys(livePositions || {});
-        for (var i = 0; i < ids.length; i += 1) {
-          var p = livePositions[ids[i]];
-          if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
-            return true;
-          }
-        }
-        return false;
-      },
+      state: rendererState,
       delayMs: delayMs,
       renderEvery: renderEvery,
       yieldEvery: yieldEvery,
@@ -350,6 +368,7 @@
       var event = progress || {};
       didStreamProgress = true;
       livePositions = event.positions || livePositions;
+      rendererState.livePositions = livePositions;
       if (typeof opts.onIteration === 'function') {
         opts.onIteration(event);
       }
@@ -360,10 +379,9 @@
       var positions = null;
       var streamed = didStreamProgress;
       if (result && result.ok) {
-        positions = typeof cfg.getPositions === 'function'
-          ? cfg.getPositions(result)
-          : result.positions;
+        positions = result.positions;
         livePositions = positions || livePositions;
+        rendererState.livePositions = livePositions;
       }
       renderer.finish();
 
@@ -397,7 +415,6 @@
         opts,
         {
           currentPositions: initialCurrentPositions,
-          preparedSeed: sharedPreparedSeed,
           onIteration: onProgress
         },
         typeof cfg.patchComputeOptions === 'function'
@@ -409,7 +426,7 @@
           }) || {})
           : {}
       );
-      var result = cfg.compute(graph, computeOptions);
+      var result = cfg.computePositions(graph, computeOptions, preparedLayoutInput);
       if (result && typeof result.then === 'function') {
         return result.then(finalizeResult);
       }
@@ -421,6 +438,7 @@
 
   global.CyRuntime = {
     currentPositionsFromCy: currentPositionsFromCy,
+    computePositionBounds: computePositionBounds,
     captureViewportFromCy: captureViewportFromCy,
     applyPositionsToCy: applyPositionsToCy,
     applyViewportToCy: applyViewportToCy,

@@ -145,7 +145,13 @@
 
   function applyNativeLayout(cy, options, layoutName, label) {
     return CyRuntime.runLayout(cy, options, {
-      compute: async function (graph, computeOptions) {
+      initialFitBounds: function (ctx) {
+        var defaults = global.PlanarVibeViewportDefaults || {};
+        var width = Number.isFinite(defaults.width) ? defaults.width : 900;
+        var height = Number.isFinite(defaults.height) ? defaults.height : 620;
+        return { x1: 0, y1: 0, x2: width, y2: height };
+      },
+      computePositions: async function (graph, computeOptions) {
         var result = await runNativeLayout(graph, layoutName, computeOptions && computeOptions.currentPositions);
         await emitSingleIteration(computeOptions || {}, result);
         return result;

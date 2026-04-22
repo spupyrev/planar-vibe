@@ -42,13 +42,18 @@
 
   function applyRandomLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
+      initialFitBounds: function (ctx) {
+        var width = Math.max(Number(ctx.cy && ctx.cy.width && ctx.cy.width()) || 320, 320);
+        var height = Math.max(Number(ctx.cy && ctx.cy.height && ctx.cy.height()) || 260, 260);
+        return { x1: 0, y1: 0, x2: width, y2: height };
+      },
       patchComputeOptions: function (ctx) {
         return {
           width: ctx.cy.width(),
           height: ctx.cy.height()
         };
       },
-      compute: async function (graph, computeOptions) {
+      computePositions: async function (graph, computeOptions) {
         var result = computeRandomPositions(
           graph,
           computeOptions && computeOptions.width,

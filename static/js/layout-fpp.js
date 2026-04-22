@@ -554,10 +554,59 @@
     });
   }
 
+  function computeFPPPositionsFromPrepared(graph, prepared) {
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
+    if (!prepared || !prepared.ok) {
+      return buildLayoutError({
+        message: prepared && (prepared.message || prepared.reason) || 'FPP setup failed',
+        graph: graph
+      });
+    }
+
+    var canonical = computeCanonicalOrdering(prepared);
+    if (!canonical.ok) {
+      return buildLayoutError({
+        message: canonical.reason,
+        graph: graph,
+        outerFace: prepared.outerFace
+      });
+    }
+
+    var result = computeFPPPositionsFromCanonical(canonical);
+    if (!result || !result.ok) {
+      return buildLayoutError(result || { message: 'FPP placement failed' });
+    }
+    return buildLayoutResult({
+      ok: true,
+      nodeIds: ids,
+      edgePairs: pairs,
+      outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
+      graph: graph,
+      augmentedDummyCount: prepared.augmentedDummyCount || 0,
+      prepared: prepared,
+      canonical: canonical,
+      positions: result.positions
+    });
+  }
+
   function applyFPPLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: async function (graph, computeOptions) {
-        var result = computeFPPPositions(graph, computeOptions || {});
+      prepareMode: 'graph',
+      prepareFailureLabel: 'FPP',
+      initialFitBounds: function (ctx) {
+        var defaults = global.PlanarVibeViewportDefaults || {};
+        var width = Number.isFinite(defaults.width) ? defaults.width : 900;
+        var height = Number.isFinite(defaults.height) ? defaults.height : 620;
+        return { x1: 0, y1: 0, x2: width, y2: height };
+      },
+      prepareOptions: {
+        augmentationOptions: {
+          triangulateOuterFace: true
+        }
+      },
+      computePositions: async function (graph, computeOptions, prepared) {
+        var result = computeFPPPositionsFromPrepared(graph, prepared);
         await emitSingleIteration(computeOptions || {}, result);
         return result;
       },

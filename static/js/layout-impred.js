@@ -368,14 +368,7 @@
     };
   }
 
-  async function computeImPrEdPositions(g, options) {
-    if (!g.nodeIds || g.nodeIds.length < 2) {
-      return buildLayoutError({ message: 'ImPrEd requires at least 2 vertices', graph: g });
-    }
-    if (!g.edgePairs || g.edgePairs.length === 0) {
-      return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
-    }
-
+  function buildImPrEdSeedFromPrepared(g, options, prepared) {
     var currentSource = options.currentPositions || {};
     var currentPositions = {};
     var currentCount = 0;
@@ -402,26 +395,66 @@
         movableVertices: GraphUtils.collectMovableVertices(g.nodeIds, currentEmbedding.outerFace),
         initSource: 'current-plane'
       };
-    } else {
-      seed = LayoutPreprocessing.prepareGraphAndLayoutData(g, {
-        failureLabel: 'ImPrEd layout',
-        augmentationMethod: options.augmentationMethod || null,
-        currentPositions: currentCount === g.nodeIds.length ? currentPositions : null
-      });
-      if (!seed || !seed.ok) {
-        return buildLayoutError(seed || { message: 'ImPrEd initialization failed', graph: g });
-      }
-      seed = {
-        ok: true,
-        graph: seed.graph,
-        baseEmbedding: seed.baseEmbedding || null,
-        outerFace: seed.outerFace ? seed.outerFace.slice() : null,
-        posById: copyPositions(seed.posById || {}),
-        movableVertices: seed.movableVertices ? seed.movableVertices.slice() : g.nodeIds.slice(),
-        initSource: 'shared-seed'
-      };
+    }
+    var init = LayoutPreprocessing.computeInitialPositions(
+      prepared.augmentedGraph,
+      prepared.augmentedOuterFace,
+      prepared.embedding,
+      prepared.graph
+    );
+    if (!init || !init.ok || !init.positions) {
+      return buildLayoutError(init || { message: 'ImPrEd initialization failed', graph: g });
+    }
+    return {
+      ok: true,
+      graph: prepared.graph,
+      baseEmbedding: prepared.baseEmbedding || null,
+      outerFace: prepared.outerFace ? prepared.outerFace.slice() : null,
+      posById: copyPositions(init.positions || {}),
+      movableVertices: GraphUtils.collectMovableVertices(g.nodeIds, prepared.outerFace || []),
+      initSource: 'barycentric-seed'
+    };
+  }
+
+  async function computeImPrEdPositionsFromPrepared(g, options, prepared) {
+    if (!g.edgePairs || g.edgePairs.length === 0) {
+      return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
     }
 
+    var seed = buildImPrEdSeedFromPrepared(g, options, prepared);
+    if (!seed || !seed.ok) {
+      return buildLayoutError(seed || { message: 'ImPrEd initialization failed', graph: g });
+    }
+
+    return runImPrEdIterations(g, options, seed);
+  }
+
+  async function computeImPrEdPositions(g, options) {
+    if (!g.nodeIds || g.nodeIds.length < 3) {
+      return buildLayoutError({ message: 'ImPrEd requires at least 3 vertices', graph: g });
+    }
+    if (!g.edgePairs || g.edgePairs.length === 0) {
+      return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
+    }
+
+    var prepared = LayoutPreprocessing.prepareGraphData(g, {
+      failureLabel: 'ImPrEd layout',
+      augmentationMethod: options.augmentationMethod || null,
+      currentPositions: options.currentPositions || null
+    });
+    if (!prepared || !prepared.ok) {
+      return buildLayoutError(prepared || { message: 'ImPrEd initialization failed', graph: g });
+    }
+
+    var seed = buildImPrEdSeedFromPrepared(g, options, prepared);
+    if (!seed || !seed.ok) {
+      return buildLayoutError(seed || { message: 'ImPrEd initialization failed', graph: g });
+    }
+
+    return runImPrEdIterations(g, options, seed);
+  }
+
+  async function runImPrEdIterations(g, options, seed) {
     var posById = copyPositions(seed.posById || {});
     var adj = g.adjacency;
     var emb = seed.baseEmbedding || null;
@@ -616,7 +649,14 @@
 
   async function applyImPrEdLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeImPrEdPositions,
+      prepareMode: 'graph',
+      prepareFailureLabel: 'ImPrEd layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(ctx.currentPositions);
+      },
+      computePositions: function (graph, computeOptions, prepared) {
+        return computeImPrEdPositionsFromPrepared(graph, computeOptions || {}, prepared);
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -638,7 +678,9 @@
   }
 
   global.PlanarVibeImPrEd = {
+    buildImPrEdSeedFromPrepared: buildImPrEdSeedFromPrepared,
     computeImPrEdPositions: computeImPrEdPositions,
+    computeImPrEdPositionsFromPrepared: computeImPrEdPositionsFromPrepared,
     applyImPrEdLayout: applyImPrEdLayout
   };
 })(window);

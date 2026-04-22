@@ -471,38 +471,7 @@
     return out;
   }
 
-  function computeSchnyderPositions(g, options) {
-    if (g.nodeIds.length < 3) {
-      var smallPos = {};
-      if (g.nodeIds.length === 2) {
-        smallPos[g.nodeIds[0]] = { x: 20, y: 20 };
-        smallPos[g.nodeIds[1]] = { x: 50, y: 20 };
-      } else if (g.nodeIds.length === 1) {
-        smallPos[g.nodeIds[0]] = { x: 20, y: 20 };
-      }
-      return buildLayoutResult({
-        ok: true,
-        nodeIds: g.nodeIds,
-        edgePairs: g.edgePairs,
-        graph: g,
-        positions: smallPos
-      });
-    }
-
-    var prepared = prepareGraphData(g, {
-      failureLabel: 'Schnyder',
-      currentPositions: options ? options.currentPositions : undefined,
-      augmentationOptions: {
-        triangulateOuterFace: true
-      }
-    });
-    if (!prepared || !prepared.ok) {
-      return buildLayoutError({
-        message: (prepared && prepared.message) || 'Schnyder triangulation failed',
-        graph: g
-      });
-    }
-
+  function computeSchnyderPositionsFromPrepared(g, prepared) {
     var emb = prepared.embedding;
     var rotationById = buildRotationById(emb);
     var adjacency = prepared.augmentedGraph.adjacency;
@@ -567,10 +536,40 @@
     });
   }
 
+  function computeSchnyderPositions(g, options) {
+    var prepared = prepareGraphData(g, {
+      failureLabel: 'Schnyder',
+      currentPositions: options ? options.currentPositions : undefined,
+      augmentationOptions: {
+        triangulateOuterFace: true
+      }
+    });
+    if (!prepared || !prepared.ok) {
+      return buildLayoutError({
+        message: (prepared && prepared.message) || 'Schnyder triangulation failed',
+        graph: g
+      });
+    }
+    return computeSchnyderPositionsFromPrepared(g, prepared);
+  }
+
   function applySchnyderLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: async function (graph, computeOptions) {
-        var result = computeSchnyderPositions(graph, computeOptions || {});
+      prepareMode: 'graph',
+      prepareFailureLabel: 'Schnyder layout',
+      initialFitBounds: function (ctx) {
+        var defaults = global.PlanarVibeViewportDefaults || {};
+        var width = Number.isFinite(defaults.width) ? defaults.width : 900;
+        var height = Number.isFinite(defaults.height) ? defaults.height : 620;
+        return { x1: 0, y1: 0, x2: width, y2: height };
+      },
+      prepareOptions: {
+        augmentationOptions: {
+          triangulateOuterFace: true
+        }
+      },
+      computePositions: async function (graph, computeOptions, prepared) {
+        var result = computeSchnyderPositionsFromPrepared(graph, prepared);
         await emitSingleIteration(computeOptions || {}, result);
         return result;
       },
@@ -589,6 +588,7 @@
 
   global.PlanarVibeSchnyder = {
     computeSchnyderPositions: computeSchnyderPositions,
+    computeSchnyderPositionsFromPrepared: computeSchnyderPositionsFromPrepared,
     applySchnyderLayout: applySchnyderLayout
   };
 })(window);

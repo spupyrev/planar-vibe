@@ -384,7 +384,7 @@
     })();
   }
 
-  function computeFDUniformPositions(graph, options) {
+  function computeFDUniformPositionsFromPrepared(context, options) {
     var EPS = resolveFloatOption(options.epsilon, 1e-9, 1e-12);
     var repEps = resolveFloatOption(options.repulsionEps, 1e-6, 1e-12);
     var repPower = resolveFloatOption(options.repulsionPower, 2, 1);
@@ -403,15 +403,6 @@
     var kNearest = resolveIntOption(options.kNearest, 4, 1);
     var evalEvery = resolveIntOption(options.evalEvery, 10, 1);
     var onIteration = resolveFunctionOption(options.onIteration, null);
-
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'FD-uniform',
-      augmentationMethod: options.augmentationMethod || null,
-      currentPositions: options.currentPositions
-    });
-    if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'FD-uniform setup failed' });
-    }
 
     var graph = context.graph;
     var ids = graph.nodeIds.slice();
@@ -503,11 +494,28 @@
     });
   }
 
+  function computeFDUniformPositions(graph, options) {
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'FD-uniform',
+      augmentationMethod: options.augmentationMethod || null,
+      currentPositions: options.currentPositions
+    });
+    if (!context || !context.ok) {
+      return buildLayoutError(context || { message: 'FD-uniform setup failed' });
+    }
+    return computeFDUniformPositionsFromPrepared(context, options);
+  }
+
   function applyFDUniformLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      useSharedPreparedSeed: true,
-      sharedSeedFailureLabel: 'FD-uniform layout',
-      compute: computeFDUniformPositions,
+      prepareMode: 'graph+layout',
+      prepareFailureLabel: 'FD-uniform layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(ctx.prepared.posById);
+      },
+      computePositions: function (_graph, computeOptions, prepared) {
+        return computeFDUniformPositionsFromPrepared(prepared, computeOptions || {});
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {

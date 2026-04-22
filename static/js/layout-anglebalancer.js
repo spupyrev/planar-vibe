@@ -858,16 +858,8 @@
     });
   }
 
-  async function computeAngleBalancerPositions(graph, options) {
+  async function computeAngleBalancerPositionsFromPrepared(options, context) {
     options = options || {};
-    var context = LayoutPreprocessing.prepareGraphData(graph, {
-      failureLabel: 'AngleBalancer layout',
-      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
-      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
-        ? Object.assign({}, options.augmentationOptions)
-        : null,
-      currentPositions: options.currentPositions
-    });
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'AngleBalancer setup failed' });
     }
@@ -876,11 +868,7 @@
     var outerFace = context.augmentedOuterFace;
     var augmented = context.augmented;
     var baseEmbedding = context.baseEmbedding;
-    var outerPos = PlanarVibeTutte.placeOuterFaceVertices(
-      context.augmentedGraph.nodeIds,
-      outerFace,
-      PlanarVibeTutte.defaultOuterPlacementOptions()
-    );
+    var outerPos = buildAngleBalancerOuterPositions(context);
     var data = buildAngleBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
@@ -1039,9 +1027,47 @@
     });
   }
 
+  function buildAngleBalancerOuterPositions(prepared) {
+    if (!prepared || !prepared.ok) {
+      throw new Error('buildAngleBalancerOuterPositions requires prepared graph data');
+    }
+    var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
+      prepared.augmentedGraph.nodeIds,
+      prepared.augmentedOuterFace,
+      PlanarVibeTutte.defaultOuterPlacementOptions()
+    );
+    var outerPos = {};
+    for (var i = 0; i < prepared.augmentedOuterFace.length; i += 1) {
+      var id = String(prepared.augmentedOuterFace[i]);
+      if (fullPos[id] && Number.isFinite(fullPos[id].x) && Number.isFinite(fullPos[id].y)) {
+        outerPos[id] = { x: fullPos[id].x, y: fullPos[id].y };
+      }
+    }
+    return outerPos;
+  }
+
+  async function computeAngleBalancerPositions(graph, options) {
+    options = options || {};
+    return computeAngleBalancerPositionsFromPrepared(options, LayoutPreprocessing.prepareGraphData(graph, {
+      failureLabel: 'AngleBalancer layout',
+      augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
+      augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
+        ? Object.assign({}, options.augmentationOptions)
+        : null,
+      currentPositions: options.currentPositions
+    }));
+  }
+
   async function applyAngleBalancerLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: computeAngleBalancerPositions,
+      prepareMode: 'graph',
+      prepareFailureLabel: 'AngleBalancer layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(buildAngleBalancerOuterPositions(ctx.prepared));
+      },
+      computePositions: function (_graph, computeOptions, prepared) {
+        return computeAngleBalancerPositionsFromPrepared(computeOptions || {}, prepared);
+      },
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('AngleBalancer', {

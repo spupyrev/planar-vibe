@@ -482,12 +482,7 @@
     return out;
   }
 
-  function prepareCEG23State(graph, failureLabel, options) {
-    var prepared = prepareGraphAndLayoutData(graph, {
-      failureLabel: failureLabel,
-      augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
-      currentPositions: options ? options.currentPositions : undefined
-    });
+  function buildCEG23StateFromPrepared(prepared, failureLabel) {
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || {
         message: failureLabel + ' requires a planar graph'
@@ -512,6 +507,14 @@
       augmentedPairs: augmented.graph.edgePairs,
       adjacency: prepared.augmentedGraph.adjacency
     });
+  }
+
+  function prepareCEG23State(graph, failureLabel, options) {
+    return buildCEG23StateFromPrepared(prepareGraphAndLayoutData(graph, {
+      failureLabel: failureLabel,
+      augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
+      currentPositions: options ? options.currentPositions : undefined
+    }), failureLabel);
   }
 
   function solveAugmentedWeightedLayout(state, weights, initOptions) {
@@ -566,8 +569,10 @@
     });
   }
 
-  function computeCEG23BfsPositions(graph, options) {
-    var state = prepareCEG23State(graph, 'CEG23-bfs', options);
+  function computeCEG23BfsPositions(graph, options, prepared) {
+    var state = prepared
+      ? buildCEG23StateFromPrepared(prepared, 'CEG23-bfs')
+      : prepareCEG23State(graph, 'CEG23-bfs', options);
     if (!state || !state.ok) {
       return state;
     }
@@ -606,8 +611,10 @@
     );
   }
 
-  function computeCEG23XyPositions(graph, options) {
-    var state = prepareCEG23State(graph, 'CEG23-xy', options);
+  function computeCEG23XyPositions(graph, options, prepared) {
+    var state = prepared
+      ? buildCEG23StateFromPrepared(prepared, 'CEG23-xy')
+      : prepareCEG23State(graph, 'CEG23-xy', options);
     if (!state || !state.ok) {
       return state;
     }
@@ -658,10 +665,13 @@
 
   function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
     return CyRuntime.runLayout(cy, options, {
-      useSharedPreparedSeed: true,
-      sharedSeedFailureLabel: String(failureMessage || 'CEG23 layout').replace(/ failed$/i, ' layout'),
-      compute: async function (graph, computeOptions) {
-        var result = computeLayout(graph, computeOptions || {});
+      prepareMode: 'graph+layout',
+      prepareFailureLabel: String(failureMessage || 'CEG23 layout').replace(/ failed$/i, ' layout'),
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(ctx.prepared.posById);
+      },
+      computePositions: async function (graph, computeOptions, prepared) {
+        var result = computeLayout(graph, computeOptions || {}, prepared);
         if (result && result.ok && result.positions && typeof computeOptions.onIteration === 'function') {
           await computeOptions.onIteration({
             iter: 1,

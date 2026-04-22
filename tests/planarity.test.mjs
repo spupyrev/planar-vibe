@@ -874,15 +874,19 @@ test('shared layout runner fits once before compute even with a shared seed', as
     yieldEvery: 50,
     augmentationMethod: 'outer-cycle'
   }, {
-    useSharedPreparedSeed: true,
-    sharedSeedFailureLabel: 'PPAG layout',
+    prepareMode: 'graph+layout',
+    prepareFailureLabel: 'PPAG layout',
+    initialFitBounds: function (ctx) {
+      return CyRuntime.computePositionBounds(ctx.prepared.posById);
+    },
     patchComputeOptions: function (ctx) {
       return {
         onIteration: ctx.onProgress
       };
     },
-    compute: async function (_graph, options) {
+    computePositions: async function (_graph, options, prepared) {
       fitCountAtComputeStart = cy._fitCalls;
+      assert.equal(prepared && prepared.ok, true);
       await options.onIteration({
         iter: 1,
         maxIters: 2,
@@ -897,9 +901,6 @@ test('shared layout runner fits once before compute even with a shared seed', as
         ok: true,
         positions: finalPos
       };
-    },
-    getPositions: function (runResult) {
-      return runResult.positions;
     },
     failureMessage: 'layout seed test failed'
   });
@@ -944,15 +945,18 @@ test('shared layout runner passes the original positions and prepared seed into 
   assert.equal(preparedSeed && preparedSeed.ok, true, preparedSeed && preparedSeed.message ? preparedSeed.message : 'shared seed prep failed');
 
   let computeCurrentPositions = null;
-  let computePreparedSeed = null;
+  let computePrepared = null;
   const result = await CyRuntime.runLayout(cy, {
     augmentationMethod: 'outer-cycle'
   }, {
-    useSharedPreparedSeed: true,
-    sharedSeedFailureLabel: 'PPAG layout',
-    compute: function (_graph, options) {
+    prepareMode: 'graph+layout',
+    prepareFailureLabel: 'PPAG layout',
+    initialFitBounds: function (ctx) {
+      return CyRuntime.computePositionBounds(ctx.prepared.posById);
+    },
+    computePositions: function (_graph, options, prepared) {
       computeCurrentPositions = options.currentPositions;
-      computePreparedSeed = options.preparedSeed;
+      computePrepared = prepared;
       return {
         ok: true,
         positions: preparedSeed.posById
@@ -963,11 +967,11 @@ test('shared layout runner passes the original positions and prepared seed into 
 
   assert.equal(result && result.ok, true, result && result.message ? result.message : 'runLayout failed');
   assert.deepEqual(JSON.parse(JSON.stringify(computeCurrentPositions)), pos);
-  assert.equal(computePreparedSeed && computePreparedSeed.ok, true);
-  assert.deepEqual(GeometryUtils.filterPositionMap(computePreparedSeed.posById, graph.nodeIds), preparedSeed.positions || GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds));
+  assert.equal(computePrepared && computePrepared.ok, true);
+  assert.deepEqual(GeometryUtils.filterPositionMap(computePrepared.posById, graph.nodeIds), preparedSeed.positions || GeometryUtils.filterPositionMap(preparedSeed.posById, graph.nodeIds));
 });
 
-test('AngleBalancer does not opt into the shared prepared seed', async () => {
+test('AngleBalancer uses graph preparation in the runtime', async () => {
   const originalRunLayout = CyRuntime.runLayout;
   const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
   let capturedSpec = null;
@@ -979,14 +983,14 @@ test('AngleBalancer does not opt into the shared prepared seed', async () => {
     const result = await AngleBalancer.applyAngleBalancerLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected AngleBalancer to call CyRuntime.runLayout');
-    assert.equal(capturedSpec.useSharedPreparedSeed, undefined);
-    assert.equal(capturedSpec.sharedSeedFailureLabel, undefined);
+    assert.equal(capturedSpec.prepareMode, 'graph');
+    assert.equal(capturedSpec.prepareFailureLabel, 'AngleBalancer layout');
   } finally {
     CyRuntime.runLayout = originalRunLayout;
   }
 });
 
-test('Hybrid does not opt into the shared prepared seed', async () => {
+test('Hybrid uses graph preparation in the runtime', async () => {
   const originalRunLayout = CyRuntime.runLayout;
   const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
   let capturedSpec = null;
@@ -998,8 +1002,8 @@ test('Hybrid does not opt into the shared prepared seed', async () => {
     const result = await Hybrid.applyHybridLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected Hybrid to call CyRuntime.runLayout');
-    assert.equal(capturedSpec.useSharedPreparedSeed, undefined);
-    assert.equal(capturedSpec.sharedSeedFailureLabel, undefined);
+    assert.equal(capturedSpec.prepareMode, 'graph');
+    assert.equal(capturedSpec.prepareFailureLabel, 'Hybrid layout');
   } finally {
     CyRuntime.runLayout = originalRunLayout;
   }
@@ -1023,7 +1027,10 @@ test('shared layout runner does not synthesize a final progress step for one-sho
       events.push(progress);
     }
   }, {
-    compute: function () {
+    initialFitBounds: function (ctx) {
+      return CyRuntime.computePositionBounds(ctx.currentPositions);
+    },
+    computePositions: function () {
       return {
         ok: true,
         positions: finalPos
@@ -1465,7 +1472,7 @@ test('Tutte rejects graphs with fewer than 3 vertices', async () => {
   assert.match(String(result.message || ''), /at least 3 vertices/i);
 });
 
-test('Tutte does not opt into the shared prepared seed', async () => {
+test('Tutte uses graph preparation in the runtime', async () => {
   const originalRunLayout = CyRuntime.runLayout;
   const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
   let capturedSpec = null;
@@ -1477,14 +1484,14 @@ test('Tutte does not opt into the shared prepared seed', async () => {
     const result = await Tutte.applyTutteLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected Tutte to call CyRuntime.runLayout');
-    assert.equal(capturedSpec.useSharedPreparedSeed, undefined);
-    assert.equal(capturedSpec.sharedSeedFailureLabel, undefined);
+    assert.equal(capturedSpec.prepareMode, 'graph');
+    assert.equal(capturedSpec.prepareFailureLabel, 'Tutte layout');
   } finally {
     CyRuntime.runLayout = originalRunLayout;
   }
 });
 
-test('CEG23-bfs opts into the shared prepared seed', async () => {
+test('CEG23-bfs uses graph+layout preparation in the runtime', async () => {
   const originalRunLayout = CyRuntime.runLayout;
   const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
   let capturedSpec = null;
@@ -1496,8 +1503,69 @@ test('CEG23-bfs opts into the shared prepared seed', async () => {
     const result = await CEG23Bfs.applyCEG23BfsLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected CEG23-bfs to call CyRuntime.runLayout');
-    assert.equal(capturedSpec.useSharedPreparedSeed, true);
-    assert.equal(capturedSpec.sharedSeedFailureLabel, 'CEG23-bfs layout');
+    assert.equal(capturedSpec.prepareMode, 'graph+layout');
+    assert.equal(capturedSpec.prepareFailureLabel, 'CEG23-bfs layout');
+  } finally {
+    CyRuntime.runLayout = originalRunLayout;
+  }
+});
+
+test('Schnyder uses graph preparation in the runtime', async () => {
+  const originalRunLayout = CyRuntime.runLayout;
+  const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
+  let capturedSpec = null;
+  CyRuntime.runLayout = function (_cy, _options, spec) {
+    capturedSpec = spec;
+    return Promise.resolve({ ok: true, message: 'ok' });
+  };
+  try {
+    const result = await Schnyder.applySchnyderLayout(cy, {});
+    assert.equal(result && result.ok, true);
+    assert.ok(capturedSpec, 'expected Schnyder to call CyRuntime.runLayout');
+    assert.equal(capturedSpec.prepareMode, 'graph');
+    assert.equal(capturedSpec.prepareFailureLabel, 'Schnyder layout');
+  } finally {
+    CyRuntime.runLayout = originalRunLayout;
+  }
+});
+
+test('ImPrEd uses graph preparation in the runtime', async () => {
+  const originalRunLayout = CyRuntime.runLayout;
+  const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
+  let capturedSpec = null;
+  CyRuntime.runLayout = function (_cy, _options, spec) {
+    capturedSpec = spec;
+    return Promise.resolve({ ok: true, message: 'ok' });
+  };
+  try {
+    const result = await ImPrEd.applyImPrEdLayout(cy, {});
+    assert.equal(result && result.ok, true);
+    assert.ok(capturedSpec, 'expected ImPrEd to call CyRuntime.runLayout');
+    assert.equal(capturedSpec.prepareMode, 'graph');
+    assert.equal(capturedSpec.prepareFailureLabel, 'ImPrEd layout');
+  } finally {
+    CyRuntime.runLayout = originalRunLayout;
+  }
+});
+
+test('FPP uses graph preparation with outer-face triangulation in the runtime', async () => {
+  const originalRunLayout = CyRuntime.runLayout;
+  const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
+  let capturedSpec = null;
+  CyRuntime.runLayout = function (_cy, _options, spec) {
+    capturedSpec = spec;
+    return Promise.resolve({ ok: true, message: 'ok' });
+  };
+  try {
+    const result = await FPP.applyFPPLayout(cy, {});
+    assert.equal(result && result.ok, true);
+    assert.ok(capturedSpec, 'expected FPP to call CyRuntime.runLayout');
+    assert.equal(capturedSpec.prepareMode, 'graph');
+    assert.equal(capturedSpec.prepareFailureLabel, 'FPP');
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(capturedSpec.prepareOptions || null)),
+      { augmentationOptions: { triangulateOuterFace: true } }
+    );
   } finally {
     CyRuntime.runLayout = originalRunLayout;
   }

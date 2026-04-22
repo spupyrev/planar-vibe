@@ -257,23 +257,9 @@
     });
   }
 
-  function computeTutteLayout(graph, options) {
+  function computeTutteLayoutWithPrepared(graph, prepared) {
     var ids = graph.nodeIds;
     var pairs = graph.edgePairs;
-
-    if (ids.length < 3) {
-      return buildLayoutError({
-        message: 'Tutte requires at least 3 vertices',
-        graph: graph
-      });
-    }
-
-    var prepared = LayoutPreprocessing.prepareGraphData(graph, {
-      failureLabel: 'Tutte layout',
-      augmentationMethod: options.augmentationMethod || null,
-      augmentationOptions: options.augmentationOptions || null,
-      currentPositions: options.currentPositions
-    });
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'Tutte failed' });
     }
@@ -318,10 +304,50 @@
     });
   }
 
+  function computeTutteLayout(graph, options) {
+    var ids = graph.nodeIds;
+    if (ids.length < 3) {
+      return buildLayoutError({
+        message: 'Tutte requires at least 3 vertices',
+        graph: graph
+      });
+    }
+    return computeTutteLayoutWithPrepared(graph, LayoutPreprocessing.prepareGraphData(graph, {
+      failureLabel: 'Tutte layout',
+      augmentationMethod: options.augmentationMethod || null,
+      augmentationOptions: options.augmentationOptions || null,
+      currentPositions: options.currentPositions
+    }));
+  }
+
+  function buildTutteOuterPositions(prepared) {
+    if (!prepared || !prepared.ok) {
+      throw new Error('buildTutteOuterPositions requires prepared graph data');
+    }
+    var fullPos = placeOuterFaceVertices(
+      prepared.augmentedGraph.nodeIds,
+      prepared.augmentedOuterFace,
+      defaultOuterPlacementOptions()
+    );
+    var outerPos = {};
+    for (var i = 0; i < prepared.augmentedOuterFace.length; i += 1) {
+      var id = String(prepared.augmentedOuterFace[i]);
+      if (fullPos[id] && Number.isFinite(fullPos[id].x) && Number.isFinite(fullPos[id].y)) {
+        outerPos[id] = { x: fullPos[id].x, y: fullPos[id].y };
+      }
+    }
+    return outerPos;
+  }
+
   function applyTutteLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      compute: async function (graph, computeOptions) {
-        var result = computeTutteLayout(graph, computeOptions || {});
+      prepareMode: 'graph',
+      prepareFailureLabel: 'Tutte layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(buildTutteOuterPositions(ctx.prepared));
+      },
+      computePositions: async function (graph, computeOptions, prepared) {
+        var result = computeTutteLayoutWithPrepared(graph, prepared);
         await emitSingleIteration(computeOptions || {}, result);
         return result;
       },
@@ -350,6 +376,7 @@
     buildTutteWeights: buildTutteWeights,
     defaultOuterPlacementOptions: defaultOuterPlacementOptions,
     placeOuterFaceVertices: placeOuterFaceVertices,
+    buildTutteOuterPositions: buildTutteOuterPositions,
     computeBarycentricPositions: computeBarycentricPositions,
     computeTutteLayout: computeTutteLayout,
     applyTutteLayout: applyTutteLayout

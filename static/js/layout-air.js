@@ -322,17 +322,7 @@
     };
   }
 
-  function prepareAirState(graph, options) {
-    var opts = normalizeAirOptions(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'Air layout',
-      augmentationMethod: opts.augmentationMethod,
-      augmentationOptions: opts.augmentationOptions,
-      currentPositions: options && options.currentPositions
-    });
-    if (!context.ok) {
-      return buildLayoutError(context);
-    }
+  function buildAirStateFromPrepared(context, opts) {
     if (!Array.isArray(context.augmentedOuterFace) || context.augmentedOuterFace.length < 3) {
       return buildLayoutError({ message: 'Air setup failed: missing augmented outer face' });
     }
@@ -392,6 +382,20 @@
       airData: airData,
       movableVertices: movableVertices
     });
+  }
+
+  function prepareAirState(graph, options) {
+    var opts = normalizeAirOptions(options);
+    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'Air layout',
+      augmentationMethod: opts.augmentationMethod,
+      augmentationOptions: opts.augmentationOptions,
+      currentPositions: options && options.currentPositions
+    });
+    if (!context || !context.ok) {
+      return buildLayoutError(context || { message: 'Air setup failed' });
+    }
+    return buildAirStateFromPrepared(context, opts);
   }
 
   async function runAirIterations(prepared, options) {
@@ -675,11 +679,91 @@
     });
   }
 
+  async function computeAirPositionsFromPrepared(_graph, options, prepared) {
+    var opts = normalizeAirOptions(options);
+    var state = buildAirStateFromPrepared(prepared, opts);
+    if (!state.ok) {
+      return buildLayoutError(state);
+    }
+    var finalPositions = filterPositions(state.posById, state.graph.nodeIds);
+
+    if (state.airData.triangles.length === 0) {
+      return buildLayoutResult({
+        ok: true,
+        status: 'realized',
+        positions: finalPositions,
+        debugPositions: state.posById,
+        graph: state.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented,
+        airData: state.airData,
+        boundedFaceCount: 0,
+        dummyCount: state.augmented.dummyCount,
+        faceAreaScore: null,
+        maxRelError: 0
+      });
+    }
+
+    var solveResult = await runAirIterations(state, state.opts);
+    var status = solveResult.status;
+    var lastStats = solveResult.stats;
+    finalPositions = filterPositions(state.posById, state.graph.nodeIds);
+
+    if (solveResult.hasCrossings) {
+      return buildLayoutError({
+        status: status,
+        message: 'Air produced a non-plane drawing',
+        graph: state.graph,
+        outerFace: state.outerFace,
+        augmented: state.augmented,
+        maxRelError: lastStats ? lastStats.maxRelError : null,
+        boundedFaceCount: state.airData.triangles.length,
+        dummyCount: state.augmented.dummyCount
+      });
+    }
+
+    var faceScore = Metrics.computeUniformFaceAreaScore(
+      state.graph.nodeIds,
+      state.graph.edgePairs,
+      state.posById,
+      state.baseEmbedding
+    );
+
+    var message = buildLayoutStatusMessage('Air', {
+      outerFaceVertexCount: Array.isArray(state.outerFace) ? state.outerFace.length : null,
+      boundedFaceCount: state.airData.triangles.length,
+      dummyCount: state.augmented.dummyCount,
+      status: status,
+      maxRelError: lastStats ? lastStats.maxRelError : null,
+      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null
+    });
+
+    return buildLayoutResult({
+      ok: true,
+      status: status,
+      positions: finalPositions,
+      debugPositions: state.posById,
+      graph: state.graph,
+      outerFace: state.outerFace,
+      augmented: state.augmented,
+      airData: state.airData,
+      message: message,
+      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
+      maxRelError: lastStats ? lastStats.maxRelError : null,
+      boundedFaceCount: state.airData.triangles.length,
+      dummyCount: state.augmented.dummyCount,
+      iters: lastStats && Number.isFinite(lastStats.sweeps) ? lastStats.sweeps : null
+    });
+  }
+
   async function applyAirLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
-      useSharedPreparedSeed: true,
-      sharedSeedFailureLabel: 'Air layout',
-      compute: computeAirPositions,
+      prepareMode: 'graph+layout',
+      prepareFailureLabel: 'Air layout',
+      initialFitBounds: function (ctx) {
+        return CyRuntime.computePositionBounds(ctx.prepared.posById);
+      },
+      computePositions: computeAirPositionsFromPrepared,
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
