@@ -5,6 +5,9 @@
   // and coordinating browser-side execution behavior for graph algorithms.
 
   var DEFAULT_FIT_PADDING = 24;
+  var INTERACTIVE_DELAY_MS = 0;
+  var INTERACTIVE_RENDER_EVERY = 2;
+  var INTERACTIVE_YIELD_EVERY = 5;
   var GraphUtils = global.GraphUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   function isDummyCyNode(node) {
@@ -134,8 +137,7 @@
     return { x1: minX, y1: minY, x2: maxX, y2: maxY };
   }
 
-  function waitForNextFrame(delayMs) {
-    var delay = Math.max(0, Number(delayMs) || 0);
+  function waitForNextFrame() {
     return new Promise(function (resolve) {
       var schedule = (typeof global.setTimeout === 'function')
         ? global.setTimeout.bind(global)
@@ -153,37 +155,13 @@
         } else {
           resolve();
         }
-      }, delay);
+      }, INTERACTIVE_DELAY_MS);
     });
-  }
-
-  function resolveLayoutTimingOptions(options, defaults) {
-    var opts = options || {};
-    var cfg = defaults || {};
-    return {
-      delayMs: Number.isFinite(opts.delayMs)
-        ? Math.max(0, opts.delayMs)
-        : (Number.isFinite(cfg.delayMs) ? Math.max(0, cfg.delayMs) : 0),
-      renderEvery: Number.isFinite(opts.renderEvery)
-        ? Math.max(1, Math.floor(opts.renderEvery))
-        : (Number.isFinite(cfg.renderEvery) ? Math.max(1, Math.floor(cfg.renderEvery)) : 2),
-      yieldEvery: Number.isFinite(opts.yieldEvery)
-        ? Math.max(1, Math.floor(opts.yieldEvery))
-        : (Number.isFinite(cfg.yieldEvery) ? Math.max(1, Math.floor(cfg.yieldEvery)) : 5)
-    };
   }
 
   function createLayoutRenderer(config) {
     var cy = config.cy;
     var state = config.state || { livePositions: {} };
-    var timing = resolveLayoutTimingOptions(config, {
-      delayMs: 0,
-      renderEvery: 2,
-      yieldEvery: 5
-    });
-    var delayMs = timing.delayMs;
-    var renderEvery = timing.renderEvery;
-    var yieldEvery = timing.yieldEvery;
     var fitPadding = DEFAULT_FIT_PADDING;
     var initialFitBounds = config.initialFitBounds || null;
     var didFit = false;
@@ -201,7 +179,7 @@
         return;
       }
       renderCurrent(true);
-      await waitForNextFrame(delayMs);
+      await waitForNextFrame();
     }
 
     async function onProgress(event, options) {
@@ -210,18 +188,18 @@
       var iter = Number.isFinite(progress.iter) ? progress.iter : null;
       var maxIters = Number.isFinite(progress.maxIters) ? progress.maxIters : null;
       var isRenderable = iter !== null && maxIters !== null &&
-        (iter === 1 || iter === maxIters || (iter % renderEvery) === 0);
+        (iter === 1 || iter === maxIters || (iter % INTERACTIVE_RENDER_EVERY) === 0);
       var shouldYield = iter !== null && maxIters !== null &&
-        (iter === maxIters || (iter % yieldEvery) === 0);
+        (iter === maxIters || (iter % INTERACTIVE_YIELD_EVERY) === 0);
 
       if (isRenderable) {
         renderCurrent(true);
-        await waitForNextFrame(delayMs);
+        await waitForNextFrame();
         return;
       }
 
-      if ((extra.forceYield || delayMs > 0) && shouldYield) {
-        await waitForNextFrame(delayMs);
+      if (extra.forceYield && shouldYield) {
+        await waitForNextFrame();
       }
     }
 
@@ -294,15 +272,6 @@
     var graph = graphFromCy(cy);
     var initialCurrentPositions = currentPositionsFromCy(cy);
     var livePositions = {};
-    var timing = resolveLayoutTimingOptions(opts, {
-      delayMs: cfg.delayMsDefault,
-      renderEvery: cfg.renderEveryDefault,
-      yieldEvery: cfg.yieldEveryDefault
-    });
-    var delayMs = timing.delayMs;
-    var renderEvery = timing.renderEvery;
-    var yieldEvery = timing.yieldEvery;
-    var fitPadding = DEFAULT_FIT_PADDING;
     var didStreamProgress = false;
     var initialFitBounds = null;
     var preparedLayoutInput = null;
@@ -357,10 +326,6 @@
     var renderer = createLayoutRenderer({
       cy: cy,
       state: rendererState,
-      delayMs: delayMs,
-      renderEvery: renderEvery,
-      yieldEvery: yieldEvery,
-      fitPadding: fitPadding,
       initialFitBounds: initialFitBounds
     });
 
@@ -372,7 +337,7 @@
       if (typeof opts.onIteration === 'function') {
         opts.onIteration(event);
       }
-      await renderer.onProgress(event, { forceYield: !!(opts.onIteration || delayMs > 0) });
+      await renderer.onProgress(event, { forceYield: !!opts.onIteration });
     }
 
     function finalizeResult(result) {

@@ -287,33 +287,25 @@ async function main() {
     {
       name: 'Air',
       run: (graph) => Air.computeAirPositions(graph, {
-        maxSweeps: 80,
-        delayMs: 0,
-        yieldEvery: 50,
-        renderEvery: 100
+        maxSweeps: 80
       })
     },
     {
       name: 'PPAG',
       run: (graph) => PPAG.computePPAGPositions(graph, {
-        maxIters: 120,
-        delayMs: 0,
-        yieldEvery: 50,
-        renderEvery: 100
+        maxIters: 120
       })
     },
     {
       name: 'FaceBalancer',
       run: (graph) => FaceBalancer.computeFaceBalancerPositions(graph, {
-        maxIters: 30,
-        delayMs: 0
+        maxIters: 30
       })
     },
     {
       name: 'EdgeBalancer',
       run: (graph) => EdgeBalancer.computeEdgeBalancerPositions(graph, {
-        maxIters: 30,
-        delayMs: 0
+        maxIters: 30
       })
     },
     {
@@ -322,15 +314,13 @@ async function main() {
         maxOuterIters: 6,
         warmIters: 1200,
         innerIters: 1600,
-        finalIters: 1600,
-        delayMs: 0
+        finalIters: 1600
       })
     },
     {
       name: 'FD-uniform',
       run: (graph) => FDUniform.computeFDUniformPositions(graph, {
-        maxIters: 120,
-        delayMs: 0
+        maxIters: 120
       })
     }
   ];

@@ -255,10 +255,7 @@
     options.minStepScale = resolvePositiveOption(options.minStepScale, Math.pow(2, -20));
     options.tolAreaPositive = resolveFloatOption(options.tolAreaPositive, 1e-12, 0);
     options.tolAreaGlobal = resolveFloatOption(options.tolAreaGlobal, 1e-3, 0);
-    options.delayMs = 0;
     options.onIteration = resolveFunctionOption(options.onIteration, null);
-    options.yieldEvery = 5;
-    options.renderEvery = 2;
   }
 
   function buildPPAGStateFromPrepared(context, options) {

@@ -190,11 +190,7 @@
           key === 'reweighttutte' ||
           key === 'fd-uniform' ||
           key === 'impred') {
-        base = {
-          delayMs: 0,
-          renderEvery: 2,
-          yieldEvery: 5
-        };
+        base = {};
       }
       var mergedOverrides = Object.assign(
         {},

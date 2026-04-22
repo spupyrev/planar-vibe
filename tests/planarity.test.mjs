@@ -870,8 +870,6 @@ test('shared layout runner fits once before compute even with a shared seed', as
   };
   let fitCountAtComputeStart = -1;
   const result = await CyRuntime.runLayout(cy, {
-    delayMs: 0,
-    yieldEvery: 50,
     augmentationMethod: 'outer-cycle'
   }, {
     prepareMode: 'graph+layout',

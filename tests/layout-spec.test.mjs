@@ -230,10 +230,7 @@ const layoutSpecs = [
     name: 'Air compute',
     graph: CUBE,
     run(graph) {
-      return Air.computeAirPositions(graph, {
-        delayMs: 0,
-        yieldEvery: 50
-      });
+      return Air.computeAirPositions(graph, {});
     }
   },
   {
@@ -241,8 +238,6 @@ const layoutSpecs = [
     graph: CUBE,
     run(graph) {
       return PPAG.computePPAGPositions(graph, {
-        delayMs: 0,
-        yieldEvery: 50,
         maxIters: 120
       });
     }
@@ -252,7 +247,6 @@ const layoutSpecs = [
     graph: CUBE,
     run(graph) {
       return FaceBalancer.computeFaceBalancerPositions(graph, {
-        delayMs: 0,
         maxIters: 20
       });
     }
@@ -262,7 +256,6 @@ const layoutSpecs = [
     graph: CUBE,
     run(graph) {
       return EdgeBalancer.computeEdgeBalancerPositions(graph, {
-        delayMs: 0,
         maxIters: 20
       });
     }
@@ -271,18 +264,14 @@ const layoutSpecs = [
     name: 'AngleBalancer compute',
     graph: CUBE,
     run(graph) {
-      return AngleBalancer.computeAngleBalancerPositions(graph, {
-        delayMs: 0
-      });
+      return AngleBalancer.computeAngleBalancerPositions(graph, {});
     }
   },
   {
     name: 'Hybrid compute',
     graph: CUBE,
     run(graph) {
-      return Hybrid.computeHybridPositions(graph, {
-        delayMs: 0
-      });
+      return Hybrid.computeHybridPositions(graph, {});
     }
   },
   {
@@ -308,7 +297,6 @@ const layoutSpecs = [
     graph: CUBE,
     run(graph) {
       return ImPrEd.computeImPrEdPositions(graph, {
-        delayMs: 0,
         maxIters: 40
       });
     }
