@@ -986,6 +986,25 @@ test('AngleBalancer does not opt into the shared prepared seed', async () => {
   }
 });
 
+test('Hybrid does not opt into the shared prepared seed', async () => {
+  const originalRunLayout = CyRuntime.runLayout;
+  const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
+  let capturedSpec = null;
+  CyRuntime.runLayout = function (_cy, _options, spec) {
+    capturedSpec = spec;
+    return Promise.resolve({ ok: true, message: 'ok' });
+  };
+  try {
+    const result = await Hybrid.applyHybridLayout(cy, {});
+    assert.equal(result && result.ok, true);
+    assert.ok(capturedSpec, 'expected Hybrid to call CyRuntime.runLayout');
+    assert.equal(capturedSpec.useSharedPreparedSeed, undefined);
+    assert.equal(capturedSpec.sharedSeedFailureLabel, undefined);
+  } finally {
+    CyRuntime.runLayout = originalRunLayout;
+  }
+});
+
 test('shared layout runner does not synthesize a final progress step for one-shot layouts', async () => {
   const graph = {
     nodeIds: ['a', 'b', 'c'],

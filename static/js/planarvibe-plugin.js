@@ -2658,7 +2658,7 @@
           missingMessage: 'Hybrid layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             geometry: ['computeDrawingDiameter', 'copyPositionMap', 'createZeroVector', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointOnSegmentInterior', 'pointScale', 'polygonArea2', 'segmentsIntersectStrict', 'triangleArea2', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub'],
             graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'faceKey'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],

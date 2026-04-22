@@ -77,27 +77,6 @@
     return delta;
   }
 
-  function chooseCCWNeighborOrder(centerAug, neighborAugIndices, x0, y0) {
-    if (!neighborAugIndices || neighborAugIndices.length < 2) {
-      return Array.isArray(neighborAugIndices) ? neighborAugIndices.slice() : [];
-    }
-    var angles = new Array(neighborAugIndices.length);
-    for (var i = 0; i < neighborAugIndices.length; i += 1) {
-      var neighborAug = neighborAugIndices[i];
-      angles[i] = Math.atan2(y0[neighborAug] - y0[centerAug], x0[neighborAug] - x0[centerAug]);
-    }
-    var forwardSum = 0;
-    var backwardSum = 0;
-    for (i = 0; i < angles.length; i += 1) {
-      var next = (i + 1) % angles.length;
-      forwardSum += computePositiveTurn(angles[i], angles[next]);
-      backwardSum += computePositiveTurn(angles[next], angles[i]);
-    }
-    return Math.abs(forwardSum - TWO_PI) <= Math.abs(backwardSum - TWO_PI)
-      ? neighborAugIndices.slice()
-      : neighborAugIndices.slice().reverse();
-  }
-
   function buildAngleBalancerData(input) {
     var augmentedEdgePairs = input.augmentedEdgePairs;
     var augmentedEmbedding = input.augmentedEmbedding;
@@ -454,7 +433,6 @@
         }
       }
       if (objectiveNeighbors.length < 2) continue;
-      objectiveNeighbors = chooseCCWNeighborOrder(centerAugIdx, objectiveNeighbors, x, y);
       var targetAngle = TWO_PI / objectiveNeighbors.length;
       wedgeStart.push(wedges.length);
       wedgeCount.push(objectiveNeighbors.length);

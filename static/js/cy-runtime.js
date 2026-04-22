@@ -4,6 +4,7 @@
   // Shared Cytoscape runtime layer for reading graph state, rendering progress,
   // and coordinating browser-side execution behavior for graph algorithms.
 
+  var DEFAULT_FIT_PADDING = 24;
   var GraphUtils = global.GraphUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
   function isDummyCyNode(node) {
@@ -102,7 +103,7 @@
     if (!cy || typeof cy.fit !== 'function') {
       return;
     }
-    var padding = Number.isFinite(fitPadding) ? fitPadding : 24;
+    var padding = Number.isFinite(fitPadding) ? fitPadding : DEFAULT_FIT_PADDING;
     if (bounds && Number.isFinite(bounds.x1) && Number.isFinite(bounds.y1) &&
         Number.isFinite(bounds.x2) && Number.isFinite(bounds.y2)) {
       cy.fit(bounds, padding);
@@ -186,7 +187,7 @@
     var delayMs = timing.delayMs;
     var renderEvery = timing.renderEvery;
     var yieldEvery = timing.yieldEvery;
-    var fitPadding = Number.isFinite(config.fitPadding) ? Math.max(0, config.fitPadding) : 24;
+    var fitPadding = DEFAULT_FIT_PADDING;
     var initialFitBounds = config.initialFitBounds || null;
     var didFit = false;
 
@@ -304,7 +305,7 @@
     var delayMs = timing.delayMs;
     var renderEvery = timing.renderEvery;
     var yieldEvery = timing.yieldEvery;
-    var fitPadding = Number.isFinite(cfg.fitPadding) ? Math.max(0, cfg.fitPadding) : 24;
+    var fitPadding = DEFAULT_FIT_PADDING;
     var didStreamProgress = false;
     var initialFitBounds = null;
     var sharedPreparedSeed = null;
@@ -315,10 +316,14 @@
         currentPositions: initialCurrentPositions,
         augmentationMethod: opts.augmentationMethod
       });
-      if (sharedPreparedSeed && sharedPreparedSeed.ok && sharedPreparedSeed.posById) {
-        livePositions = sharedPreparedSeed.posById;
-        initialFitBounds = computePositionBounds(sharedPreparedSeed.posById);
+      if (!sharedPreparedSeed || !sharedPreparedSeed.ok || !sharedPreparedSeed.posById) {
+        return Promise.resolve(finalizeResult(sharedPreparedSeed || {
+          ok: false,
+          message: String(cfg.sharedSeedFailureLabel || cfg.failureMessage || 'Layout') + ' shared seed failed'
+        }));
       }
+      livePositions = sharedPreparedSeed.posById;
+      initialFitBounds = computePositionBounds(livePositions);
     }
 
     var renderer = createLayoutRenderer({
