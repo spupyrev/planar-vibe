@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 
-import { csvEscape } from '../scripts/report-shared.mjs';
+import { csvEscape } from './report-shared.mjs';
 
 const DEFAULT_ALGORITHM = 'tutte';
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
@@ -52,8 +52,8 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg === '--help' || arg === '-h') {
       process.stdout.write(
-        'Usage: node tools/run-dataset-algorithm-batch.mjs ' +
-        '[--algorithm tutte] [--timeout-ms 30000] [--output tools/tutte-dataset-results.csv] ' +
+        'Usage: node scripts/run-dataset-algorithm-batch.mjs ' +
+        '[--algorithm tutte] [--timeout-ms 30000] [--output evaluation_data/tutte-dataset-results.csv] ' +
         '[--files benchmark/sample_graphs.dot,benchmark/wiki.dot,benchmark/gd_collection.dot]\n'
       );
       process.exit(0);
@@ -61,7 +61,7 @@ function parseArgs(argv) {
   }
 
   if (!opts.outputCsv) {
-    opts.outputCsv = path.join('tools', `${opts.algorithm}-dataset-results.csv`);
+    opts.outputCsv = path.join('evaluation_data', `${opts.algorithm}-dataset-results.csv`);
   }
 
   return opts;
@@ -80,7 +80,11 @@ function parseDotCollections(text) {
     const edgePairs = current.edges;
     graphs.push({
       graphName: current.graphName,
-      parsed: { nodeIds, edgePairs }
+      parsed: {
+        nodeIds,
+        edgePairs,
+        positionsById: current.positionsById
+      }
     });
     current = null;
   }
@@ -99,7 +103,8 @@ function parseDotCollections(text) {
           graphName,
           nodes: new Set(),
           edges: [],
-          seen: new Set()
+          seen: new Set(),
+          positionsById: {}
         };
       }
       continue;
@@ -119,6 +124,17 @@ function parseDotCollections(text) {
       if (statement === '}') {
         finishCurrent();
         break;
+      }
+
+      const vertexMatch = statement.match(/^v\s+("?[^"\s\[]+"?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)(?:\s+.*)?$/i);
+      if (vertexMatch) {
+        const id = vertexMatch[1].replace(/^"(.*)"$/, '$1');
+        current.nodes.add(id);
+        current.positionsById[id] = {
+          x: Number(vertexMatch[2]),
+          y: Number(vertexMatch[3])
+        };
+        continue;
       }
 
       const edgeMatch = statement.match(/^("?[^"\s\[]+"?)\s*--\s*("?[^"\s\[]+"?)/);
@@ -396,7 +412,7 @@ function summarizeRows(rows) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const workerPath = path.resolve(process.cwd(), 'tools/run-dataset-algorithm-batch-worker.mjs');
+  const workerPath = path.resolve(process.cwd(), 'scripts/run-dataset-algorithm-batch-worker.mjs');
   const datasets = opts.files.map(loadDatasetGraphs);
   const jobs = datasets.flatMap((entry) => entry.graphs.map((graph) => ({
     dataset: entry.dataset,

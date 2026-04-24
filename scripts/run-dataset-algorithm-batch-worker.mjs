@@ -3,10 +3,10 @@ import { parentPort, workerData } from 'node:worker_threads';
 import {
   createAlgorithmSpecs,
   createMockCy,
+  initializeMockCyPositions,
   loadBrowserModules,
   positionsFromCy,
-  seedPositions
-} from '../scripts/report-shared.mjs';
+} from './report-shared.mjs';
 
 function computeMetrics(windowObj, parsed, posById) {
   const Metrics = windowObj.PlanarVibeMetrics;
@@ -52,37 +52,78 @@ async function main() {
   const dataset = String(workerData && workerData.dataset ? workerData.dataset : '');
   const graphName = String(workerData && workerData.graphName ? workerData.graphName : '');
   const algorithmKey = String(workerData && workerData.algorithmKey ? workerData.algorithmKey : '');
+  const includePositions = !!(workerData && workerData.includePositions);
   const parsed = workerData && workerData.parsed ? workerData.parsed : null;
   if (!parsed || !Array.isArray(parsed.nodeIds) || !Array.isArray(parsed.edgePairs)) {
     throw new Error('Missing parsed graph payload');
   }
 
   const windowObj = loadBrowserModules();
-  const algorithms = createAlgorithmSpecs(windowObj);
-  const alg = algorithms.find((spec) => spec.key === algorithmKey);
-  if (!alg) {
-    throw new Error(`Unknown algorithm: ${algorithmKey}`);
-  }
-
-  const cy = createMockCy(parsed.nodeIds, parsed.edgePairs);
-  seedPositions(cy, parsed.nodeIds, `${dataset}:${graphName}`);
-
-  const t0 = process.hrtime.bigint();
+  let posById = null;
+  let runtimeMs = 0;
+  let recAlgorithm = algorithmKey;
+  let recAlgorithmLabel = algorithmKey;
   let layoutResult;
-  try {
-    layoutResult = await Promise.resolve(alg.run(cy));
-  } catch (err) {
-    layoutResult = { ok: false, message: err && err.message ? err.message : String(err) };
+
+  if (algorithmKey === 'input') {
+    recAlgorithmLabel = 'Input';
+    const positions = parsed && parsed.positionsById ? parsed.positionsById : null;
+    const hasAllPositions = parsed.nodeIds.every((id) => {
+      const p = positions && positions[String(id)];
+      return p && Number.isFinite(p.x) && Number.isFinite(p.y);
+    });
+    if (!hasAllPositions) {
+      layoutResult = {
+        ok: false,
+        message: 'Input coordinates are missing or invalid for one or more vertices'
+      };
+    } else {
+      posById = (windowObj.GeometryUtils && typeof windowObj.GeometryUtils.normalizePositionMapToViewport === 'function')
+        ? windowObj.GeometryUtils.normalizePositionMapToViewport(positions)
+        : positions;
+      layoutResult = {
+        ok: true,
+        message: 'Used input coordinates'
+      };
+    }
+  } else {
+    const algorithms = createAlgorithmSpecs(windowObj);
+    const alg = algorithms.find((spec) => spec.key === algorithmKey);
+    if (!alg) {
+      throw new Error(`Unknown algorithm: ${algorithmKey}`);
+    }
+
+    recAlgorithm = alg.key;
+    recAlgorithmLabel = alg.label;
+
+    const cy = createMockCy(parsed.nodeIds, parsed.edgePairs);
+    initializeMockCyPositions(
+      cy,
+      parsed.nodeIds,
+      `${dataset}:${graphName}`,
+      parsed.positionsById || null,
+      windowObj.GeometryUtils
+    );
+
+    const t0 = process.hrtime.bigint();
+    try {
+      layoutResult = await Promise.resolve(alg.run(cy));
+    } catch (err) {
+      layoutResult = { ok: false, message: err && err.message ? err.message : String(err) };
+    }
+    runtimeMs = Number(process.hrtime.bigint() - t0) / 1e6;
+    if (layoutResult && layoutResult.ok) {
+      posById = positionsFromCy(cy);
+    }
   }
-  const runtimeMs = Number(process.hrtime.bigint() - t0) / 1e6;
 
   const rec = {
     dataset,
     graph: graphName,
     n: parsed.nodeIds.length,
     m: parsed.edgePairs.length,
-    algorithm: alg.key,
-    algorithmLabel: alg.label,
+    algorithm: recAlgorithm,
+    algorithmLabel: recAlgorithmLabel,
     runtimeMs,
     ok: !!(layoutResult && layoutResult.ok),
     message: layoutResult && layoutResult.message ? String(layoutResult.message) : '',
@@ -100,7 +141,6 @@ async function main() {
   };
 
   if (rec.ok) {
-    const posById = positionsFromCy(cy);
     const metrics = computeMetrics(windowObj, parsed, posById);
     rec.isPlane = metrics.isPlane ? 1 : 0;
     rec.angularResolution = metrics.angularResolution;
@@ -116,6 +156,9 @@ async function main() {
     if (!metrics.isPlane) {
       rec.ok = false;
       rec.message = rec.message ? `${rec.message} [non-plane drawing]` : 'non-plane drawing';
+    }
+    if (includePositions) {
+      rec.positions = posById;
     }
   }
 

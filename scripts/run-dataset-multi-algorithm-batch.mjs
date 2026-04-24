@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 
-import { createAlgorithmSpecs, csvEscape, loadBrowserModules } from '../scripts/report-shared.mjs';
+import { createAlgorithmSpecs, csvEscape, loadBrowserModules } from './report-shared.mjs';
 
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_CONCURRENCY = 4;
@@ -39,7 +39,7 @@ function parseArgs(argv) {
     algorithms: getDefaultAlgorithms(),
     timeoutMs: DEFAULT_TIMEOUT_MS,
     concurrency: DEFAULT_CONCURRENCY,
-    outputCsv: path.join('tools', 'all-algorithms-4bench-results.csv'),
+    outputCsv: path.join('evaluation_data', 'all-algorithms-4bench-results.csv'),
     files: DEFAULT_DATASET_FILES.slice()
   };
 
@@ -62,9 +62,9 @@ function parseArgs(argv) {
       i += 1;
     } else if (arg === '--help' || arg === '-h') {
       process.stdout.write(
-        'Usage: node tools/run-dataset-multi-algorithm-batch.mjs ' +
+        'Usage: node scripts/run-dataset-multi-algorithm-batch.mjs ' +
         '[--algorithms tutte,air,ppag,...] [--timeout-ms 30000] [--concurrency 4] ' +
-        '[--output tools/all-algorithms-4bench-results.csv] ' +
+        '[--output evaluation_data/all-algorithms-4bench-results.csv] ' +
         '[--files benchmark/sample_graphs.dot,benchmark/wiki.dot,benchmark/gd_collection.dot,benchmark/north.dot]\n'
       );
       process.exit(0);
@@ -87,7 +87,8 @@ function parseDotCollections(text) {
       graphName: current.graphName,
       parsed: {
         nodeIds: Array.from(current.nodes),
-        edgePairs: current.edges
+        edgePairs: current.edges,
+        positionsById: current.positionsById
       }
     });
     current = null;
@@ -105,7 +106,8 @@ function parseDotCollections(text) {
           graphName: start[1].replace(/^"(.*)"$/, '$1').trim(),
           nodes: new Set(),
           edges: [],
-          seen: new Set()
+          seen: new Set(),
+          positionsById: {}
         };
       }
       continue;
@@ -124,6 +126,18 @@ function parseDotCollections(text) {
         finishCurrent();
         break;
       }
+
+      const vertexMatch = statement.match(/^v\s+("?[^"\s\[]+"?)\s+(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)(?:\s+.*)?$/i);
+      if (vertexMatch) {
+        const id = vertexMatch[1].replace(/^"(.*)"$/, '$1');
+        current.nodes.add(id);
+        current.positionsById[id] = {
+          x: Number(vertexMatch[2]),
+          y: Number(vertexMatch[3])
+        };
+        continue;
+      }
+
       const edgeMatch = statement.match(/^("?[^"\s\[]+"?)\s*--\s*("?[^"\s\[]+"?)/);
       if (edgeMatch) {
         const a = edgeMatch[1].replace(/^"(.*)"$/, '$1');
@@ -345,7 +359,7 @@ function summarizeRows(rows) {
 
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
-  const workerPath = path.resolve(process.cwd(), 'tools/run-dataset-algorithm-batch-worker.mjs');
+  const workerPath = path.resolve(process.cwd(), 'scripts/run-dataset-algorithm-batch-worker.mjs');
   const datasets = opts.files.map(loadDatasetGraphs);
   const jobs = [];
   for (const entry of datasets) {
