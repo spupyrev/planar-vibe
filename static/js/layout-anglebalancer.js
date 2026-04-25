@@ -29,7 +29,9 @@
   var ANGLE_CONFIG = {
     areaTol: 1e-15,
     wedgeTol: 1e-8,
-    angleBarrierWeight: 0.05,
+    angleBarrierWeight: 0.5,
+    minRatioWeight: 0.25,
+    minRatioBeta: 10,
     faceBarrierWeight: 0.02,
     faceWeight: 0,
     angleWeight: 0,
@@ -192,6 +194,8 @@
       areaTol: input.areaTol,
       angleTol: input.angleTol,
       angleBarrierWeight: Math.max(0, input.angleBarrierWeight),
+      minRatioWeight: Math.max(0, input.minRatioWeight),
+      minRatioBeta: input.minRatioBeta,
       faceBarrierWeight: Math.max(0, input.faceBarrierWeight),
       edgeBarrierWeight: Math.max(0, input.edgeBarrierWeight),
       edgeUniformWeight: Math.max(0, input.edgeUniformWeight),
@@ -517,11 +521,23 @@
       return buildLayoutError({ reason: 'AngleBalancer requires at least one valid objective angle' });
     }
 
-    var weightScale = 1 / wedgeCount;
+    var vertexWeightScale = data.objectiveVertexIds.length > 0
+      ? (1 / data.objectiveVertexIds.length)
+      : (1 / wedgeCount);
     var angleObjectiveTerm = 0;
     var maxAngleResidual = 0;
     var minAngleRatio = Infinity;
     var worstWedge = null;
+    var minRatioWeight = data.minRatioWeight > 0 ? data.minRatioWeight : 0;
+    var minRatioBeta = data.minRatioBeta > 0 ? data.minRatioBeta : 10;
+    var minRatioVertexMax = minRatioWeight > 0 ? createZeroVector(data.objectiveVertexIds.length) : null;
+    var minRatioVertexSum = minRatioWeight > 0 ? createZeroVector(data.objectiveVertexIds.length) : null;
+    var wedgeEvals = new Array(wedgeCount);
+    var wedgeRatios = new Array(wedgeCount);
+    var wedgeResiduals = new Array(wedgeCount);
+    if (minRatioVertexMax) {
+      for (var vi = 0; vi < minRatioVertexMax.length; vi += 1) minRatioVertexMax[vi] = -Infinity;
+    }
     for (var i = 0; i < wedgeCount; i += 1) {
       var wedge = data.wedges[i];
       var center = wedge[0];
@@ -538,6 +554,9 @@
         return buildLayoutError({ reason: 'invalid-angle-step' });
       }
       var residual = ratio - 1;
+      wedgeEvals[i] = wedgeEval;
+      wedgeRatios[i] = ratio;
+      wedgeResiduals[i] = residual;
       var absResidual = Math.abs(residual);
       if (absResidual > maxAngleResidual) {
         maxAngleResidual = absResidual;
@@ -550,12 +569,49 @@
         };
       }
       if (ratio < minAngleRatio) minAngleRatio = ratio;
+      if (minRatioVertexMax) {
+        var scaledDeficit = minRatioBeta * (1 - ratio);
+        if (scaledDeficit > minRatioVertexMax[vertexIdx]) minRatioVertexMax[vertexIdx] = scaledDeficit;
+      }
+    }
 
+    if (minRatioVertexMax) {
+      for (i = 0; i < wedgeCount; i += 1) {
+        wedge = data.wedges[i];
+        vertexIdx = wedge[4];
+        minRatioVertexSum[vertexIdx] += Math.exp(minRatioBeta * (1 - wedgeRatios[i]) - minRatioVertexMax[vertexIdx]);
+      }
+    }
+
+    for (i = 0; i < wedgeCount; i += 1) {
+      wedge = data.wedges[i];
+      center = wedge[0];
+      left = wedge[1];
+      right = wedge[2];
+      targetAngle = wedge[3];
+      vertexIdx = wedge[4];
+      wedgeEval = wedgeEvals[i];
+      ratio = wedgeRatios[i];
+      residual = wedgeResiduals[i];
+
+      var weightScale = vertexWeightScale / Math.max(1, data.wedgeCount[vertexIdx]);
       angleObjectiveTerm += weightScale * residual * residual;
       var coeff = weightScale * (2 * residual / targetAngle);
       if (data.angleBarrierWeight > 0) {
         angleObjectiveTerm -= weightScale * data.angleBarrierWeight * Math.log(ratio);
         coeff -= weightScale * data.angleBarrierWeight / wedgeEval.angle;
+      }
+      if (minRatioVertexMax) {
+        var vertexSoftMinWeight = vertexWeightScale * minRatioWeight;
+        var minRatioSum = minRatioVertexSum[vertexIdx];
+        if (minRatioSum > 0) {
+          if (i === data.wedgeStart[vertexIdx]) {
+            angleObjectiveTerm += vertexSoftMinWeight *
+              ((Math.log(minRatioSum) + minRatioVertexMax[vertexIdx]) / minRatioBeta);
+          }
+          var softMinShare = Math.exp(minRatioBeta * (1 - ratio) - minRatioVertexMax[vertexIdx]) / minRatioSum;
+          coeff -= vertexSoftMinWeight * softMinShare / targetAngle;
+        }
       }
       addPointGradient(data, center, coeff * wedgeEval.gradCenterX, coeff * wedgeEval.gradCenterY, zX, zY);
       addPointGradient(data, left, coeff * wedgeEval.gradLeftX, coeff * wedgeEval.gradLeftY, zX, zY);
@@ -879,6 +935,8 @@
       areaTol: ANGLE_CONFIG.areaTol,
       angleTol: ANGLE_CONFIG.wedgeTol,
       angleBarrierWeight: ANGLE_CONFIG.angleBarrierWeight,
+      minRatioWeight: ANGLE_CONFIG.minRatioWeight,
+      minRatioBeta: ANGLE_CONFIG.minRatioBeta,
       faceBarrierWeight: ANGLE_CONFIG.faceBarrierWeight,
       edgeBarrierWeight: ANGLE_CONFIG.edgeBarrierWeight,
       edgeUniformWeight: ANGLE_CONFIG.edgeUniformWeight,
