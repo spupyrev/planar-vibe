@@ -23,13 +23,13 @@
   var polygonArea2 = GeometryUtils.polygonArea2;
   var triangleArea2 = GeometryUtils.triangleArea2;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
-  var PPAG_INTERNAL = {
+  var AREAGRAD_INTERNAL = {
     tolGrad: 1e-8,
     acceptanceTol: 1e-12,
     minTriangleAreaRel: 1e-10
   };
 
-  function buildPPAGData(augmentedEmbedding, outerFace, posById) {
+  function buildAreaGradData(augmentedEmbedding, outerFace, posById) {
     var incidentTrianglesByVertex = {};
     var triangles = [];
     var i;
@@ -41,14 +41,14 @@
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var face = augmentedEmbedding.faces[i];
       if (!face || face.length < 3) {
-        return buildLayoutError({ reason: 'PPAG requires a valid triangulated augmentation' });
+        return buildLayoutError({ reason: 'AreaGrad requires a valid triangulated augmentation' });
       }
       if (i === outerIndex) {
         continue;
       }
       var oriented = orientFaceCCW(face, posById);
       if (oriented.length !== 3) {
-        return buildLayoutError({ reason: 'PPAG requires all bounded faces of H to be triangles' });
+        return buildLayoutError({ reason: 'AreaGrad requires all bounded faces of H to be triangles' });
       }
       var triangleIndex = triangles.length;
       triangles.push({ vertices: oriented });
@@ -76,7 +76,7 @@
 
     var outerArea = Math.abs(polygonArea2(outerFace, posById)) / 2;
     if (!(outerArea > 1e-12)) {
-      return buildLayoutError({ reason: 'PPAG initialization failed: outer face has zero area' });
+      return buildLayoutError({ reason: 'AreaGrad initialization failed: outer face has zero area' });
     }
 
     return buildLayoutResult({
@@ -104,10 +104,10 @@
     }
   }
 
-  function incidentTrianglesStayPositive(vertexId, ppagData, posById, tolAreaPositive) {
-    var entries = ppagData.incidentTrianglesByVertex[vertexId] || [];
+  function incidentTrianglesStayPositive(vertexId, areaGradData, posById, tolAreaPositive) {
+    var entries = areaGradData.incidentTrianglesByVertex[vertexId] || [];
     for (var i = 0; i < entries.length; i += 1) {
-      var tri = ppagData.triangles[entries[i].triangleIndex];
+      var tri = areaGradData.triangles[entries[i].triangleIndex];
       var a = posById[tri.vertices[0]];
       var b = posById[tri.vertices[1]];
       var c = posById[tri.vertices[2]];
@@ -121,23 +121,23 @@
     return true;
   }
 
-  function effectiveMinTriangleArea(ppagData, opts) {
-    var targetArea = ppagData && Number.isFinite(ppagData.targetTriangleArea)
-      ? ppagData.targetTriangleArea
+  function effectiveMinTriangleArea(areaGradData, opts) {
+    var targetArea = areaGradData && Number.isFinite(areaGradData.targetTriangleArea)
+      ? areaGradData.targetTriangleArea
       : 0;
     return Math.max(
       Number.isFinite(opts && opts.tolAreaPositive) ? opts.tolAreaPositive : 0,
-      PPAG_INTERNAL.minTriangleAreaRel * Math.max(targetArea, 0)
+      AREAGRAD_INTERNAL.minTriangleAreaRel * Math.max(targetArea, 0)
     );
   }
 
-  function computeTriangleResiduals(ppagData, posById, tolAreaPositive) {
-    var triangles = ppagData.triangles || [];
+  function computeTriangleResiduals(areaGradData, posById, tolAreaPositive) {
+    var triangles = areaGradData.triangles || [];
     var residuals = new Array(triangles.length);
     var areas = new Array(triangles.length);
     var areaEnergy = 0;
     var maxRelError = 0;
-    var targetArea = ppagData.targetTriangleArea;
+    var targetArea = areaGradData.targetTriangleArea;
     for (var i = 0; i < triangles.length; i += 1) {
       var tri = triangles[i];
       var a = posById[tri.vertices[0]];
@@ -167,8 +167,8 @@
     });
   }
 
-  function computePPAGState(ppagData, posById, opts) {
-    var residualState = computeTriangleResiduals(ppagData, posById, effectiveMinTriangleArea(ppagData, opts));
+  function computeAreaGradState(areaGradData, posById, opts) {
+    var residualState = computeTriangleResiduals(areaGradData, posById, effectiveMinTriangleArea(areaGradData, opts));
     if (!residualState.ok) {
       return residualState;
     }
@@ -179,14 +179,14 @@
       areaEnergy: residualState.areaEnergy,
       residuals: residualState.residuals,
       maxRelError: residualState.maxRelError,
-      rmsRelError: ppagData.triangles.length > 0
-        ? Math.sqrt(residualState.areaEnergy / ppagData.triangles.length)
+      rmsRelError: areaGradData.triangles.length > 0
+        ? Math.sqrt(residualState.areaEnergy / areaGradData.triangles.length)
         : 0
     });
   }
 
-  function computeLocalDelta(vertexId, ppagData, posById, residuals, opts) {
-    var entries = ppagData.incidentTrianglesByVertex[vertexId] || [];
+  function computeLocalDelta(vertexId, areaGradData, posById, residuals, opts) {
+    var entries = areaGradData.incidentTrianglesByVertex[vertexId] || [];
     if (entries.length === 0) {
       return { x: 0, y: 0, norm: 0 };
     }
@@ -195,11 +195,11 @@
     var h11 = opts.localDamping;
     var b0 = 0;
     var b1 = 0;
-    var invTargetArea = 1 / Math.max(ppagData.targetTriangleArea, 1e-18);
+    var invTargetArea = 1 / Math.max(areaGradData.targetTriangleArea, 1e-18);
 
     for (var i = 0; i < entries.length; i += 1) {
       var entry = entries[i];
-      var tri = ppagData.triangles[entry.triangleIndex];
+      var tri = areaGradData.triangles[entry.triangleIndex];
       var a = posById[tri.vertices[0]];
       var b = posById[tri.vertices[1]];
       var c = posById[tri.vertices[2]];
@@ -234,8 +234,8 @@
     return { x: dx, y: dy, norm: norm };
   }
 
-  function maxIncidentResidual(vertexId, ppagData, residuals) {
-    var entries = ppagData.incidentTrianglesByVertex[vertexId] || [];
+  function maxIncidentResidual(vertexId, areaGradData, residuals) {
+    var entries = areaGradData.incidentTrianglesByVertex[vertexId] || [];
     var worst = 0;
     for (var i = 0; i < entries.length; i += 1) {
       var residual = Math.abs(residuals[entries[i].triangleIndex] || 0);
@@ -246,7 +246,7 @@
     return worst;
   }
 
-  function fillPPAGSettings(options) {
+  function fillAreaGradSettings(options) {
     options.augmentationMethod = options.augmentationMethod || null;
     options.maxIters = resolveIntOption(options.maxIters, 200, 1);
     options.maxVertexMoveRel = resolvePositiveOption(options.maxVertexMoveRel, 0.08);
@@ -258,22 +258,22 @@
     options.onIteration = resolveFunctionOption(options.onIteration, null);
   }
 
-  function buildPPAGStateFromPrepared(context, options) {
-    fillPPAGSettings(options);
+  function buildAreaGradStateFromPrepared(context, options) {
+    fillAreaGradSettings(options);
     if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'PPAG setup failed' });
+      return buildLayoutError(context || { message: 'AreaGrad setup failed' });
     }
     
-    var ppagData = buildPPAGData(
+    var areaGradData = buildAreaGradData(
       context.augmented.embedding,
       context.augmentedOuterFace,
       context.posById
     );
-    if (!ppagData.ok) {
-      return buildLayoutError({ message: ppagData.reason || 'PPAG setup failed' });
+    if (!areaGradData.ok) {
+      return buildLayoutError({ message: areaGradData.reason || 'AreaGrad setup failed' });
     }
 
-    if (ppagData.triangles.length === 0) {
+    if (areaGradData.triangles.length === 0) {
       return buildLayoutResult({
         ok: true,
         opts: options,
@@ -282,17 +282,17 @@
         outerFace: context.augmentedOuterFace,
         augmented: context.augmented,
         posById: context.posById,
-        ppagData: ppagData,
+        areaGradData: areaGradData,
         movableVertices: []
       });
     }
 
-    var minTriangleArea = effectiveMinTriangleArea(ppagData, options);
-    for (var fi = 0; fi < ppagData.triangles.length; fi += 1) {
-      var tri = ppagData.triangles[fi];
+    var minTriangleArea = effectiveMinTriangleArea(areaGradData, options);
+    for (var fi = 0; fi < areaGradData.triangles.length; fi += 1) {
+      var tri = areaGradData.triangles[fi];
       var area = triangleArea2(context.posById[tri.vertices[0]], context.posById[tri.vertices[1]], context.posById[tri.vertices[2]]) / 2;
       if (!(area > minTriangleArea)) {
-        return buildLayoutError({ message: 'PPAG initialization failed: degenerate augmented triangle' });
+        return buildLayoutError({ message: 'AreaGrad initialization failed: degenerate augmented triangle' });
       }
     }
 
@@ -304,38 +304,38 @@
       outerFace: context.augmentedOuterFace,
       augmented: context.augmented,
       posById: context.posById,
-      ppagData: ppagData,
+      areaGradData: areaGradData,
       movableVertices: context.movableVertices
     });
   }
 
-  function preparePPAGState(graph, options) {
-    fillPPAGSettings(options);
+  function prepareAreaGradState(graph, options) {
+    fillAreaGradSettings(options);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'PPAG layout',
+      failureLabel: 'AreaGrad layout',
       augmentationMethod: options.augmentationMethod,
       currentPositions: options.currentPositions
     });
-    return buildPPAGStateFromPrepared(context, options);
+    return buildAreaGradStateFromPrepared(context, options);
   }
 
-  async function runPPAGIterations(prepared, options) {
+  async function runAreaGradIterations(prepared, options) {
     var g = prepared.graph;
     var posById = prepared.posById;
-    var ppagData = prepared.ppagData;
+    var areaGradData = prepared.areaGradData;
     var movableVertices = prepared.movableVertices || [];
     var outerDiameter = outerFaceDiameter(posById, prepared.outerFace);
     options.maxVertexMove = options.maxVertexMoveRel * outerDiameter;
-    options.minTriangleArea = effectiveMinTriangleArea(ppagData, options);
+    options.minTriangleArea = effectiveMinTriangleArea(areaGradData, options);
     var status = 'max_iters';
     var lastMoveStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
-    var state = computePPAGState(ppagData, posById, options);
+    var state = computeAreaGradState(areaGradData, posById, options);
 
     if (!state.ok) {
       return buildLayoutError({
         ok: false,
         status: 'invalid',
-        reason: state.reason || 'PPAG initialization failed'
+        reason: state.reason || 'AreaGrad initialization failed'
       });
     }
 
@@ -350,13 +350,13 @@
       var acceptedStepSum = 0;
       var lineSearchSteps = 0;
       var sweepVertices = movableVertices.slice().sort(function (a, b) {
-        return maxIncidentResidual(b, ppagData, state.residuals || []) - maxIncidentResidual(a, ppagData, state.residuals || []);
+        return maxIncidentResidual(b, areaGradData, state.residuals || []) - maxIncidentResidual(a, areaGradData, state.residuals || []);
       });
 
       for (var vi = 0; vi < sweepVertices.length; vi += 1) {
         var vertexId = sweepVertices[vi];
-        var delta = computeLocalDelta(vertexId, ppagData, posById, state.residuals || [], options);
-        if (!(delta.norm > PPAG_INTERNAL.tolGrad)) {
+        var delta = computeLocalDelta(vertexId, areaGradData, posById, state.residuals || [], options);
+        if (!(delta.norm > AREAGRAD_INTERNAL.tolGrad)) {
           continue;
         }
         var basePos = posById[vertexId];
@@ -371,15 +371,15 @@
             x: basePos.x + dx,
             y: basePos.y + dy
           };
-          if (!incidentTrianglesStayPositive(vertexId, ppagData, posById, options.minTriangleArea)) {
+          if (!incidentTrianglesStayPositive(vertexId, areaGradData, posById, options.minTriangleArea)) {
             posById[vertexId] = basePos;
             stepScale *= options.stepShrink;
             lineSearchSteps += 1;
             continue;
           }
-          var trialState = computePPAGState(ppagData, posById, options);
+          var trialState = computeAreaGradState(areaGradData, posById, options);
           if (trialState.ok &&
-              trialState.objective <= state.objective - PPAG_INTERNAL.acceptanceTol * Math.max(1, state.objective)) {
+              trialState.objective <= state.objective - AREAGRAD_INTERNAL.acceptanceTol * Math.max(1, state.objective)) {
             state = trialState;
             acceptedCount += 1;
             acceptedStepSum += Math.hypot(dx, dy);
@@ -411,7 +411,7 @@
             acceptedCount: acceptedCount,
             acceptedStep: acceptedCount > 0 ? (acceptedStepSum / acceptedCount) : 0,
             lineSearchSteps: lineSearchSteps,
-            boundedFaceCount: ppagData.triangles.length
+            boundedFaceCount: areaGradData.triangles.length
           }
         });
       }
@@ -438,20 +438,20 @@
       stats: state,
       moveStats: lastMoveStats,
       iters: Math.min(options.maxIters, Math.max(0, iter - (status === 'max_iters' ? 1 : 0))),
-      boundedFaceCount: ppagData.triangles.length,
+      boundedFaceCount: areaGradData.triangles.length,
       dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
       hasCrossings: hasCrossings
     };
   }
 
-  async function computePPAGPositions(graph, options) {
-    var prepared = preparePPAGState(graph, options);
+  async function computeAreaGradPositions(graph, options) {
+    var prepared = prepareAreaGradState(graph, options);
     if (!prepared || !prepared.ok) {
-      return buildLayoutError(prepared || { message: 'PPAG setup failed' });
+      return buildLayoutError(prepared || { message: 'AreaGrad setup failed' });
     }
     var finalPositions = filterPositions(prepared.posById, prepared.graph.nodeIds);
 
-    if (prepared.ppagData.triangles.length === 0) {
+    if (prepared.areaGradData.triangles.length === 0) {
       return buildLayoutResult({
         ok: true,
         status: 'realized',
@@ -460,7 +460,7 @@
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
-        ppagData: prepared.ppagData,
+        areaGradData: prepared.areaGradData,
         boundedFaceCount: 0,
         dummyCount: prepared.augmented.dummyCount,
         iters: 0,
@@ -469,7 +469,7 @@
       });
     }
 
-    var result = await runPPAGIterations(prepared, prepared.opts);
+    var result = await runAreaGradIterations(prepared, prepared.opts);
 
     if (!result.ok && result.reason) {
       return buildLayoutError({
@@ -486,7 +486,7 @@
         graph: prepared.graph,
         outerFace: prepared.outerFace,
         augmented: prepared.augmented,
-        message: 'PPAG produced a non-plane drawing'
+        message: 'AreaGrad produced a non-plane drawing'
       });
     }
 
@@ -504,23 +504,23 @@
       graph: prepared.graph,
       outerFace: prepared.outerFace,
       augmented: prepared.augmented,
-      ppagData: prepared.ppagData,
+      areaGradData: prepared.areaGradData,
       iters: result.iters,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
-      boundedFaceCount: prepared.ppagData.triangles.length,
+      boundedFaceCount: prepared.areaGradData.triangles.length,
       dummyCount: prepared.augmented.dummyCount
     });
   }
 
-  async function computePPAGPositionsFromPrepared(_graph, options, prepared) {
-    var state = buildPPAGStateFromPrepared(prepared, options);
+  async function computeAreaGradPositionsFromPrepared(_graph, options, prepared) {
+    var state = buildAreaGradStateFromPrepared(prepared, options);
     if (!state || !state.ok) {
-      return buildLayoutError(state || { message: 'PPAG setup failed' });
+      return buildLayoutError(state || { message: 'AreaGrad setup failed' });
     }
     var finalPositions = filterPositions(state.posById, state.graph.nodeIds);
 
-    if (state.ppagData.triangles.length === 0) {
+    if (state.areaGradData.triangles.length === 0) {
       return buildLayoutResult({
         ok: true,
         status: 'realized',
@@ -529,7 +529,7 @@
         graph: state.graph,
         outerFace: state.outerFace,
         augmented: state.augmented,
-        ppagData: state.ppagData,
+        areaGradData: state.areaGradData,
         boundedFaceCount: 0,
         dummyCount: state.augmented.dummyCount,
         iters: 0,
@@ -538,7 +538,7 @@
       });
     }
 
-    var result = await runPPAGIterations(state, state.opts || options || {});
+    var result = await runAreaGradIterations(state, state.opts || options || {});
 
     if (!result.ok && result.reason) {
       return buildLayoutError({
@@ -555,7 +555,7 @@
         graph: state.graph,
         outerFace: state.outerFace,
         augmented: state.augmented,
-        message: 'PPAG produced a non-plane drawing'
+        message: 'AreaGrad produced a non-plane drawing'
       });
     }
 
@@ -573,26 +573,26 @@
       graph: state.graph,
       outerFace: state.outerFace,
       augmented: state.augmented,
-      ppagData: state.ppagData,
+      areaGradData: state.areaGradData,
       iters: result.iters,
       faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
       maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
-      boundedFaceCount: state.ppagData.triangles.length,
+      boundedFaceCount: state.areaGradData.triangles.length,
       dummyCount: state.augmented.dummyCount
     });
   }
 
-  async function applyPPAGLayout(cy, options) {
+  async function applyAreaGradLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
-      prepareFailureLabel: 'PPAG layout',
+      prepareFailureLabel: 'AreaGrad layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
-      computePositions: computePPAGPositionsFromPrepared,
+      computePositions: computeAreaGradPositionsFromPrepared,
       buildResult: function (ctx) {
         var result = ctx.result;
-        var message = buildLayoutStatusMessage('PPAG', {
+        var message = buildLayoutStatusMessage('AreaGrad', {
           boundedFaceCount: result.boundedFaceCount,
           dummyCount: result.dummyCount,
           status: result.status,
@@ -617,12 +617,12 @@
             : null
         };
       },
-      failureMessage: 'PPAG failed'
+      failureMessage: 'AreaGrad failed'
     });
   }
 
-  global.PlanarVibePPAG = {
-    computePPAGPositions: computePPAGPositions,
-    applyPPAGLayout: applyPPAGLayout
+  global.PlanarVibeAreaGrad = {
+    computeAreaGradPositions: computeAreaGradPositions,
+    applyAreaGradLayout: applyAreaGradLayout
   };
 })(window);

@@ -50,7 +50,7 @@ function readBaselineRows(csvPath) {
     for (let j = 0; j < header.length; j += 1) {
       row[header[j]] = values[j] ?? '';
     }
-    if (row.algorithm === 'ppag') {
+    if (row.algorithm === 'areagrad') {
       rows.push(row);
     }
   }
@@ -83,7 +83,7 @@ function runOneInstance(workerPath, graphName, timeoutMs) {
     const worker = new Worker(workerPath, {
       workerData: {
         graphName,
-        algorithmKey: 'ppag'
+        algorithmKey: 'areagrad'
       }
     });
 
@@ -236,7 +236,7 @@ async function main() {
     parseEdgeListText(sample);
     const rec = await runOneInstance(workerPath, graphName, timeoutMs);
     candidateRows.push(rec);
-    process.stdout.write(`PPAG ${graphName} (${rec.ok ? 'ok' : 'fail'})\n`);
+    process.stdout.write(`AreaGrad ${graphName} (${rec.ok ? 'ok' : 'fail'})\n`);
   }
 
   const summary = compareRows(baselineRows, candidateRows);

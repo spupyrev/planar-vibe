@@ -151,6 +151,7 @@ function buildHtml(dataset, regexText, algorithms, rows) {
       color: var(--muted);
     }
     .table-wrap {
+      max-height: max(320px, calc(100vh - 128px));
       overflow: auto;
       border: 1px solid var(--line);
       background: var(--panel);
@@ -169,15 +170,19 @@ function buildHtml(dataset, regexText, algorithms, rows) {
     thead th {
       position: sticky;
       top: 0;
-      z-index: 2;
+      z-index: 3;
       background: #efe7d6;
       padding: 12px;
       min-width: 260px;
     }
+    thead th:first-child {
+      left: 0;
+      z-index: 4;
+    }
     tbody th {
       position: sticky;
       left: 0;
-      z-index: 1;
+      z-index: 2;
       min-width: 220px;
       padding: 12px;
       text-align: left;

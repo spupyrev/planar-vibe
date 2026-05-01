@@ -14,8 +14,8 @@ Live app: https://spupyrev.github.io/planar-vibe/
   - `Force-Dir`
   - `Tutte`
   - `ImPrEd`
-  - `CEG23-bfs`
-  - `CEG23-xy`
+  - `CEG-bfs`
+  - `CEG-xy`
   - `Reweight`
   - `P3T`
   - `FPP`

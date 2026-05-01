@@ -95,10 +95,10 @@ for each inserted vertex v in clique (a, b, c):
 Complexity: LOC 157. Time `O(n)` once the planar 3-tree structure is known. Space `O(n)`.
 References: closest paper match is [Biedl et al. 2013, "Drawing planar 3-trees with given face areas"](https://doi.org/10.1016/j.comgeo.2012.09.004); the repository implementation is a simplified equal-area style realization of that recursive clique idea.
 
-## CEG23 BFS and XY (`layout-ceg23.js`, 712 LOC)
+## CEG BFS and XY (`layout-ceg.js`, 712 LOC)
 This file implements two weighted-Tutte layouts inspired by recent work on improving stress-graph drawings.
-`CEG23-bfs` computes a baseline Tutte drawing, assigns each vertex a multi-source BFS depth from the outer face, and re-solves the drawing with edges weighted more strongly near the boundary.
-`CEG23-xy` starts from a baseline Tutte drawing, extracts a left-to-right orientation and two spanning trees, estimates how strongly edges should contribute to x-spread and y-spread, combines the two weight maps, and solves again.
+`CEG-bfs` computes a baseline Tutte drawing, assigns each vertex a multi-source BFS depth from the outer face, and re-solves the drawing with edges weighted more strongly near the boundary.
+`CEG-xy` starts from a baseline Tutte drawing, extracts a left-to-right orientation and two spanning trees, estimates how strongly edges should contribute to x-spread and y-spread, combines the two weight maps, and solves again.
 In both cases the algorithmic idea is "do not change the solver; change the spring weights so the same barycentric equations produce a more spread-out drawing."
 The implementation is faithful to the broad weighted-stress philosophy, but the `xy` branch is best described as paper-inspired rather than paper-identical.
 Pseudocode:
@@ -113,7 +113,7 @@ if XY mode:
 solve weighted Tutte again and project to original vertices
 ```
 Complexity: LOC 712. Each solve is `O(k^3)` in the current dense code; the extra BFS/orientation/tree work is `O(n log n + m)` at most, so the overall cost is dominated by two or three dense solves.
-References: [Chiu, Eppstein, Goodrich 2023](https://arxiv.org/abs/2307.10527). In this repository, `CEG23-bfs` is the closer match, while `CEG23-xy` is a heuristic adaptation of the spread/morph idea.
+References: [Chiu, Eppstein, Goodrich 2023](https://arxiv.org/abs/2307.10527). In this repository, `CEG-bfs` is the closer match, while `CEG-xy` is a heuristic adaptation of the spread/morph idea.
 
 ## ReweightTutte (`layout-reweight.js`, 490 LOC)
 This method iteratively modifies the edge weights of a Tutte embedding to make bounded face areas more uniform.
@@ -133,8 +133,8 @@ until movement or iteration stopping rule triggers
 ```
 Complexity: LOC 490. Time `O(T * k^3)` in the current code because every outer iteration performs a dense barycentric solve; auxiliary face and pressure updates are linear in the augmented graph size.
 
-## PPAG (`layout-ppag.js`, 628 LOC)
-PPAG can be read as projected area-gradient descent on a triangulated augmentation.
+## AreaGrad (`layout-areagrad.js`, 628 LOC)
+AreaGrad can be read as projected area-gradient descent on a triangulated augmentation.
 After building the augmented triangles and a Tutte seed, the code computes the relative area error of every bounded triangle against a common target area.
 For each movable vertex it forms a tiny local normal equation from the gradients of the incident triangle areas, giving a damped Gauss-Newton style update direction.
 That direction is accepted only if all incident triangles stay positively oriented and if the global area energy decreases.
@@ -171,7 +171,7 @@ until realized, stalled, deadlocked, or max sweeps
 Complexity: LOC 795. With bounded degree in planar triangulations, the local Newton updates are effectively constant-size, so the method is close to `O(T * n)` per run; the dominant extra work is recomputing global statistics each sweep.
 References: the closest direct source is Kleist's dissertation chapter on the air-pressure method, which defines face pressure, vertex force balance, and entropy for prescribed-area plane drawings: [Kleist 2018, Section 8.1](./../cpp_examples/kleist_linda.pdf). That chapter explicitly states that the method is inspired by [Felsner 2014, "Exploiting air-pressure to map floorplans on point sets"](https://doi.org/10.7155/jgaa.00318), where air pressure is used to prove area-universality for rectangular layouts.
 
-## FD-Uniform (`layout-fd-uniform.js`, 545 LOC)
+## ForceDir (`layout-forcedir.js`, 545 LOC)
 This is a force-directed post-processor whose objective is more uniform spacing rather than strict face-area control.
 It combines three ingredients: attractive forces along original edges, repulsive forces between all vertex pairs, and extra local terms that push each vertex toward a more uniform nearest-neighbor distance profile.
 A candidate move is rejected immediately if it would introduce an edge crossing, so the method can refine a plane seed while staying plane.

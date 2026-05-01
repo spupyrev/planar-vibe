@@ -336,53 +336,39 @@
     return sum;
   }
 
-  function buildTargetCoordinates(sorted, outerFace, posById) {
+  function buildRankSpacedTargetCoordinates(sorted, posById) {
     var target = {};
-    var outerSet = {};
-    var outerIndices = [];
+    var minX = Infinity;
+    var maxX = -Infinity;
     var i;
 
-    for (i = 0; i < outerFace.length; i += 1) {
-      outerSet[String(outerFace[i])] = true;
-    }
     for (i = 0; i < sorted.length; i += 1) {
       var id = String(sorted[i]);
-      if (outerSet[id]) {
-        outerIndices.push(i);
-        target[id] = posById[id].x;
+      var pos = posById[id];
+      if (pos && Number.isFinite(pos.x)) {
+        minX = Math.min(minX, pos.x);
+        maxX = Math.max(maxX, pos.x);
       }
     }
-    if (outerIndices.length < 2) {
+    if (!(maxX > minX)) {
       for (i = 0; i < sorted.length; i += 1) {
         target[String(sorted[i])] = i;
       }
       return target;
     }
 
-    for (i = 0; i < outerIndices.length - 1; i += 1) {
-      var leftIndex = outerIndices[i];
-      var rightIndex = outerIndices[i + 1];
-      var leftId = String(sorted[leftIndex]);
-      var rightId = String(sorted[rightIndex]);
-      var leftX = posById[leftId].x;
-      var rightX = posById[rightId].x;
-      var span = rightIndex - leftIndex;
-      for (var k = leftIndex + 1; k < rightIndex; k += 1) {
-        var t = (k - leftIndex) / span;
-        target[String(sorted[k])] = leftX + (rightX - leftX) * t;
-      }
-    }
-
-    var firstOuter = outerIndices[0];
-    for (i = firstOuter - 1; i >= 0; i -= 1) {
-      target[String(sorted[i])] = posById[String(sorted[firstOuter])].x - (firstOuter - i);
-    }
-    var lastOuter = outerIndices[outerIndices.length - 1];
-    for (i = lastOuter + 1; i < sorted.length; i += 1) {
-      target[String(sorted[i])] = posById[String(sorted[lastOuter])].x + (i - lastOuter);
+    // Spread targets by rank so near-equal projected outer coordinates do not
+    // turn into huge n_ij / (x_j - x_i) weights on symmetric instances.
+    var step = (maxX - minX) / Math.max(1, sorted.length - 1);
+    for (i = 0; i < sorted.length; i += 1) {
+      target[String(sorted[i])] = minX + step * i;
     }
 
     return target;
+  }
+
+  function buildTargetCoordinates(sorted, outerFace, posById) {
+    return buildRankSpacedTargetCoordinates(sorted, posById);
   }
 
   function buildSpreadPathWeights(state, workingPositions, failureLabel) {
@@ -482,7 +468,7 @@
     return out;
   }
 
-  function buildCEG23StateFromPrepared(prepared, failureLabel) {
+  function buildCEGStateFromPrepared(prepared, failureLabel) {
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || {
         message: failureLabel + ' requires a planar graph'
@@ -509,8 +495,8 @@
     });
   }
 
-  function prepareCEG23State(graph, failureLabel, options) {
-    return buildCEG23StateFromPrepared(prepareGraphAndLayoutData(graph, {
+  function prepareCEGState(graph, failureLabel, options) {
+    return buildCEGStateFromPrepared(prepareGraphAndLayoutData(graph, {
       failureLabel: failureLabel,
       augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
       currentPositions: options ? options.currentPositions : undefined
@@ -529,7 +515,7 @@
     );
   }
 
-  function projectCEG23Positions(state, posById, failureLabel) {
+  function projectCEGPositions(state, posById, failureLabel) {
     var projected = filterPositions(posById, state.ids);
     if (hasPositionCrossings(projected, state.pairs)) {
       return buildLayoutError({
@@ -542,8 +528,8 @@
     });
   }
 
-  function buildCEG23SuccessResult(state, posById, iters, message) {
-    var projectedResult = projectCEG23Positions(state, posById, state.failureLabel);
+  function buildCEGSuccessResult(state, posById, iters, message) {
+    var projectedResult = projectCEGPositions(state, posById, state.failureLabel);
     if (!projectedResult.ok) {
       return projectedResult;
     }
@@ -569,10 +555,10 @@
     });
   }
 
-  function computeCEG23BfsPositions(graph, options, prepared) {
+  function computeCEGBfsPositions(graph, options, prepared) {
     var state = prepared
-      ? buildCEG23StateFromPrepared(prepared, 'CEG23-bfs')
-      : prepareCEG23State(graph, 'CEG23-bfs', options);
+      ? buildCEGStateFromPrepared(prepared, 'CEG-bfs')
+      : prepareCEGState(graph, 'CEG-bfs', options);
     if (!state || !state.ok) {
       return state;
     }
@@ -583,7 +569,7 @@
     var base = solveAugmentedWeightedLayout(state, baseWeights);
     if (!base.ok) {
       return buildLayoutError({
-        message: base.message || 'CEG23-bfs baseline solve failed',
+        message: base.message || 'CEG-bfs baseline solve failed',
         graph: state.prepared.graph,
         outerFace: state.augmentedOuterFace,
         augmented: state.augmented
@@ -595,26 +581,26 @@
     var out = solveAugmentedWeightedLayout(state, weights);
     if (!out.ok) {
       return buildLayoutError({
-        message: out.message || 'CEG23-bfs solver failed',
+        message: out.message || 'CEG-bfs solver failed',
         graph: state.prepared.graph,
         outerFace: state.augmentedOuterFace,
         augmented: state.augmented
       });
     }
-    return buildCEG23SuccessResult(
+    return buildCEGSuccessResult(
       state,
       out.positions,
       base.iters + out.iters,
-      'Applied CEG23-bfs (' + state.augmentedOuterFace.length + '-vertex outer face, multi-source outer BFS, edgeDepth=1+min(endpointDepth), r=' + R +
+      'Applied CEG-bfs (' + state.augmentedOuterFace.length + '-vertex outer face, multi-source outer BFS, edgeDepth=1+min(endpointDepth), r=' + R +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
       ', ' + (base.iters + out.iters) + ' total iters)'
     );
   }
 
-  function computeCEG23XyPositions(graph, options, prepared) {
+  function computeCEGXyPositions(graph, options, prepared) {
     var state = prepared
-      ? buildCEG23StateFromPrepared(prepared, 'CEG23-xy')
-      : prepareCEG23State(graph, 'CEG23-xy', options);
+      ? buildCEGStateFromPrepared(prepared, 'CEG-xy')
+      : prepareCEGState(graph, 'CEG-xy', options);
     if (!state || !state.ok) {
       return state;
     }
@@ -625,17 +611,17 @@
     var base = solveAugmentedWeightedLayout(state, uniformWeights);
     if (!base.ok) {
       return buildLayoutError({
-        message: base.message || 'CEG23-xy baseline solve failed',
+        message: base.message || 'CEG-xy baseline solve failed',
         graph: state.prepared.graph,
         outerFace: state.augmentedOuterFace,
         augmented: state.augmented
       });
     }
-    var xSpread = buildSpreadState(state, base.positions, 0, 'CEG23-xy x-spread');
+    var xSpread = buildSpreadState(state, base.positions, 0, 'CEG-xy x-spread');
     if (!xSpread.ok) {
       return xSpread;
     }
-    var ySpread = buildSpreadState(state, base.positions, Math.PI / 2, 'CEG23-xy y-spread');
+    var ySpread = buildSpreadState(state, base.positions, Math.PI / 2, 'CEG-xy y-spread');
     if (!ySpread.ok) {
       return ySpread;
     }
@@ -647,26 +633,26 @@
     });
     if (!xySolve.ok) {
       return buildLayoutError({
-        message: xySolve.message || 'CEG23-xy solve failed',
+        message: xySolve.message || 'CEG-xy solve failed',
         graph: state.prepared.graph,
         outerFace: state.augmentedOuterFace,
         augmented: state.augmented
       });
     }
-    return buildCEG23SuccessResult(
+    return buildCEGSuccessResult(
       state,
       xySolve.positions,
       base.iters + xySolve.iters,
-      'Applied CEG23-xy (' + state.augmentedOuterFace.length + '-vertex outer face, lambdaX=' + Math.max(0, Math.min(1, lambdaX)) + ', x/y spread morph' +
+      'Applied CEG-xy (' + state.augmentedOuterFace.length + '-vertex outer face, lambdaX=' + Math.max(0, Math.min(1, lambdaX)) + ', x/y spread morph' +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
       ', ' + (base.iters + xySolve.iters) + ' total iters)'
     );
   }
 
-  function applyCEG23Layout(cy, options, computeLayout, failureMessage) {
+  function applyCEGLayout(cy, options, computeLayout, failureMessage) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
-      prepareFailureLabel: String(failureMessage || 'CEG23 layout').replace(/ failed$/i, ' layout'),
+      prepareFailureLabel: String(failureMessage || 'CEG layout').replace(/ failed$/i, ' layout'),
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
@@ -693,20 +679,20 @@
     });
   }
 
-  function applyCEG23BfsLayout(cy, options) {
-    return applyCEG23Layout(cy, options, computeCEG23BfsPositions, 'CEG23-bfs failed');
+  function applyCEGBfsLayout(cy, options) {
+    return applyCEGLayout(cy, options, computeCEGBfsPositions, 'CEG-bfs failed');
   }
 
-  function applyCEG23XyLayout(cy, options) {
-    return applyCEG23Layout(cy, options, computeCEG23XyPositions, 'CEG23-xy failed');
+  function applyCEGXyLayout(cy, options) {
+    return applyCEGLayout(cy, options, computeCEGXyPositions, 'CEG-xy failed');
   }
 
-  global.PlanarVibeCEG23Bfs = {
-    computeCEG23BfsPositions: computeCEG23BfsPositions,
-    applyCEG23BfsLayout: applyCEG23BfsLayout
+  global.PlanarVibeCEGBfs = {
+    computeCEGBfsPositions: computeCEGBfsPositions,
+    applyCEGBfsLayout: applyCEGBfsLayout
   };
-  global.PlanarVibeCEG23Xy = {
-    computeCEG23XyPositions: computeCEG23XyPositions,
-    applyCEG23XyLayout: applyCEG23XyLayout
+  global.PlanarVibeCEGXy = {
+    computeCEGXyPositions: computeCEGXyPositions,
+    applyCEGXyLayout: applyCEGXyLayout
   };
 })(window);

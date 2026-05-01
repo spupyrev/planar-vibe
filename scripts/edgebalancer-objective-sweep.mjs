@@ -175,15 +175,15 @@ function loadEdgeBenchmarkModules() {
     'static/js/layout-tutte.js',
     'static/js/layout-random.js',
     'static/js/layout-air.js',
-    'static/js/layout-ppag.js',
+    'static/js/layout-areagrad.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-reweight.js',
-    'static/js/layout-fd-uniform.js',
+    'static/js/layout-forcedir.js',
     'static/js/layout-impred.js',
     'static/js/layout-fpp.js',
     'static/js/layout-schnyder.js',
-    'static/js/layout-ceg23.js',
+    'static/js/layout-ceg.js',
     'static/js/layout-p3t.js'
   ];
 

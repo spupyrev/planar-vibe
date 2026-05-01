@@ -143,7 +143,7 @@
     return score.score;
   }
 
-  function runFDUniformIteration(state, iter) {
+  function runForceDirIteration(state, iter) {
     state.performedIters = iter;
     var accepted = 0;
     var rejected = 0;
@@ -281,7 +281,7 @@
     return { accepted: accepted, rejected: rejected };
   }
 
-  function buildFDUniformResult(state, context) {
+  function buildForceDirResult(state, context) {
     var finalPos = state.bestPos || state.pos;
     return buildLayoutResult({
       ok: true,
@@ -299,7 +299,7 @@
     });
   }
 
-  function updateFDUniformBestScore(state, evalEvery) {
+  function updateForceDirBestScore(state, evalEvery) {
     var iter = state.performedIters;
     if (!(iter % evalEvery === 0 || iter === 1 || iter === state.maxIters)) {
       return;
@@ -311,7 +311,7 @@
     }
   }
 
-  function runFDUniformIterations(state, context, options) {
+  function runForceDirIterations(state, context, options) {
     var evalEvery = resolveIntOption(options.evalEvery, 10, 1);
     var onIteration = resolveFunctionOption(options.onIteration, null);
     var movementTracker = options.movementTracker;
@@ -324,7 +324,7 @@
       }
 
       var prevPos = copyPositions(state.pos);
-      var step = runFDUniformIteration(state, iter);
+      var step = runForceDirIteration(state, iter);
       var accepted = step.accepted;
       var rejected = step.rejected;
       var moveStats = computePositionMoveStats(movable, prevPos, state.pos, { moveTol: 1e-9 });
@@ -344,7 +344,7 @@
         state.alpha = Math.min(state.alphaCap, state.alpha * state.alphaGrowFactor);
       }
 
-      updateFDUniformBestScore(state, evalEvery);
+      updateForceDirBestScore(state, evalEvery);
 
       return {
         done: false,
@@ -369,7 +369,7 @@
           break;
         }
       }
-      return buildFDUniformResult(state, context);
+      return buildForceDirResult(state, context);
     }
 
     return (async function () {
@@ -380,11 +380,11 @@
         }
         await onIteration(step.progress);
       }
-      return buildFDUniformResult(state, context);
+      return buildForceDirResult(state, context);
     })();
   }
 
-  function computeFDUniformPositionsFromPrepared(context, options) {
+  function computeForceDirPositionsFromPrepared(context, options) {
     var EPS = resolveFloatOption(options.epsilon, 1e-9, 1e-12);
     var repEps = resolveFloatOption(options.repulsionEps, 1e-6, 1e-12);
     var repPower = resolveFloatOption(options.repulsionPower, 2, 1);
@@ -408,7 +408,7 @@
     var ids = graph.nodeIds.slice();
     var pairs = graph.edgePairs.slice();
     if (pairs.length < 3) {
-      return buildLayoutError({ message: 'FD-uniform requires at least 3 edges', graph: graph });
+      return buildLayoutError({ message: 'ForceDir requires at least 3 edges', graph: graph });
     }
 
     var outerFace = context.outerFace;
@@ -487,41 +487,41 @@
       stopReason: 'max-iters'
     };
 
-    return runFDUniformIterations(state, context, {
+    return runForceDirIterations(state, context, {
       evalEvery: evalEvery,
       onIteration: onIteration,
       movementTracker: movementTracker
     });
   }
 
-  function computeFDUniformPositions(graph, options) {
+  function computeForceDirPositions(graph, options) {
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'FD-uniform',
+      failureLabel: 'ForceDir',
       augmentationMethod: options.augmentationMethod || null,
       currentPositions: options.currentPositions
     });
     if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'FD-uniform setup failed' });
+      return buildLayoutError(context || { message: 'ForceDir setup failed' });
     }
-    return computeFDUniformPositionsFromPrepared(context, options);
+    return computeForceDirPositionsFromPrepared(context, options);
   }
 
-  function applyFDUniformLayout(cy, options) {
+  function applyForceDirLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
-      prepareFailureLabel: 'FD-uniform layout',
+      prepareFailureLabel: 'ForceDir layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
       computePositions: function (_graph, computeOptions, prepared) {
-        return computeFDUniformPositionsFromPrepared(prepared, computeOptions || {});
+        return computeForceDirPositionsFromPrepared(prepared, computeOptions || {});
       },
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
           ok: true,
           stopReason: result.stopReason,
-          message: buildLayoutStatusMessage('FD-uniform', {
+          message: buildLayoutStatusMessage('ForceDir', {
             iters: result.iters,
             accepted: result.accepted,
             rejected: result.rejected,
@@ -534,12 +534,12 @@
           )
         };
       },
-      failureMessage: 'FD-uniform failed'
+      failureMessage: 'ForceDir failed'
     });
   }
 
-  global.PlanarVibeFDUniform = {
-    computeFDUniformPositions: computeFDUniformPositions,
-    applyFDUniformLayout: applyFDUniformLayout
+  global.PlanarVibeForceDir = {
+    computeForceDirPositions: computeForceDirPositions,
+    applyForceDirLayout: applyForceDirLayout
   };
 })(window);

@@ -70,11 +70,11 @@ function loadBrowserModules() {
     'static/js/cy-runtime.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
-    'static/js/layout-ppag.js',
+    'static/js/layout-areagrad.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-reweight.js',
-    'static/js/layout-fd-uniform.js'
+    'static/js/layout-forcedir.js'
   ];
 
   for (const rel of files) {
@@ -263,11 +263,11 @@ async function main() {
   const Metrics = modules.PlanarVibeMetrics;
   const Generator = modules.PlanarVibeGraphGenerator;
   const Air = modules.PlanarVibeAir;
-  const PPAG = modules.PlanarVibePPAG;
+  const AreaGrad = modules.PlanarVibeAreaGrad;
   const FaceBalancer = modules.PlanarVibeFaceBalancer;
   const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
   const Reweight = modules.PlanarVibeReweightTutte;
-  const FDUniform = modules.PlanarVibeFDUniform;
+  const ForceDir = modules.PlanarVibeForceDir;
 
   const graphNames = ['sample1', 'grid4x20', 'randomplanar2', 'randomplanar4', 'planar3tree30'];
   const graphs = graphNames.map((name) => ({
@@ -291,8 +291,8 @@ async function main() {
       })
     },
     {
-      name: 'PPAG',
-      run: (graph) => PPAG.computePPAGPositions(graph, {
+      name: 'AreaGrad',
+      run: (graph) => AreaGrad.computeAreaGradPositions(graph, {
         maxIters: 120
       })
     },
@@ -318,8 +318,8 @@ async function main() {
       })
     },
     {
-      name: 'FD-uniform',
-      run: (graph) => FDUniform.computeFDUniformPositions(graph, {
+      name: 'ForceDir',
+      run: (graph) => ForceDir.computeForceDirPositions(graph, {
         maxIters: 120
       })
     }

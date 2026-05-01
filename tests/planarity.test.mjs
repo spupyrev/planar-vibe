@@ -94,15 +94,15 @@ function loadBrowserModules() {
     'static/js/layout-random.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
-    'static/js/layout-ppag.js',
+    'static/js/layout-areagrad.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
     'static/js/layout-hybridbalancer.js',
-    'static/js/layout-ceg23.js',
+    'static/js/layout-ceg.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
-    'static/js/layout-fd-uniform.js',
+    'static/js/layout-forcedir.js',
     'static/js/layout-p3t.js',
     'static/js/layout-fpp.js',
     'static/js/layout-schnyder.js'
@@ -128,7 +128,7 @@ const GeometryUtils = modules.GeometryUtils;
 const Metrics = modules.PlanarVibeMetrics;
 const Tutte = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
-const PPAG = modules.PlanarVibePPAG;
+const AreaGrad = modules.PlanarVibeAreaGrad;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
 const AngleBalancer = modules.PlanarVibeAngleBalancer;
@@ -138,8 +138,8 @@ const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
 const P3T = modules.PlanarVibeP3T;
 const Reweight = modules.PlanarVibeReweightTutte;
-const FDUniform = modules.PlanarVibeFDUniform;
-const CEG23Bfs = modules.PlanarVibeCEG23Bfs;
+const ForceDir = modules.PlanarVibeForceDir;
+const CEGBfs = modules.PlanarVibeCEGBfs;
 const Random = modules.PlanarVibeRandom;
 const CyRuntime = modules.CyRuntime;
 
@@ -855,7 +855,7 @@ test('shared layout runner fits once before compute even with a shared seed', as
     finalPos[String(id)] = { x: p.x + 50, y: p.y - 30 };
   }
   const preparedSeed = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-    failureLabel: 'PPAG layout',
+    failureLabel: 'AreaGrad layout',
     currentPositions: pos,
     augmentationMethod: 'outer-cycle'
   });
@@ -873,7 +873,7 @@ test('shared layout runner fits once before compute even with a shared seed', as
     augmentationMethod: 'outer-cycle'
   }, {
     prepareMode: 'graph+layout',
-    prepareFailureLabel: 'PPAG layout',
+    prepareFailureLabel: 'AreaGrad layout',
     initialFitBounds: function (ctx) {
       return CyRuntime.computePositionBounds(ctx.prepared.posById);
     },
@@ -936,7 +936,7 @@ test('shared layout runner passes the original positions and prepared seed into 
   }
 
   const preparedSeed = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-    failureLabel: 'PPAG layout',
+    failureLabel: 'AreaGrad layout',
     currentPositions: pos,
     augmentationMethod: 'outer-cycle'
   });
@@ -948,7 +948,7 @@ test('shared layout runner passes the original positions and prepared seed into 
     augmentationMethod: 'outer-cycle'
   }, {
     prepareMode: 'graph+layout',
-    prepareFailureLabel: 'PPAG layout',
+    prepareFailureLabel: 'AreaGrad layout',
     initialFitBounds: function (ctx) {
       return CyRuntime.computePositionBounds(ctx.prepared.posById);
     },
@@ -1489,7 +1489,7 @@ test('Tutte uses graph preparation in the runtime', async () => {
   }
 });
 
-test('CEG23-bfs uses graph+layout preparation in the runtime', async () => {
+test('CEG-bfs uses graph+layout preparation in the runtime', async () => {
   const originalRunLayout = CyRuntime.runLayout;
   const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
   let capturedSpec = null;
@@ -1498,11 +1498,11 @@ test('CEG23-bfs uses graph+layout preparation in the runtime', async () => {
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await CEG23Bfs.applyCEG23BfsLayout(cy, {});
+    const result = await CEGBfs.applyCEGBfsLayout(cy, {});
     assert.equal(result && result.ok, true);
-    assert.ok(capturedSpec, 'expected CEG23-bfs to call CyRuntime.runLayout');
+    assert.ok(capturedSpec, 'expected CEG-bfs to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph+layout');
-    assert.equal(capturedSpec.prepareFailureLabel, 'CEG23-bfs layout');
+    assert.equal(capturedSpec.prepareFailureLabel, 'CEG-bfs layout');
   } finally {
     CyRuntime.runLayout = originalRunLayout;
   }

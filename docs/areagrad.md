@@ -266,7 +266,7 @@ If your goal is:
 
 I would try this first:
 
-## **Planar Projected Area Gradient (PPAG)**
+## **Planar Projected Area Gradient (AreaGrad)**
 
 That would be my name for it.
 
@@ -282,7 +282,7 @@ Pipeline:
 
 # Ideas for SIMPLICITY AND QUALITY improvements
 
-Items tagged `[TAKEN]` were adopted into the current PPAG after full-benchmark comparison.
+Items tagged `[TAKEN]` were adopted into the current AreaGrad after full-benchmark comparison.
 Items tagged `[TAKEN via ...]` are covered by an earlier accepted change.
 
 ## 1) How to make it simpler
@@ -306,14 +306,14 @@ This lets you delete:
 
 * `computePlateauProgress`
 * `updateStallCounters`
-* `classifyPPAGState`
+* `classifyAreaGradState`
 * `tolGrad`, `moveTolRel`, `moveTolAbs`, `energyTolRel`, `energyTolAbs`, `patience`, `plateauWindow`, `plateauPatience`, `plateauObjTolAbs`, `plateauObjTolRel` from the public option surface. 
 
 That is a large simplicity win with little practical loss.
 
 ### B. Make `state` triangle-only [TAKEN]
 
-`computePPAGState` currently does two jobs:
+`computeAreaGradState` currently does two jobs:
 
 * compute residual/objective,
 * optionally build a full gradient map and max gradient norm. 
@@ -330,7 +330,7 @@ So simplify `state` to:
 * `maxRelError`
 * `rmsRelError`
 
-Drop `gradient` and `maxGradNorm` entirely. That removes `createGradientMap` from the main flow and makes `computePPAGState` much easier to explain. 
+Drop `gradient` and `maxGradNorm` entirely. That removes `createGradientMap` from the main flow and makes `computeAreaGradState` much easier to explain. 
 
 ### C. Inline “trial move” instead of copying all positions [TAKEN]
 
@@ -347,13 +347,13 @@ That removes one helper and a lot of object churn. It also fits incremental UI j
 
 ### D. Separate “solver core event” from UI/runtime event [TAKEN]
 
-`solvePPAG` currently knows too much about reporting shape: `onIteration`, `onStepComplete`, renderer yield decisions, move stats payload size. `applyPPAGLayout` also wraps that again. 
+`solveAreaGrad` currently knows too much about reporting shape: `onIteration`, `onStepComplete`, renderer yield decisions, move stats payload size. `applyAreaGradLayout` also wraps that again. 
 
 Keep incrementality, but reduce the interface to one callback:
 
 * `onSweep({ iter, positions, objective, maxRelError, acceptedCount })`
 
-Then let `applyPPAGLayout` adapt that to the renderer/UI. Same behavior, smaller mental model.
+Then let `applyAreaGradLayout` adapt that to the renderer/UI. Same behavior, smaller mental model.
 
 ### E. Reduce options to a short “control panel” [TAKEN]
 
@@ -422,7 +422,7 @@ It only needs one cheap per-vertex score computed from existing residuals.
 
 ### D. Use local objective for accept/reject, not full global objective
 
-Currently each candidate move recomputes full `computePPAGState(...)` just to decide acceptance. 
+Currently each candidate move recomputes full `computeAreaGradState(...)` just to decide acceptance. 
 
 You can improve both simplicity-of-behavior and efficiency by using only incident triangles of the moved vertex for trial evaluation:
 
@@ -557,10 +557,10 @@ Since you must stay incremental, I’d simplify in ways that do **not** change t
 
 ### 1. Remove gradient-based stopping entirely [TAKEN via 1B]
 
-You compute a global gradient map and max gradient norm in `computePPAGState(...)`, but the core move already uses only local incident data. 
+You compute a global gradient map and max gradient norm in `computeAreaGradState(...)`, but the core move already uses only local incident data. 
 This is the easiest chunk to remove.
 
-Then `computePPAGState(...)` becomes just:
+Then `computeAreaGradState(...)` becomes just:
 
 * residuals
 * objective
@@ -571,7 +571,7 @@ Much simpler.
 
 ### 2. Remove plateau/stall machinery [TAKEN via 1A]
 
-`classifyPPAGState(...)` and the related counters/options are a lot of complexity for limited value. 
+`classifyAreaGradState(...)` and the related counters/options are a lot of complexity for limited value. 
 
 Use only:
 

@@ -46,7 +46,7 @@ export function usage(message, io) {
   out.stderr.write(
     'Usage: ./scripts/apply_layout <graph-file> <graph-pattern> --algorithm <name|pattern> [--timeout 30] [--export=svg|pdf|filename.svg|filename.pdf]\n' +
     '       ./scripts/apply_layout <graph-file> <graph-pattern> --algorithms input,tutte,*balancer* [--timeout 30] [--export=svg|pdf]\n' +
-    'Example: ./scripts/apply_layout benchmark/sample_graphs.dot sample1 --algorithm air --export=sample1.svg\n'
+    'Example: ./scripts/apply_layout benchmark/named.dot sample1 --algorithm air --export=sample1.svg\n'
   );
 }
 

@@ -259,19 +259,19 @@
               <div class="layout-group-buttons planar-layout-buttons">
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" title="How to Draw a Graph (Tutte, 1963)">Tutte</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="air" title="Air pressure layout with equal bounded face areas">Air</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="ppag" title="Projected planar area-gradient descent with triangle-positivity backtracking">PPAG</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="areagrad" title="Projected planar area-gradient descent with triangle-positivity backtracking">AreaGrad</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="facebalancer" title="Barycentric equal-face optimization with positive softmax weights">FaceBalancer</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="edgebalancer" title="Barycentric edge-length balancing with positive softmax weights">EdgeBalancer</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="anglebalancer" title="Angle-resolution balancing with fixed outer face">AngleBalancer</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="hybrid" title="Hybrid staged face-angle balancing with staged selection">Hybrid</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="reweighttutte" title="ReweightTutte for planar graphs (planned)">Reweight</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fd-uniform" title="FD-uniform for planar graphs (planned)">FD-uniform</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="forcedir" title="ForceDir for planar graphs">ForceDir</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="impred" title="ImPrEd: An Improved Force-Directed Algorithm that Prevents Nodes from Crossing Edges (Simonetto, Archambault, Auber, Bourqui, 2011)">ImPrEd</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" title="Straight-line grid drawings of planar 3-trees with face-proportional areas (Biedl, de Fraysseix, Rote, 2012)">P3T</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fpp" title="How to Draw a Planar Graph on a Grid (de Fraysseix, Pach, Pollack, 1990)">FPP</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="schnyder" title="Embedding Planar Graphs on the Grid (Schnyder, 1990)">Schnyder</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="ceg23-bfs" title="Manipulating Weights to Improve Stress-Graph Drawings of 3-Connected Planar Graphs (Chiu, Eppstein, Goodrich, 2023)">CEG23-bfs</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="ceg23-xy" title="Manipulating Weights to Improve Stress-Graph Drawings of 3-Connected Planar Graphs (Chiu, Eppstein, Goodrich, 2023)">CEG23-xy</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="ceg-bfs" title="Manipulating Weights to Improve Stress-Graph Drawings of 3-Connected Planar Graphs (Chiu, Eppstein, Goodrich, 2023)">CEG-bfs</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="ceg-xy" title="Manipulating Weights to Improve Stress-Graph Drawings of 3-Connected Planar Graphs (Chiu, Eppstein, Goodrich, 2023)">CEG-xy</button>
               </div>
             </div>
           </div>
@@ -311,15 +311,15 @@
   <script src="static/js/layout-tutte.js"></script>
   <script src="static/js/layout-random.js"></script>
   <script src="static/js/layout-air.js"></script>
-  <script src="static/js/layout-ppag.js"></script>
+  <script src="static/js/layout-areagrad.js"></script>
   <script src="static/js/layout-facebalancer.js"></script>
   <script src="static/js/layout-edgebalancer.js"></script>
   <script src="static/js/layout-anglebalancer.js"></script>
   <script src="static/js/layout-hybridbalancer.js"></script>
-  <script src="static/js/layout-ceg23.js"></script>
+  <script src="static/js/layout-ceg.js"></script>
   <script src="static/js/layout-impred.js"></script>
   <script src="static/js/layout-reweight.js"></script>
-  <script src="static/js/layout-fd-uniform.js"></script>
+  <script src="static/js/layout-forcedir.js"></script>
   <script src="static/js/layout-p3t.js"></script>
   <script src="static/js/layout-fpp.js"></script>
   <script src="static/js/layout-schnyder.js"></script>

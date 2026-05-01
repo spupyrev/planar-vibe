@@ -176,19 +176,18 @@
     function sharedLayoutMethodOptions(layoutName, overrides) {
       var key = String(layoutName || '').toLowerCase();
       if (key === 'reweight') key = 'reweighttutte';
-      if (key === 'fd_uniform') key = 'fd-uniform';
-      if (key === 'ceg23_bfs') key = 'ceg23-bfs';
-      if (key === 'ceg23_xy') key = 'ceg23-xy';
+      if (key === 'ceg_bfs') key = 'ceg-bfs';
+      if (key === 'ceg_xy') key = 'ceg-xy';
       var base = {};
       if (key === 'air' ||
-          key === 'ppag' ||
+          key === 'areagrad' ||
           key === 'facebalancer' ||
           key === 'edgebalancer' ||
           key === 'anglebalancer' ||
           key === 'hybrid' ||
           key === 'fabalancer' ||
           key === 'reweighttutte' ||
-          key === 'fd-uniform' ||
+          key === 'forcedir' ||
           key === 'impred') {
         base = {};
       }
@@ -1726,19 +1725,19 @@
     function setPlanarButtonsDisabled() {
       setLayoutEnabled('tutte', false);
       setLayoutEnabled('air', false);
-      setLayoutEnabled('ppag', false);
+      setLayoutEnabled('areagrad', false);
       setLayoutEnabled('facebalancer', false);
       setLayoutEnabled('edgebalancer', false);
       setLayoutEnabled('anglebalancer', false);
       setLayoutEnabled('hybrid', false);
       setLayoutEnabled('impred', false);
-      setLayoutEnabled('ceg23-bfs', false);
-      setLayoutEnabled('ceg23-xy', false);
+      setLayoutEnabled('ceg-bfs', false);
+      setLayoutEnabled('ceg-xy', false);
       setLayoutEnabled('p3t', false);
       setLayoutEnabled('fpp', false);
       setLayoutEnabled('schnyder', false);
       setLayoutEnabled('reweighttutte', false);
-      setLayoutEnabled('fd-uniform', false);
+      setLayoutEnabled('forcedir', false);
       setAlignEnabled(false);
     }
 
@@ -1781,19 +1780,19 @@
       });
       setLayoutEnabled('tutte', isPlanar);
       setLayoutEnabled('air', isPlanar);
-      setLayoutEnabled('ppag', isPlanar);
+      setLayoutEnabled('areagrad', isPlanar);
       setLayoutEnabled('facebalancer', isPlanar);
       setLayoutEnabled('edgebalancer', isPlanar);
       setLayoutEnabled('anglebalancer', isPlanar);
       setLayoutEnabled('hybrid', isPlanar);
       setLayoutEnabled('impred', isPlanar);
-      setLayoutEnabled('ceg23-bfs', isPlanar);
-      setLayoutEnabled('ceg23-xy', isPlanar);
+      setLayoutEnabled('ceg-bfs', isPlanar);
+      setLayoutEnabled('ceg-xy', isPlanar);
       setLayoutEnabled('p3t', isPlanar3Tree);
       setLayoutEnabled('fpp', isPlanar);
       setLayoutEnabled('schnyder', isPlanar);
       setLayoutEnabled('reweighttutte', isPlanar);
-      setLayoutEnabled('fd-uniform', isPlanar);
+      setLayoutEnabled('forcedir', isPlanar);
       setAlignEnabled(false);
     }
 
@@ -2086,19 +2085,19 @@
         return;
       }
 
-      if (layoutName === 'ppag') {
+      if (layoutName === 'areagrad') {
         runManagedLayout({
-          layoutName: 'ppag',
-          disabledMessage: 'PPAG layout requires a planar graph',
-          module: global.PlanarVibePPAG,
-          methodName: 'applyPPAGLayout',
+          layoutName: 'areagrad',
+          disabledMessage: 'AreaGrad layout requires a planar graph',
+          module: global.PlanarVibeAreaGrad,
+          methodName: 'applyAreaGradLayout',
           buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('ppag', {
+            return sharedLayoutMethodOptions('areagrad', {
               onIteration: function (progress) {
                 if (!progress) return;
                 var debug = progressDebug(progress);
                 var parts = [];
-                parts.push('PPAG step ' + progress.iter + '/' + progress.maxIters);
+                parts.push('AreaGrad step ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.objective)) {
                   parts.push('obj ' + progress.objective.toFixed(3));
                 }
@@ -2292,14 +2291,14 @@
         return;
       }
 
-      if (layoutName === 'ceg23-bfs') {
+      if (layoutName === 'ceg-bfs') {
         runManagedLayout({
-          layoutName: 'ceg23-bfs',
-          disabledMessage: 'CEG23-bfs layout requires a planar graph',
-          module: global.PlanarVibeCEG23Bfs,
-          methodName: 'applyCEG23BfsLayout',
+          layoutName: 'ceg-bfs',
+          disabledMessage: 'CEG-bfs layout requires a planar graph',
+          module: global.PlanarVibeCEGBfs,
+          methodName: 'applyCEGBfsLayout',
           buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('ceg23-bfs');
+            return sharedLayoutMethodOptions('ceg-bfs');
           }
         }, function () {
           if (temporaryStaticRun) {
@@ -2309,14 +2308,14 @@
         return;
       }
 
-      if (layoutName === 'ceg23-xy') {
+      if (layoutName === 'ceg-xy') {
         runManagedLayout({
-          layoutName: 'ceg23-xy',
-          disabledMessage: 'CEG23-xy layout requires a planar graph',
-          module: global.PlanarVibeCEG23Xy,
-          methodName: 'applyCEG23XyLayout',
+          layoutName: 'ceg-xy',
+          disabledMessage: 'CEG-xy layout requires a planar graph',
+          module: global.PlanarVibeCEGXy,
+          methodName: 'applyCEGXyLayout',
           buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('ceg23-xy');
+            return sharedLayoutMethodOptions('ceg-xy');
           }
         }, function () {
           if (temporaryStaticRun) {
@@ -2404,21 +2403,21 @@
         return;
       }
 
-      if (layoutName === 'fd-uniform') {
+      if (layoutName === 'forcedir') {
         runManagedLayout({
-          layoutName: 'fd-uniform',
-          disabledMessage: 'FD-uniform layout requires a planar graph',
-          module: global.PlanarVibeFDUniform,
-          methodName: 'applyFDUniformLayout',
+          layoutName: 'forcedir',
+          disabledMessage: 'ForceDir layout requires a planar graph',
+          module: global.PlanarVibeForceDir,
+          methodName: 'applyForceDirLayout',
           buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('fd-uniform', {
+            return sharedLayoutMethodOptions('forcedir', {
               onIteration: function (progress) {
                 var debug = progressDebug(progress);
                 if (!progress || progress.iter % 10 !== 0) {
                   return;
                 }
                 setStatus(
-                  'FD-uniform step ' + progress.iter + '/' + progress.maxIters +
+                  'ForceDir step ' + progress.iter + '/' + progress.maxIters +
                   ' | accepted ' + debug.accepted +
                   ' | rejected ' + debug.rejected,
                   false
@@ -2591,10 +2590,10 @@
           }
         },
         {
-          layoutName: 'ppag',
-          module: global.PlanarVibePPAG,
-          methodName: 'applyPPAGLayout',
-          missingMessage: 'PPAG layout module is missing',
+          layoutName: 'areagrad',
+          module: global.PlanarVibeAreaGrad,
+          methodName: 'applyAreaGradLayout',
+          missingMessage: 'AreaGrad layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
@@ -2663,10 +2662,10 @@
           }
         },
         {
-          layoutName: 'ceg23-bfs',
-          module: global.PlanarVibeCEG23Bfs,
-          methodName: 'applyCEG23BfsLayout',
-          missingMessage: 'CEG23-bfs layout module is missing',
+          layoutName: 'ceg-bfs',
+          module: global.PlanarVibeCEGBfs,
+          methodName: 'applyCEGBfsLayout',
+          missingMessage: 'CEG-bfs layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
@@ -2678,10 +2677,10 @@
           }
         },
         {
-          layoutName: 'ceg23-xy',
-          module: global.PlanarVibeCEG23Xy,
-          methodName: 'applyCEG23XyLayout',
-          missingMessage: 'CEG23-xy layout module is missing',
+          layoutName: 'ceg-xy',
+          module: global.PlanarVibeCEGXy,
+          methodName: 'applyCEGXyLayout',
+          missingMessage: 'CEG-xy layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
@@ -2742,10 +2741,10 @@
           }
         },
         {
-          layoutName: 'fd-uniform',
-          module: global.PlanarVibeFDUniform,
-          methodName: 'applyFDUniformLayout',
-          missingMessage: 'FD-uniform layout module is missing',
+          layoutName: 'forcedir',
+          module: global.PlanarVibeForceDir,
+          methodName: 'applyForceDirLayout',
+          missingMessage: 'ForceDir layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],

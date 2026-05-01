@@ -1,7 +1,7 @@
-# CEG23 Paper Check
+# CEG Paper Check
 
 Scope:
-- check whether `CEG23-xy` in `static/js/layout-ceg23.js` matches the paper algorithm
+- check whether `CEG-xy` in `static/js/layout-ceg.js` matches the paper algorithm
 - list the concrete discrepancies
 - outline how to address them
 
@@ -12,9 +12,9 @@ Primary source:
 
 ## Verdict
 
-`CEG23-bfs` is reasonably close to the paper's BFS-spread idea.
+`CEG-bfs` is reasonably close to the paper's BFS-spread idea.
 
-`CEG23-xy` is not a faithful implementation of the paper's `xy-morph`. It is a heuristic inspired by the paper, but it does not implement the paper's `x-spread` / `y-spread` construction, and therefore its `xy` result is also not the paper's `xy-morph`.
+`CEG-xy` is not a faithful implementation of the paper's `xy-morph`. It is a heuristic inspired by the paper, but it does not implement the paper's `x-spread` / `y-spread` construction, and therefore its `xy` result is also not the paper's `xy-morph`.
 
 ## What The Paper Actually Does
 
@@ -40,7 +40,7 @@ Relevant passages in the PDF:
 
 ## Current Implementation
 
-Current `CEG23-xy`:
+Current `CEG-xy`:
 
 - prepares an augmented planar graph
 - solves a uniform-weight Tutte baseline
@@ -51,9 +51,9 @@ Current `CEG23-xy`:
 - solves weighted Tutte again
 
 Relevant code:
-- ranking and spread weights: `static/js/layout-ceg23.js:97-155`
-- `CEG23-xy` pipeline: `static/js/layout-ceg23.js:287-333`
-- shared augmentation/prep: `static/js/layout-ceg23.js:158-198`
+- ranking and spread weights: `static/js/layout-ceg.js:97-155`
+- `CEG-xy` pipeline: `static/js/layout-ceg.js:287-333`
+- shared augmentation/prep: `static/js/layout-ceg.js:158-198`
 
 ## Specific Discrepancies
 
@@ -169,7 +169,7 @@ How to address:
 
 ## What Looks Reasonable Today
 
-The current `CEG23-bfs` is much closer to the paper:
+The current `CEG-bfs` is much closer to the paper:
 
 - it uses simultaneous BFS from the outer face
 - it assigns weights decaying by depth
@@ -180,7 +180,7 @@ The main deviations there are repo-level extensions:
 - augmentation to handle broader graph classes
 - optional `min` / `avg` / `max` endpoint-depth modes
 
-So the big correctness concern is `CEG23-xy`, not `CEG23-bfs`.
+So the big correctness concern is `CEG-xy`, not `CEG-bfs`.
 
 ## Recommended Fix Plan
 
@@ -232,6 +232,6 @@ These should be clearly labeled as extensions, not confused with the paper algor
 
 If we want to keep the current code as-is, it should be renamed mentally to something like:
 
-- `CEG23-inspired xy heuristic`
+- `CEG-inspired xy heuristic`
 
-If we want a true implementation of the paper, `CEG23-xy` needs a substantial rewrite of the weight-construction stage.
+If we want a true implementation of the paper, `CEG-xy` needs a substantial rewrite of the weight-construction stage.

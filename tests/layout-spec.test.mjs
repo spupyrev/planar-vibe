@@ -31,15 +31,15 @@ function loadBrowserModules() {
     'static/js/cy-runtime.js',
     'static/js/layout-tutte.js',
     'static/js/layout-air.js',
-    'static/js/layout-ppag.js',
+    'static/js/layout-areagrad.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
     'static/js/layout-hybridbalancer.js',
-    'static/js/layout-ceg23.js',
+    'static/js/layout-ceg.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
-    'static/js/layout-fd-uniform.js',
+    'static/js/layout-forcedir.js',
     'static/js/layout-p3t.js',
     'static/js/layout-fpp.js',
     'static/js/layout-schnyder.js'
@@ -63,16 +63,16 @@ const PlanarGraphUtils = modules.PlanarGraphUtils;
 const Tutte = modules.PlanarVibeTutte;
 const TutteAlgorithm = modules.PlanarVibeTutte;
 const Air = modules.PlanarVibeAir;
-const PPAG = modules.PlanarVibePPAG;
+const AreaGrad = modules.PlanarVibeAreaGrad;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
 const AngleBalancer = modules.PlanarVibeAngleBalancer;
 const Hybrid = modules.PlanarVibeHybrid;
-const CEG23 = modules.PlanarVibeCEG23Bfs;
-const CEG23XY = modules.PlanarVibeCEG23Xy;
+const CEG = modules.PlanarVibeCEGBfs;
+const CEGXY = modules.PlanarVibeCEGXy;
 const ImPrEd = modules.PlanarVibeImPrEd;
 const Reweight = modules.PlanarVibeReweightTutte;
-const FDUniform = modules.PlanarVibeFDUniform;
+const ForceDir = modules.PlanarVibeForceDir;
 const P3T = modules.PlanarVibeP3T;
 const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
@@ -102,6 +102,27 @@ const OCTAHEDRON = Object.assign(GraphUtils.createGraph(
     ['2', '3'], ['3', '4'], ['4', '5'], ['5', '2']
   ]
 ), { name: 'octahedron' });
+
+const GD15_212_217_3 = Object.assign(GraphUtils.createGraph(
+  Array.from({ length: 30 }, (_, i) => String(i)),
+  [
+    ['0', '1'], ['29', '28'], ['29', '27'], ['29', '26'], ['28', '22'],
+    ['29', '21'], ['29', '16'], ['28', '17'], ['27', '28'], ['24', '27'],
+    ['25', '27'], ['25', '28'], ['26', '27'], ['24', '26'], ['25', '24'],
+    ['25', '22'], ['26', '21'], ['26', '20'], ['24', '12'], ['25', '23'],
+    ['22', '23'], ['23', '24'], ['23', '12'], ['12', '15'], ['12', '19'],
+    ['12', '10'], ['23', '11'], ['21', '20'], ['19', '10'], ['20', '15'],
+    ['20', '13'], ['11', '22'], ['17', '22'], ['16', '21'], ['18', '21'],
+    ['18', '20'], ['15', '19'], ['9', '19'], ['15', '9'], ['11', '17'],
+    ['18', '16'], ['15', '8'], ['18', '14'], ['18', '13'], ['11', '2'],
+    ['17', '2'], ['16', '0'], ['17', '1'], ['14', '16'], ['13', '15'],
+    ['10', '9'], ['13', '14'], ['14', '6'], ['14', '0'], ['13', '6'],
+    ['8', '12'], ['7', '11'], ['8', '10'], ['8', '9'], ['8', '7'],
+    ['7', '5'], ['7', '2'], ['8', '5'], ['7', '4'], ['2', '4'],
+    ['6', '5'], ['5', '4'], ['6', '3'], ['6', '0'], ['5', '3'],
+    ['4', '3'], ['4', '1'], ['3', '0'], ['3', '1'], ['1', '2']
+  ]
+), { name: 'GD15_212_217_3' });
 
 function projectOriginalPositions(graph, result) {
   const pos = result && (result.positions || result.posById);
@@ -234,10 +255,10 @@ const layoutSpecs = [
     }
   },
   {
-    name: 'PPAG compute',
+    name: 'AreaGrad compute',
     graph: CUBE,
     run(graph) {
-      return PPAG.computePPAGPositions(graph, {
+      return AreaGrad.computeAreaGradPositions(graph, {
         maxIters: 120
       });
     }
@@ -275,19 +296,19 @@ const layoutSpecs = [
     }
   },
   {
-    name: 'CEG23-bfs compute',
+    name: 'CEG-bfs compute',
     graph: CUBE,
     run(graph) {
-      return CEG23.computeCEG23BfsPositions(graph, {
+      return CEG.computeCEGBfsPositions(graph, {
         maxIters: 1200
       });
     }
   },
   {
-    name: 'CEG23-xy compute',
+    name: 'CEG-xy compute',
     graph: CUBE,
     run(graph) {
-      return CEG23XY.computeCEG23XyPositions(graph, {
+      return CEGXY.computeCEGXyPositions(graph, {
         maxIters: 1200
       });
     }
@@ -313,10 +334,10 @@ const layoutSpecs = [
     }
   },
   {
-    name: 'FD-uniform compute',
+    name: 'ForceDir compute',
     graph: CUBE,
     run(graph) {
-      return FDUniform.computeFDUniformPositions(graph, {
+      return ForceDir.computeForceDirPositions(graph, {
         maxIters: 120
       });
     }
@@ -350,6 +371,18 @@ for (const spec of layoutSpecs) {
   });
 }
 
+test('CEG-xy avoids spread-denominator skew on GD15_212_217_3', () => {
+  const result = CEGXY.computeCEGXyPositions(GD15_212_217_3, {});
+  assert.equal(result && result.ok, true, result && (result.message || result.reason || 'CEG-xy failed on GD15_212_217_3'));
+  const posById = projectOriginalPositions(GD15_212_217_3, result);
+  assertFiniteOriginalPositions(GD15_212_217_3, posById, 'CEG-xy on GD15_212_217_3');
+  assertPlaneDrawing(GD15_212_217_3, posById, 'CEG-xy on GD15_212_217_3');
+
+  const aspect = Metrics.computeAspectRatioScore(GD15_212_217_3.nodeIds, posById);
+  assert.equal(aspect.ok, true, aspect.reason || 'aspect ratio should be computable');
+  assert.ok(aspect.score >= 0.85, `expected non-skewed CEG-xy aspect ratio, got ${aspect.score}`);
+});
+
 test('normalized failure shape is preserved for exported compute functions', async () => {
   const nonPlanarK5 = GraphUtils.createGraph(
     ['1', '2', '3', '4', '5'],
@@ -375,20 +408,20 @@ test('normalized failure shape is preserved for exported compute functions', asy
       run: () => Tutte.computeTutteLayout(singleEdgeGraph, {})
     },
     {
-      name: 'CEG23-bfs compute',
-      run: () => CEG23.computeCEG23BfsPositions(singleEdgeGraph, {})
+      name: 'CEG-bfs compute',
+      run: () => CEG.computeCEGBfsPositions(singleEdgeGraph, {})
     },
     {
-      name: 'CEG23-xy compute',
-      run: () => CEG23XY.computeCEG23XyPositions(singleEdgeGraph, {})
+      name: 'CEG-xy compute',
+      run: () => CEGXY.computeCEGXyPositions(singleEdgeGraph, {})
     },
     {
       name: 'ReweightTutte compute',
       run: () => Reweight.computeReweightTuttePositions(singleEdgeGraph, {})
     },
     {
-      name: 'FD-uniform compute',
-      run: () => FDUniform.computeFDUniformPositions(singleEdgeGraph, {})
+      name: 'ForceDir compute',
+      run: () => ForceDir.computeForceDirPositions(singleEdgeGraph, {})
     },
     {
       name: 'FPP compute',

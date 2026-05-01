@@ -5,13 +5,13 @@ Goal: choose one simple default outer-face rule that works well across the share
 Affected algorithms in this sweep:
 - `Tutte`
 - `Air`
-- `PPAG`
+- `AreaGrad`
 - `FaceBalancer`
 - `Reweight`
-- `FD-uniform`
+- `ForceDir`
 - `ImPrEd`
-- `CEG23-bfs`
-- `CEG23-xy`
+- `CEG-bfs`
+- `CEG-xy`
 
 Ignored here:
 - `FPP`
@@ -85,7 +85,7 @@ Overall totals below aggregate all affected algorithms on all 22 benchmark graph
   - `+0.49%` better on total edge score
   - `+8.26%` slower overall
 - The extra success comes from `ImPrEd` on `planar3tree100`, which TLEs under `current` but succeeds under `fewest_chords_longest`.
-- For the shared-prep stack (`Tutte`, `Air`, `PPAG`, `FaceBalancer`, `Reweight`, `FD-uniform`) and the two `CEG23` variants, the quality totals ended up unchanged from `current`; the measurable benefit showed up almost entirely in `ImPrEd`.
+- For the shared-prep stack (`Tutte`, `Air`, `AreaGrad`, `FaceBalancer`, `Reweight`, `ForceDir`) and the two `CEG` variants, the quality totals ended up unchanged from `current`; the measurable benefit showed up almost entirely in `ImPrEd`.
 
 ### 3. Pure "longest" is too risky
 
@@ -93,10 +93,10 @@ Overall totals below aggregate all affected algorithms on all 22 benchmark graph
 - The common failure pattern is `sample5` on the shared-prep algorithms:
   - `Tutte`
   - `Air`
-  - `PPAG`
+  - `AreaGrad`
   - `FaceBalancer`
   - `Reweight`
-  - `FD-uniform`
+  - `ForceDir`
 - The observed error there is `Provided outer face is not a face of the embedding` or the corresponding invalid-face failure in `FaceBalancer`.
 - So "take the longest face" is not robust enough as a shared default.
 
@@ -107,7 +107,7 @@ Overall totals below aggregate all affected algorithms on all 22 benchmark graph
 - They also cause `grid4x20` failures for:
   - `Tutte`
   - `Air`
-  - `PPAG`
+  - `AreaGrad`
 - These are easy rejects.
 
 ### 5. Degree-based rules underperform badly

@@ -12,7 +12,7 @@ test('apply_layout runs a layout on regex-matched graphs and prints metrics', as
   const stdout = [];
   const stderr = [];
   await runCli(
-    ['benchmark/sample_graphs.dot', 'sample*', '--algorithm', 'tutte', '--timeout', '30'],
+    ['benchmark/named.dot', 'sample*', '--algorithm', 'tutte', '--timeout', '30'],
     {
       stdout: { write(chunk) { stdout.push(String(chunk)); } },
       stderr: { write(chunk) { stderr.push(String(chunk)); } }
@@ -22,7 +22,7 @@ test('apply_layout runs a layout on regex-matched graphs and prints metrics', as
   const output = stdout.join('');
   assert.equal(stderr.join(''), '');
 
-  assert.match(output, /Dataset File: benchmark\/sample_graphs\.dot/);
+  assert.match(output, /Dataset File: benchmark\/named\.dot/);
   assert.match(output, /Graph Pattern: sample\*/);
   assert.match(output, /Matched Graphs: 7/);
   assert.match(output, /Algorithm: Tutte/);
@@ -126,7 +126,7 @@ test('mock layout initialization uses explicit input coordinates when present', 
 test('layout algorithms use input coordinates to choose the outer face when available', async () => {
   const stdoutPlain = [];
   await runCli(
-    ['benchmark/sample_graphs.dot', 'sample5', '--algorithm', 'air', '--timeout', '30'],
+    ['benchmark/named.dot', 'sample5', '--algorithm', 'air', '--timeout', '30'],
     {
       stdout: { write(chunk) { stdoutPlain.push(String(chunk)); } },
       stderr: { write() {} }
@@ -150,7 +150,7 @@ test('apply_layout reports a clear failure for --algorithm input without coordin
   const stdout = [];
   const stderr = [];
   await runCli(
-    ['benchmark/sample_graphs.dot', 'sample1', '--algorithm', 'input', '--timeout', '30'],
+    ['benchmark/named.dot', 'sample1', '--algorithm', 'input', '--timeout', '30'],
     {
       stdout: { write(chunk) { stdout.push(String(chunk)); } },
       stderr: { write(chunk) { stderr.push(String(chunk)); } }
@@ -176,7 +176,7 @@ test('apply_layout exports svg and pdf when requested', async () => {
   try {
     const stdoutSvg = [];
     await runCli(
-      ['benchmark/sample_graphs.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=svg'],
+      ['benchmark/named.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=svg'],
       {
         stdout: { write(chunk) { stdoutSvg.push(String(chunk)); } },
         stderr: { write() {} }
@@ -191,7 +191,7 @@ test('apply_layout exports svg and pdf when requested', async () => {
 
     const stdoutPdf = [];
     await runCli(
-      ['benchmark/sample_graphs.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=pdf'],
+      ['benchmark/named.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=pdf'],
       {
         stdout: { write(chunk) { stdoutPdf.push(String(chunk)); } },
         stderr: { write() {} }
@@ -206,7 +206,7 @@ test('apply_layout exports svg and pdf when requested', async () => {
 
     const stdoutNamedSvg = [];
     await runCli(
-      ['benchmark/sample_graphs.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=tmp-named-layout.svg'],
+      ['benchmark/named.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=tmp-named-layout.svg'],
       {
         stdout: { write(chunk) { stdoutNamedSvg.push(String(chunk)); } },
         stderr: { write() {} }
@@ -218,7 +218,7 @@ test('apply_layout exports svg and pdf when requested', async () => {
 
     const stdoutNamedPdf = [];
     await runCli(
-      ['benchmark/sample_graphs.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=tmp-named-layout.pdf'],
+      ['benchmark/named.dot', 'sample1', '--algorithm', 'tutte', '--timeout', '30', '--export=tmp-named-layout.pdf'],
       {
         stdout: { write(chunk) { stdoutNamedPdf.push(String(chunk)); } },
         stderr: { write() {} }
@@ -239,7 +239,7 @@ test('apply_layout exports svg and pdf when requested', async () => {
 test('apply_layout rejects one named export file for multiple matched graphs', async () => {
   await assert.rejects(
     () => runCli(
-      ['benchmark/sample_graphs.dot', 'sample*', '--algorithm', 'tutte', '--timeout', '30', '--export=tmp-many.svg'],
+      ['benchmark/named.dot', 'sample*', '--algorithm', 'tutte', '--timeout', '30', '--export=tmp-many.svg'],
       {
         stdout: { write() {} },
         stderr: { write() {} }
