@@ -149,6 +149,12 @@
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
+                  <span title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">Axis Alignment:</span>
+                  <span id="stats-axis-alignment" title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">--</span>
+                </div>
+              </div>
+              <div class="stats-row-inline">
+                <div class="stats-value-item stats-value-item-right">
                   <span title="Fraction of bounded faces that are convex. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">Convexity:</span>
                   <span id="stats-convexity" title="Fraction of bounded faces that are convex. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
                 </div>
@@ -184,12 +190,6 @@
                 <div class="stats-value-item stats-value-item-right">
                   <span title="Grid-based node-uniformity score in [0,1]. 1 is perfectly even occupancy">Node Uniformity:</span>
                   <span id="stats-node-uniformity" title="Grid-based node-uniformity score in [0,1]. 1 is perfectly even occupancy">--</span>
-                </div>
-              </div>
-              <div class="stats-row-inline">
-                <div class="stats-value-item stats-value-item-right">
-                  <span title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">Axis Alignment:</span>
-                  <span id="stats-axis-alignment" title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
@@ -259,7 +259,6 @@
               <div class="layout-group-buttons planar-layout-buttons">
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" title="How to Draw a Graph (Tutte, 1963)">Tutte</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="air" title="Air pressure layout with equal bounded face areas">Air</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="areagrad" title="Projected planar area-gradient descent with triangle-positivity backtracking">AreaGrad</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="facebalancer" title="Barycentric equal-face optimization with positive softmax weights">FaceBalancer</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="edgebalancer" title="Barycentric edge-length balancing with positive softmax weights">EdgeBalancer</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="anglebalancer" title="Angle-resolution balancing with fixed outer face">AngleBalancer</button>
@@ -311,6 +310,7 @@
   <script src="static/js/layout-tutte.js"></script>
   <script src="static/js/layout-random.js"></script>
   <script src="static/js/layout-air.js"></script>
+  <script src="static/js/layout-cleanair.js"></script>
   <script src="static/js/layout-areagrad.js"></script>
   <script src="static/js/layout-facebalancer.js"></script>
   <script src="static/js/layout-edgebalancer.js"></script>

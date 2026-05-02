@@ -180,6 +180,7 @@
       if (key === 'ceg_xy') key = 'ceg-xy';
       var base = {};
       if (key === 'air' ||
+          key === 'cleanair' ||
           key === 'areagrad' ||
           key === 'facebalancer' ||
           key === 'edgebalancer' ||
@@ -529,7 +530,8 @@
       renderStaticSnapshot();
     }
 
-    function logAirOuterFaceDiagnostics() {
+    function logOuterFaceDiagnostics(layoutLabel) {
+      var label = layoutLabel || 'Layout';
       if (!currentParsed || !currentParsed.elements || !global.PlanarGraphUtils || !global.GraphUtils) {
         return;
       }
@@ -558,17 +560,17 @@
           liveOuter = liveEmbedding && liveEmbedding.ok ? liveEmbedding.outerFace : null;
         }
         setStatus(
-          '[Air debug] parsed outer face: ' +
+          '[' + label + ' debug] parsed outer face: ' +
           (Array.isArray(parsedOuter) ? parsedOuter.length + ' [' + parsedOuter.join(' ') + ']' : 'null'),
           false
         );
         setStatus(
-          '[Air debug] live outer face: ' +
+          '[' + label + ' debug] live outer face: ' +
           (Array.isArray(liveOuter) ? liveOuter.length + ' [' + liveOuter.join(' ') + ']' : 'null'),
           false
         );
       } catch (err) {
-        setStatus('[Air debug] failed to collect outer-face diagnostics: ' + ((err && err.message) ? err.message : String(err)), true);
+        setStatus('[' + label + ' debug] failed to collect outer-face diagnostics: ' + ((err && err.message) ? err.message : String(err)), true);
       }
     }
 
@@ -1725,6 +1727,7 @@
     function setPlanarButtonsDisabled() {
       setLayoutEnabled('tutte', false);
       setLayoutEnabled('air', false);
+      setLayoutEnabled('cleanair', false);
       setLayoutEnabled('areagrad', false);
       setLayoutEnabled('facebalancer', false);
       setLayoutEnabled('edgebalancer', false);
@@ -1780,6 +1783,7 @@
       });
       setLayoutEnabled('tutte', isPlanar);
       setLayoutEnabled('air', isPlanar);
+      setLayoutEnabled('cleanair', isPlanar);
       setLayoutEnabled('areagrad', isPlanar);
       setLayoutEnabled('facebalancer', isPlanar);
       setLayoutEnabled('edgebalancer', isPlanar);
@@ -2041,7 +2045,7 @@
       }
 
       if (layoutName === 'air') {
-        logAirOuterFaceDiagnostics();
+        logOuterFaceDiagnostics('Air');
         runManagedLayout({
           layoutName: 'air',
           disabledMessage: 'Air layout requires a planar graph',
@@ -2054,6 +2058,51 @@
                 var debug = progressDebug(progress);
                 var parts = [];
                 parts.push('Air sweep ' + progress.iter + '/' + progress.maxIters);
+                if (Number.isFinite(progress.maxRelError)) {
+                  parts.push('face err ' + progress.maxRelError.toFixed(3));
+                }
+                if (Number.isFinite(debug.maxForce)) {
+                  parts.push('max force ' + debug.maxForce.toExponential(2));
+                }
+                if (Number.isFinite(progress.maxMove)) {
+                  parts.push('max move ' + progress.maxMove.toExponential(2));
+                }
+                if (Number.isFinite(debug.acceptedCount)) {
+                  parts.push('accepted ' + debug.acceptedCount);
+                }
+                if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
+                    Number.isFinite(debug.plateauWindow)) {
+                  parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
+                }
+                if (Number.isFinite(debug.boundedFaceCount)) {
+                  parts.push('faces ' + debug.boundedFaceCount);
+                }
+                setStatus(parts.join(' | '), false);
+              }
+            });
+          },
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'cleanair') {
+        logOuterFaceDiagnostics('CleanAir');
+        runManagedLayout({
+          layoutName: 'cleanair',
+          disabledMessage: 'CleanAir layout requires a planar graph',
+          module: global.PlanarVibeCleanAir,
+          methodName: 'applyCleanAirLayout',
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('cleanair', {
+              onIteration: function (progress) {
+                if (!progress) return;
+                var debug = progressDebug(progress);
+                var parts = [];
+                parts.push('CleanAir sweep ' + progress.iter + '/' + progress.maxIters);
                 if (Number.isFinite(progress.maxRelError)) {
                   parts.push('face err ' + progress.maxRelError.toFixed(3));
                 }
@@ -2580,6 +2629,20 @@
           module: global.PlanarVibeAir,
           methodName: 'applyAirLayout',
           missingMessage: 'Air layout module is missing',
+          requires: {
+            cyRuntime: ['runLayout'],
+            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
+            geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
+            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
+            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
+          }
+        },
+        {
+          layoutName: 'cleanair',
+          module: global.PlanarVibeCleanAir,
+          methodName: 'applyCleanAirLayout',
+          missingMessage: 'CleanAir layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],

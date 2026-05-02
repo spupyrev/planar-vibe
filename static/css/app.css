@@ -719,6 +719,13 @@ body {
   font-size: 0.8rem;
 }
 
+.layout-toolbar .layout-btn[data-layout="edgebalancer"],
+.layout-toolbar .layout-btn[data-layout="anglebalancer"] {
+  padding-left: 2px;
+  padding-right: 2px;
+  text-indent: -2px;
+}
+
 .layout-toolbar .btn-outline-secondary:hover {
   color: #fff;
   background-color: var(--pv-green);
