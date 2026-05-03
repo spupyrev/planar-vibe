@@ -55,3 +55,51 @@ Metric movement versus Stage 1:
 ## Stage 4: Add ReweightTutte Candidate
 
 Goal: test whether ReweightTutte adds useful face/spacing alternatives at acceptable cost. Existing broader benchmark data suggests a small selector gain when ReweightTutte is available with EdgeBalancer and Hybrid, but this must be checked on the actual p50 objective.
+
+Result: discarded. Full train score was `0.654451`, below Stage 3's `0.655581`. Reweight improved angular, face, alignment, and spacing p50s slightly, but lowered edge deviation and edge ratio enough to lose overall.
+
+## Stage 5: Affine Transform Sweep
+
+Goal: extend the rotation-only post-processing into a mild affine sweep. Any invertible affine transform preserves straight-line planarity, face-area ratios, and convexity, while changing aspect ratio, edge-length distribution, orthogonality, alignment, node uniformity, and spacing. Prototype determinant-one stretches around each candidate and keep the transform with the best ten-metric mean.
+
+Result: kept. Full train score improved to `0.656319` with 499/499 ok. Candidate choices: EdgeBalancer 422, Hybrid 66, Tutte 11. Runtime stayed below the per-graph timeout on train (`p50 1335ms`, `p90 3268ms`, `p99 7815ms`, max `13758ms`). The affine sweep improved aspect ratio, orthogonality, node uniformity, alignment, and spacing, but reduced angular resolution and edge-length metrics.
+
+Metric movement versus Stage 3:
+- angular down `0.545510 -> 0.541660`
+- aspect up `0.956947 -> 0.969844`
+- convexity unchanged `0.250000`
+- edge deviation down `0.842881 -> 0.836301`
+- edge ratio down `0.393243 -> 0.380609`
+- orthogonality up `0.541264 -> 0.554926`
+- face unchanged `0.923618 -> 0.923621`
+- node uniformity up `0.705882 -> 0.707317`
+- alignment up `0.657457 -> 0.659690`
+- spacing up `0.739010 -> 0.739223`
+
+## Stage 6: Edge-Aware Affine Selection
+
+Goal: keep the affine sweep, but bias candidate-transform scoring slightly toward edge-length deviation and edge ratio to avoid over-selecting stretched drawings that improve axis-dependent metrics at too much edge cost.
+
+Result: discarded. Full train score fell to `0.651191` with 499/499 ok. Edge deviation and edge ratio improved relative to Stage 5, but angular resolution, convexity, face, and spacing dropped enough to make it clearly worse. Reverted to raw ten-metric mean scoring.
+
+## Stage 7: Milder Affine Stretch Grid
+
+Goal: keep the affine sweep, but reduce the maximum stretch from `1.32` to `1.20` with smaller intermediate steps. This should preserve some aspect/alignment/orthogonality gains while reducing the edge-length penalty observed in Stage 5.
+
+Result: kept. Changed stretch factors to `[1, 1.04, 1.10, 1.20]`. Full train score improved to `0.657389` with 499/499 ok. Candidate choices: EdgeBalancer 426, Hybrid 62, Tutte 11. Runtime remained below timeout on train (`p50 1651ms`, `p90 3858ms`, `p99 9986ms`, max `17674ms`).
+
+Metric movement versus Stage 5:
+- angular down `0.541660 -> 0.540030`
+- aspect up `0.969844 -> 0.975806`
+- convexity unchanged `0.250000`
+- edge deviation up `0.836301 -> 0.838991`
+- edge ratio up `0.380609 -> 0.385764`
+- orthogonality down `0.554926 -> 0.553419`
+- face down `0.923621 -> 0.922569`
+- node uniformity unchanged `0.707317`
+- alignment up `0.659690 -> 0.661042`
+- spacing down `0.739223 -> 0.738955`
+
+## Stage 8: Finer Mild Affine Grid
+
+Goal: test whether adding one extra mild stretch sample around the Stage 7 range improves per-graph transform selection without overfitting toward harsh stretching. Candidate grid: `[1, 1.03, 1.06, 1.10, 1.16, 1.22]`.

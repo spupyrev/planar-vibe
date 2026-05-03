@@ -24,8 +24,9 @@
     budgetMs: 28000,
     edgeBalancerMaxNodes: 220,
     hybridMaxNodes: 120,
-    reweightMaxNodes: 160,
-    rotationSamples: 48
+    rotationSamples: 48,
+    affineMaxNodes: 160,
+    affineStretchFactors: [1, 1.03, 1.06, 1.1, 1.16, 1.22]
   };
 
   function toArray(collection) {
@@ -96,8 +97,9 @@
     return out;
   }
 
-  function rotatePositions(posById, nodeIds, angle) {
-    if (!Number.isFinite(angle) || Math.abs(angle) < 1e-12) {
+  function transformPositions(posById, nodeIds, angle, stretch) {
+    var sxy = Number.isFinite(stretch) && stretch > 0 ? stretch : 1;
+    if ((!Number.isFinite(angle) || Math.abs(angle) < 1e-12) && Math.abs(sxy - 1) < 1e-12) {
       return copyPositionsForNodes(posById, nodeIds);
     }
 
@@ -122,15 +124,18 @@
 
     var c = Math.cos(angle);
     var s = Math.sin(angle);
+    var inv = 1 / sxy;
     var out = {};
     for (i = 0; i < nodeIds.length; i += 1) {
       var id = String(nodeIds[i]);
       p = posById[id];
       var dx = p.x - cx;
       var dy = p.y - cy;
+      var rx = c * dx - s * dy;
+      var ry = s * dx + c * dy;
       out[id] = {
-        x: cx + c * dx - s * dy,
-        y: cy + s * dx + c * dy
+        x: cx + sxy * rx,
+        y: cy + inv * ry
       };
     }
     return out;
@@ -194,25 +199,59 @@
     };
   }
 
-  function bestRotationForCandidate(graph, posById, rotationSamples) {
+  function normalizeStretchFactors(rawFactors, nodeCount, affineMaxNodes) {
+    if (!(nodeCount <= affineMaxNodes)) {
+      return [1];
+    }
+    var source = Array.isArray(rawFactors) && rawFactors.length > 0
+      ? rawFactors
+      : DEFAULT_OPTIONS.affineStretchFactors;
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < source.length; i += 1) {
+      var value = Number(source[i]);
+      if (!Number.isFinite(value) || !(value > 0)) {
+        continue;
+      }
+      var factor = Math.max(1, value);
+      var key = factor.toFixed(6);
+      if (seen[key]) {
+        continue;
+      }
+      seen[key] = true;
+      out.push(factor);
+    }
+    return out.length > 0 ? out : [1];
+  }
+
+  function bestTransformForCandidate(graph, posById, options) {
+    var opts = options || {};
     var base = copyPositionsForNodes(posById, graph.nodeIds);
     if (!base || GeometryUtils.hasPositionCrossings(base, graph.edgePairs)) {
       return null;
     }
 
-    var samples = Math.max(1, Math.floor(Number(rotationSamples) || 1));
+    var samples = Math.max(1, Math.floor(Number(opts.rotationSamples) || 1));
+    var affineMaxNodes = Number.isFinite(opts.affineMaxNodes)
+      ? opts.affineMaxNodes
+      : DEFAULT_OPTIONS.affineMaxNodes;
+    var stretchFactors = normalizeStretchFactors(opts.affineStretchFactors, graph.nodeIds.length, affineMaxNodes);
     var best = null;
     var period = Math.PI;
-    for (var i = 0; i < samples; i += 1) {
-      var angle = period * i / samples;
-      var rotated = rotatePositions(base, graph.nodeIds, angle);
-      var evaluated = evaluatePositions(graph, rotated, { assumePlane: true });
-      if (!evaluated.ok) {
-        continue;
-      }
-      evaluated.rotation = angle;
-      if (!best || evaluated.score > best.score) {
-        best = evaluated;
+    for (var f = 0; f < stretchFactors.length; f += 1) {
+      var stretch = stretchFactors[f];
+      for (var i = 0; i < samples; i += 1) {
+        var angle = period * i / samples;
+        var transformed = transformPositions(base, graph.nodeIds, angle, stretch);
+        var evaluated = evaluatePositions(graph, transformed, { assumePlane: true });
+        if (!evaluated.ok) {
+          continue;
+        }
+        evaluated.rotation = angle;
+        evaluated.stretch = stretch;
+        if (!best || evaluated.score > best.score) {
+          best = evaluated;
+        }
       }
     }
     return best;
@@ -225,8 +264,9 @@
     delete opts.budgetMs;
     delete opts.edgeBalancerMaxNodes;
     delete opts.hybridMaxNodes;
-    delete opts.reweightMaxNodes;
     delete opts.rotationSamples;
+    delete opts.affineMaxNodes;
+    delete opts.affineStretchFactors;
     return opts;
   }
 
@@ -244,9 +284,6 @@
     var hybridMax = Number.isFinite(opts.hybridMaxNodes)
       ? opts.hybridMaxNodes
       : DEFAULT_OPTIONS.hybridMaxNodes;
-    var reweightMax = Number.isFinite(opts.reweightMaxNodes)
-      ? opts.reweightMaxNodes
-      : DEFAULT_OPTIONS.reweightMaxNodes;
 
     if (global.PlanarVibeEdgeBalancer &&
         typeof global.PlanarVibeEdgeBalancer.computeEdgeBalancerPositions === 'function' &&
@@ -257,11 +294,6 @@
         typeof global.PlanarVibeHybrid.computeHybridPositions === 'function' &&
         n <= hybridMax) {
       specs.push('hybrid');
-    }
-    if (global.PlanarVibeReweightTutte &&
-        typeof global.PlanarVibeReweightTutte.computeReweightTuttePositions === 'function' &&
-        n <= reweightMax) {
-      specs.push('reweight');
     }
     return specs;
   }
@@ -278,10 +310,6 @@
     if (name === 'hybrid' && global.PlanarVibeHybrid &&
         typeof global.PlanarVibeHybrid.computeHybridPositions === 'function') {
       return global.PlanarVibeHybrid.computeHybridPositions(graph, computeOptions);
-    }
-    if (name === 'reweight' && global.PlanarVibeReweightTutte &&
-        typeof global.PlanarVibeReweightTutte.computeReweightTuttePositions === 'function') {
-      return global.PlanarVibeReweightTutte.computeReweightTuttePositions(graph, computeOptions);
     }
     return {
       ok: false,
@@ -317,7 +345,7 @@
         continue;
       }
 
-      var evaluated = bestRotationForCandidate(graph, result.positions, opts.rotationSamples);
+      var evaluated = bestTransformForCandidate(graph, result.positions, opts);
       if (!evaluated || !evaluated.ok) {
         failures.push(name + ': invalid scored drawing');
         continue;
@@ -348,6 +376,7 @@
       candidate: best.name,
       score: best.score,
       rotation: best.rotation,
+      stretch: best.stretch,
       message: 'Applied Agentic (' + best.name + ', score ' + best.score.toFixed(3) + ')'
     };
   }
