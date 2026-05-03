@@ -47,11 +47,18 @@ The strongest current baselines on `planar_train.dot` are:
 ## Implementation Rules
 
 1. Put the implementation in `static/js/layout-agentic.js`.
+
 2. Export it as `window.PlanarVibeAgentic.applyAgenticLayout(cy, options)`.
-3. Make only the small wiring changes needed to load and benchmark the new algorithm. Optional tests or helper scripts are allowed.
-4. Use existing shared utilities freely. If a useful helper is private to another layout file, copy the needed code into `layout-agentic.js`.
+
+3. Make only the small wiring changes needed to load and benchmark the new algorithm. Optional tests or helper scripts are allowed. No changes to existing algorithms is allowed.
+
+4. Do use existing shared utilities freely. If a useful helper is private to another layout file, copy the needed code into `layout-agentic.js`. You can use exported public algorithms/methods as needed, but don't expose new exports.
+
 5. Randomized choices must be deterministic for a given graph, so runs are reproducible.
+
 6. There are no algorithmic constraints beyond the API, plane output, and timeout. New augmentation strategies, staged approaches, fallbacks, and metric-driven tricks are all allowed and encouraged.
+
+7. No new npm dependencies/packages allowed.
 
 ## Development Process
 
