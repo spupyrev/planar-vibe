@@ -40,6 +40,7 @@ function parseArgs(argv) {
     timeoutMs: DEFAULT_TIMEOUT_MS,
     concurrency: DEFAULT_CONCURRENCY,
     outputCsv: path.join('evaluation_data', 'all-algorithms-4bench-results.csv'),
+    scoresCsv: null,
     files: DEFAULT_DATASET_FILES.slice()
   };
 
@@ -57,6 +58,9 @@ function parseArgs(argv) {
     } else if (arg === '--output' && i + 1 < argv.length) {
       opts.outputCsv = String(argv[i + 1]);
       i += 1;
+    } else if (arg === '--scores-output' && i + 1 < argv.length) {
+      opts.scoresCsv = String(argv[i + 1]);
+      i += 1;
     } else if (arg === '--files' && i + 1 < argv.length) {
       opts.files = String(argv[i + 1]).split(',').map((s) => s.trim()).filter(Boolean);
       i += 1;
@@ -65,6 +69,7 @@ function parseArgs(argv) {
         'Usage: node scripts/run-dataset-multi-algorithm-batch.mjs ' +
         '[--algorithms tutte,air,areagrad,...] [--timeout-ms 30000] [--concurrency 4] ' +
         '[--output evaluation_data/all-algorithms-4bench-results.csv] ' +
+        '[--scores-output evaluation_data/all-algorithms-4bench-scores.csv] ' +
         '[--files benchmark/sample_graphs.dot,benchmark/wiki.dot,benchmark/gd_collection.dot,benchmark/north.dot]\n'
       );
       process.exit(0);
@@ -72,6 +77,12 @@ function parseArgs(argv) {
   }
 
   return opts;
+}
+
+function defaultScoresPath(outputCsv) {
+  const parsed = path.parse(outputCsv);
+  const ext = parsed.ext || '.csv';
+  return path.join(parsed.dir, `${parsed.name}-scores${ext}`);
 }
 
 function parseDotCollections(text) {
@@ -357,6 +368,143 @@ function summarizeRows(rows) {
   return summary;
 }
 
+function p50(values) {
+  if (!values.length) {
+    return null;
+  }
+  const sorted = values.slice().sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) {
+    return sorted[mid];
+  }
+  return (sorted[mid - 1] + sorted[mid]) / 2;
+}
+
+function scoreMetricValue(rec, metricKey) {
+  if (!rec.ok) {
+    return 0;
+  }
+  return Number.isFinite(rec[metricKey]) ? rec[metricKey] : 0;
+}
+
+function computeEvaluationScores(rows, algorithmOrder) {
+  const byAlgorithm = new Map();
+  const labels = new Map();
+  const order = [];
+  const seen = new Set();
+
+  function ensureAlgorithm(algorithm) {
+    if (seen.has(algorithm)) {
+      return;
+    }
+    seen.add(algorithm);
+    order.push(algorithm);
+  }
+
+  for (const algorithm of algorithmOrder) {
+    ensureAlgorithm(algorithm);
+  }
+
+  for (const rec of rows) {
+    ensureAlgorithm(rec.algorithm);
+    labels.set(rec.algorithm, rec.algorithmLabel || rec.algorithm);
+    if (!byAlgorithm.has(rec.algorithm)) {
+      byAlgorithm.set(rec.algorithm, []);
+    }
+    byAlgorithm.get(rec.algorithm).push(rec);
+  }
+
+  return order.map((algorithm) => {
+    const algorithmRows = byAlgorithm.get(algorithm) || [];
+    const metricP50 = {};
+    for (const metricKey of METRIC_KEYS) {
+      metricP50[metricKey] = p50(algorithmRows.map((rec) => scoreMetricValue(rec, metricKey)));
+    }
+    const presentMetrics = METRIC_KEYS
+      .map((metricKey) => metricP50[metricKey])
+      .filter((value) => Number.isFinite(value));
+    const totalScore = presentMetrics.length
+      ? presentMetrics.reduce((sum, value) => sum + value, 0) / presentMetrics.length
+      : null;
+    const breakageCounts = {
+      tle: 0,
+      algorithmFailed: 0,
+      missingMetrics: 0
+    };
+    let successfulRuns = 0;
+    for (const rec of algorithmRows) {
+      const breakageType = classifyBreakage(rec);
+      if (breakageType === 'ok') {
+        successfulRuns += 1;
+      } else if (breakageType === 'tle') {
+        breakageCounts.tle += 1;
+      } else if (breakageType === 'missing_metrics') {
+        breakageCounts.missingMetrics += 1;
+      } else {
+        breakageCounts.algorithmFailed += 1;
+      }
+    }
+    return {
+      algorithm,
+      algorithmLabel: labels.get(algorithm) || algorithm,
+      totalRuns: algorithmRows.length,
+      successfulRuns,
+      breakages: algorithmRows.length - successfulRuns,
+      ...breakageCounts,
+      totalScore,
+      metricP50
+    };
+  });
+}
+
+function writeScoresCsv(outPath, scores) {
+  const header = [
+    'algorithm',
+    'algorithmLabel',
+    'totalRuns',
+    'successfulRuns',
+    'breakages',
+    'tle',
+    'algorithmFailed',
+    'missingMetrics',
+    'totalScore',
+    ...METRIC_KEYS.map((key) => `${key}P50`)
+  ];
+  const lines = [header.join(',')];
+  for (const score of scores) {
+    lines.push([
+      csvEscape(score.algorithm),
+      csvEscape(score.algorithmLabel),
+      score.totalRuns,
+      score.successfulRuns,
+      score.breakages,
+      score.tle,
+      score.algorithmFailed,
+      score.missingMetrics,
+      csvEscape(score.totalScore ?? ''),
+      ...METRIC_KEYS.map((key) => csvEscape(score.metricP50[key] ?? ''))
+    ].join(','));
+  }
+  fs.writeFileSync(outPath, `${lines.join('\n')}\n`, 'utf8');
+}
+
+function formatScoreNumber(value) {
+  return Number.isFinite(value) ? value.toFixed(6) : '--';
+}
+
+function printEvaluationScores(scores) {
+  process.stdout.write('Evaluation scores (failures and missing metrics score 0.0 before p50):\n');
+  for (const score of scores) {
+    process.stdout.write(
+      `${score.algorithm}: total_score=${formatScoreNumber(score.totalScore)}, ` +
+      `runs=${score.totalRuns}, ok=${score.successfulRuns}, breakages=${score.breakages}\n`
+    );
+    process.stdout.write(
+      `  metric_p50: ${METRIC_KEYS.map((key) => `${key}=${formatScoreNumber(score.metricP50[key])}`).join(', ')}\n`
+    );
+  }
+}
+
 async function main() {
   const opts = parseArgs(process.argv.slice(2));
   const workerPath = path.resolve(process.cwd(), 'scripts/run-dataset-algorithm-batch-worker.mjs');
@@ -400,9 +548,13 @@ async function main() {
 
   const outPath = path.resolve(process.cwd(), opts.outputCsv);
   writeCsv(outPath, rows);
+  const scoresPath = path.resolve(process.cwd(), opts.scoresCsv || defaultScoresPath(opts.outputCsv));
+  const scores = computeEvaluationScores(rows, opts.algorithms);
+  writeScoresCsv(scoresPath, scores);
 
   const summary = summarizeRows(rows);
   process.stdout.write(`Wrote ${path.relative(process.cwd(), outPath)}\n`);
+  process.stdout.write(`Wrote ${path.relative(process.cwd(), scoresPath)}\n`);
   process.stdout.write(`Total rows: ${summary.total}\n`);
   process.stdout.write(`Breakages: ${summary.breakages}\n`);
   process.stdout.write(`TLE: ${summary.tle}\n`);
@@ -420,6 +572,7 @@ async function main() {
       `tle=${bucket.tle}, algorithm_failed=${bucket.algorithmFailed}, missing_metrics=${bucket.missingMetrics}\n`
     );
   }
+  printEvaluationScores(scores);
 }
 
 main().catch((err) => {
