@@ -20,18 +20,11 @@
   var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
   var segmentsIntersectOrTouch = GeometryUtils.segmentsIntersectOrTouch;
 
-  function wouldIntroduceCrossing(vertexId, newPos, positions, edgePairs, incidentEdges, eps) {
+  function wouldIntroduceCrossing(vertexId, newPos, positions, edgePairs, adjacency, eps) {
     var v = String(vertexId);
-    var changed = incidentEdges[v] || [];
-    if (changed.length === 0) {
-      return false;
-    }
-
+    var changed = adjacency[v] || [];
     for (var i = 0; i < changed.length; i += 1) {
-      var e = changed[i];
-      var u = String(e[0]);
-      var w = String(e[1]);
-      var other = u === v ? w : u;
+      var other = String(changed[i]);
       var p1 = newPos;
       var q1 = positions[other];
       if (!q1) {
@@ -63,10 +56,7 @@
     }
     var arr = values.slice().sort(function (a, b) { return a - b; });
     var mid = Math.floor(arr.length / 2);
-    if (arr.length % 2 === 1) {
-      return arr[mid];
-    }
-    return 0.5 * (arr[mid - 1] + arr[mid]);
+    return arr.length % 2 === 1 ? arr[mid] : 0.5 * (arr[mid - 1] + arr[mid]);
   }
 
   function computeNearestNeighborData(nodeIds, pos, kNearest) {
@@ -83,8 +73,6 @@
       if (!pv) {
         continue;
       }
-      var bestId = null;
-      var bestDist = Infinity;
       var candidates = [];
       for (var j = 0; j < nodeIds.length; j += 1) {
         if (i === j) continue;
@@ -97,19 +85,15 @@
         var dy = pv.y - pu.y;
         var d = Math.sqrt(dx * dx + dy * dy);
         candidates.push({ id: u, dist: d });
-        if (d < bestDist) {
-          bestDist = d;
-          bestId = u;
-        }
       }
-      if (bestId !== null && Number.isFinite(bestDist)) {
-        nnById[v] = { id: bestId, dist: bestDist };
-        if (bestDist > 1e-12) {
-          sum += bestDist;
+      candidates.sort(function (a, b) { return a.dist - b.dist; });
+      if (candidates.length > 0) {
+        nnById[v] = candidates[0];
+        if (candidates[0].dist > 1e-12) {
+          sum += candidates[0].dist;
           cnt += 1;
         }
       }
-      candidates.sort(function (a, b) { return a.dist - b.dist; });
       var localK = [];
       var kk = Math.min(k, candidates.length);
       for (var c = 0; c < kk; c += 1) {
@@ -130,9 +114,6 @@
   }
 
   function evaluateSpacingQuality(nodeIds, edgePairs, pos) {
-    if (!Metrics || typeof Metrics.computeSpacingUniformityScore !== 'function') {
-      return null;
-    }
     if (hasPositionCrossings(pos, edgePairs)) {
       return null;
     }
@@ -267,7 +248,7 @@
         y: pv0.y + state.h * fy
       };
 
-      if (wouldIntroduceCrossing(vId, candidate, state.pos, state.edgePairs, state.incidentEdges, state.EPS)) {
+      if (wouldIntroduceCrossing(vId, candidate, state.pos, state.edgePairs, state.adjOrig, state.EPS)) {
         rejected += 1;
         continue;
       }
@@ -282,15 +263,13 @@
   }
 
   function buildForceDirResult(state, context) {
-    var finalPos = state.bestPos || state.pos;
     return buildLayoutResult({
-      ok: true,
       nodeIds: state.nodeIds,
       edgePairs: state.edgePairs,
       outerFace: state.outerFace,
       graph: state.graph,
       augmented: context.augmented,
-      positions: finalPos,
+      positions: state.bestPos || state.pos,
       stopReason: state.stopReason,
       iters: state.performedIters,
       accepted: state.acceptedTotal,
@@ -300,8 +279,7 @@
   }
 
   function updateForceDirBestScore(state, evalEvery) {
-    var iter = state.performedIters;
-    if (!(iter % evalEvery === 0 || iter === 1 || iter === state.maxIters)) {
+    if (!(state.performedIters % evalEvery === 0 || state.performedIters === 1 || state.performedIters === state.maxIters)) {
       return;
     }
     var q = evaluateSpacingQuality(state.nodeIds, state.edgePairs, state.pos);
@@ -385,25 +363,7 @@
   }
 
   function computeForceDirPositionsFromPrepared(context, options) {
-    var EPS = resolveFloatOption(options.epsilon, 1e-9, 1e-12);
-    var repEps = resolveFloatOption(options.repulsionEps, 1e-6, 1e-12);
-    var repPower = resolveFloatOption(options.repulsionPower, 2, 1);
-    var maxIters = resolveIntOption(options.maxIters, 400, 1);
-    var beta = resolveFloatOption(options.beta, 0.45, 0);
     var alpha0 = resolveFloatOption(options.alpha, 1.2, 0);
-    var alpha = alpha0;
-    var alphaGrowEvery = resolveIntOption(options.alphaGrowEvery, 120, 1);
-    var alphaGrowFactor = resolveFloatOption(options.alphaGrowFactor, 1.15, 1);
-    var alphaCap = resolveFloatOption(options.alphaCap, 4.0, alpha0);
-    var gamma = resolveFloatOption(options.stepDecay, 0.5, 0.1, 0.95);
-    var maxForce = resolveFloatOption(options.maxForce, 9.0, 1e-6);
-    var eta = resolveFloatOption(options.eta, 1.2, 0);
-    var zeta = resolveFloatOption(options.zeta, 3.2, 0);
-    var collisionBoost = resolveFloatOption(options.collisionBoost, 6.0, 0);
-    var kNearest = resolveIntOption(options.kNearest, 4, 1);
-    var evalEvery = resolveIntOption(options.evalEvery, 10, 1);
-    var onIteration = resolveFunctionOption(options.onIteration, null);
-
     var graph = context.graph;
     var ids = graph.nodeIds.slice();
     var pairs = graph.edgePairs.slice();
@@ -413,26 +373,12 @@
 
     var outerFace = context.outerFace;
     var pos = context.posById;
-    var adjOrig = graph.adjacency;
     var movable = collectMovableVertices(ids, outerFace);
 
-    var i;
-
-    var incidentEdges = {};
-    for (i = 0; i < ids.length; i += 1) {
-      incidentEdges[String(ids[i])] = [];
-    }
-    for (i = 0; i < pairs.length; i += 1) {
+    var lengths = [];
+    for (var i = 0; i < pairs.length; i += 1) {
       var u = String(pairs[i][0]);
       var v = String(pairs[i][1]);
-      incidentEdges[u].push([u, v]);
-      incidentEdges[v].push([u, v]);
-    }
-
-    var lengths = [];
-    for (i = 0; i < pairs.length; i += 1) {
-      u = String(pairs[i][0]);
-      v = String(pairs[i][1]);
       var pu = pos[u];
       var pv = pos[v];
       if (!pu || !pv) continue;
@@ -453,29 +399,28 @@
     });
 
     var state = {
-      EPS: EPS,
-      repEps: repEps,
-      repPower: repPower,
-      maxIters: maxIters,
-      beta: beta,
+      EPS: resolveFloatOption(options.epsilon, 1e-9, 1e-12),
+      repEps: resolveFloatOption(options.repulsionEps, 1e-6, 1e-12),
+      repPower: resolveFloatOption(options.repulsionPower, 2, 1),
+      maxIters: resolveIntOption(options.maxIters, 400, 1),
+      beta: resolveFloatOption(options.beta, 0.45, 0),
       alpha: alpha0,
-      alphaGrowEvery: alphaGrowEvery,
-      alphaGrowFactor: alphaGrowFactor,
-      alphaCap: alphaCap,
-      gamma: gamma,
-      maxForce: maxForce,
-      eta: eta,
-      zeta: zeta,
-      collisionBoost: collisionBoost,
-      kNearest: kNearest,
+      alphaGrowEvery: resolveIntOption(options.alphaGrowEvery, 120, 1),
+      alphaGrowFactor: resolveFloatOption(options.alphaGrowFactor, 1.15, 1),
+      alphaCap: resolveFloatOption(options.alphaCap, 4.0, alpha0),
+      gamma: resolveFloatOption(options.stepDecay, 0.5, 0.1, 0.95),
+      maxForce: resolveFloatOption(options.maxForce, 9.0, 1e-6),
+      eta: resolveFloatOption(options.eta, 1.2, 0),
+      zeta: resolveFloatOption(options.zeta, 3.2, 0),
+      collisionBoost: resolveFloatOption(options.collisionBoost, 6.0, 0),
+      kNearest: resolveIntOption(options.kNearest, 4, 1),
       graph: graph,
       nodeIds: ids,
       edgePairs: pairs,
       outerFace: outerFace,
       pos: pos,
-      adjOrig: adjOrig,
+      adjOrig: graph.adjacency,
       movable: movable,
-      incidentEdges: incidentEdges,
       targetLength: targetLength,
       h: h,
       hMin: hMin,
@@ -488,8 +433,8 @@
     };
 
     return runForceDirIterations(state, context, {
-      evalEvery: evalEvery,
-      onIteration: onIteration,
+      evalEvery: resolveIntOption(options.evalEvery, 10, 1),
+      onIteration: resolveFunctionOption(options.onIteration, null),
       movementTracker: movementTracker
     });
   }

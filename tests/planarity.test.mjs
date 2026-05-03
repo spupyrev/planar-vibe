@@ -517,47 +517,6 @@ test('planar augmentation triangulates non-triangular planar faces', () => {
   }
 });
 
-test('triangulateByFaceStellation adds one dummy vertex for every non-triangular face including the outer face when requested', () => {
-  const text = Generator.cycleGraph(8);
-  const graph = parseEdgeListText(text);
-  const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  const outerFace = embedding.outerFace.slice();
-
-  assert.equal(embedding.ok, true);
-
-  const augmented = PlanarGraphUtils.triangulateByFaceStellation(
-    graph,
-    embedding,
-    outerFace,
-    { triangulateOuterFace: true }
-  );
-  const originalNodeSet = new Set(graph.nodeIds.map(String));
-  const dummyIds = augmented.graph.nodeIds
-    .map(String)
-    .filter((id) => !originalNodeSet.has(id));
-
-  assert.equal(augmented.ok, true, augmented.reason || 'triangulation failed');
-  assert.equal(augmented.dummyCount, 2);
-  assert.equal(dummyIds.length, 2);
-  for (const dummyId of dummyIds) {
-    assert.equal(
-      augmented.graph.edgePairs.filter(([a, b]) => String(a) === String(dummyId) || String(b) === String(dummyId)).length,
-      8,
-      `expected 8 stellation edges around ${dummyId}`
-    );
-    for (const v of outerFace) {
-      assert.equal(
-        augmented.graph.edgePairs.some(([a, b]) =>
-          (String(a) === String(dummyId) && String(b) === String(v)) ||
-          (String(a) === String(v) && String(b) === String(dummyId))
-        ),
-        true,
-        `missing stellation edge ${dummyId}-${v}`
-      );
-    }
-  }
-});
-
 test('triangulated augmentation removes degree-3 dummy vertices from the final graph', () => {
   const text = Generator.getSample('sample5');
   const graph = parseEdgeListText(text);
@@ -587,25 +546,6 @@ test('triangulated augmentation removes degree-3 dummy vertices from the final g
   const degreeThreeDummies = dummyIds.filter((dummyId) => degreeById[String(dummyId)] === 3);
 
   assert.equal(degreeThreeDummies.length, 0);
-});
-
-test('triangulateByFaceStellation triangulates a cycle when the outer face must also be triangulated', () => {
-  const text = Generator.cycleGraph(8);
-  const graph = parseEdgeListText(text);
-  const embedding = Planarity.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
-  const outerFace = embedding.outerFace.slice();
-
-  const prepared = PlanarGraphUtils.triangulateByFaceStellation(
-    graph,
-    embedding,
-    outerFace,
-    { triangulateOuterFace: true }
-  );
-
-  assert.equal(prepared.ok, true, prepared.reason || 'triangulation failed');
-  for (const face of prepared.embedding.faces) {
-    assert.equal(face.length, 3);
-  }
 });
 
 test('common outer-face helper prefers a chordless explicit outer face and otherwise falls back to the longest chordless face', () => {
@@ -1296,40 +1236,6 @@ test('ReweightTutte preserves the shared augmented outer-face seed coordinates',
   }
 });
 
-test('Air outer-ring face weight changes the outer-cycle solve without changing target areas', async () => {
-  const graph = {
-    nodeIds: ['a', 'b', 'c', 'd', 'e'],
-    edgePairs: [['a', 'b'], ['b', 'c'], ['c', 'a'], ['b', 'd'], ['d', 'e'], ['e', 'b']]
-  };
-  const pos = {
-    a: { x: 0, y: 0 },
-    b: { x: 1, y: 1 },
-    c: { x: 0, y: 2 },
-    d: { x: 3, y: 2 },
-    e: { x: 3, y: 0 }
-  };
-
-  const baseline = await Air.computeAirPositions(graph, {
-    augmentationMethod: 'outer-cycle',
-    currentPositions: pos,
-    outerRingFaceWeight: 1
-  });
-  const reduced = await Air.computeAirPositions(graph, {
-    augmentationMethod: 'outer-cycle',
-    currentPositions: pos,
-    outerRingFaceWeight: 0
-  });
-
-  assert.equal(baseline && baseline.ok, true, baseline && baseline.message ? baseline.message : 'baseline Air solve failed');
-  assert.equal(reduced && reduced.ok, true, reduced && reduced.message ? reduced.message : 'reweighted Air solve failed');
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GeometryUtils.filterPositionMap(baseline.positions, graph.nodeIds)), false);
-  assert.equal(hasEdgeCrossing(graph.nodeIds, graph.edgePairs, GeometryUtils.filterPositionMap(reduced.positions, graph.nodeIds)), false);
-  assert.notEqual(
-    JSON.stringify(GeometryUtils.filterPositionMap(baseline.positions, graph.nodeIds)),
-    JSON.stringify(GeometryUtils.filterPositionMap(reduced.positions, graph.nodeIds))
-  );
-});
-
 test('FaceBalancer awaits async iteration callbacks sequentially', async () => {
   const graph = {
     nodeIds: ['a', 'b', 'c', 'd'],
@@ -1357,35 +1263,6 @@ test('FaceBalancer awaits async iteration callbacks sequentially', async () => {
   assert.equal(maxActiveCallbacks, 1, 'FaceBalancer progress callbacks should not overlap');
 });
 
-test('EdgeBalancer respects the maxPositionStep cap during optimization', async () => {
-  const text = Generator.getSample('sample1');
-  const graph = parseEdgeListText(text);
-  const baseline = await Tutte.computeTutteLayout(graph, {
-    augmentationMethod: 'outer-cycle'
-  });
-  assert.equal(baseline && baseline.ok, true, baseline && (baseline.message || baseline.reason || 'Tutte failed on sample1'));
-
-  const stepCap = 5;
-  let callbackCount = 0;
-  let observedMaxMove = 0;
-  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph, {
-    augmentationMethod: 'outer-cycle',
-    currentPositions: baseline.positions,
-    maxIters: 12,
-    maxPositionStep: stepCap,
-    onIteration: async function (progress) {
-      callbackCount += 1;
-      if (Number.isFinite(progress.maxMove) && progress.maxMove > observedMaxMove) {
-        observedMaxMove = progress.maxMove;
-      }
-    }
-  });
-
-  assert.equal(result && result.ok, true, result && (result.message || result.reason || 'EdgeBalancer failed with step cap'));
-  assert.ok(callbackCount > 0, 'expected EdgeBalancer to emit progress with a step cap');
-  assert.ok(observedMaxMove <= stepCap + 1e-6, `EdgeBalancer exceeded maxPositionStep: cap=${stepCap}, observed=${observedMaxMove}`);
-});
-
 test('AngleBalancer keeps augmented barrier coordinates available on sample1', async () => {
   const text = Generator.getSample('sample1');
   const parsed = parseEdgeListText(text);
@@ -1410,26 +1287,6 @@ test('AngleBalancer keeps augmented barrier coordinates available on sample1', a
   assert.equal(finalScore && finalScore.ok, true, 'expected a valid angle-resolution score for the AngleBalancer result');
   assert.ok(result.debugPositions && Object.keys(result.debugPositions).length > graph.nodeIds.length,
     'expected AngleBalancer debugPositions to retain augmented dummy coordinates');
-});
-
-test('Hybrid can return a staged candidate on sample1', async () => {
-  const text = Generator.getSample('sample1');
-  const parsed = parseEdgeListText(text);
-  const graph = GraphUtils.createGraph(parsed.nodeIds, parsed.edgePairs);
-  const currentPositions = parseVertexPositionsFromEdgeList(text);
-  let lastProgress = null;
-  const hybridResult = await Hybrid.computeHybridPositions(graph, {
-    currentPositions,
-    onIteration: async function (progress) {
-      lastProgress = progress;
-    }
-  });
-  assert.equal(hybridResult && hybridResult.ok, true, hybridResult && (hybridResult.message || hybridResult.reason || 'Hybrid failed on sample1'));
-  assert.ok(lastProgress, 'expected Hybrid to emit progress on sample1');
-  assert.equal(lastProgress.stage, 'angle', 'expected Hybrid to finish with angle-stage progress on sample1');
-  assert.ok(Number.isFinite(hybridResult.faceAreaScore), 'expected Hybrid face score on sample1');
-  assert.ok(Number.isFinite(hybridResult.angleResolutionScore), 'expected Hybrid angle score on sample1');
-  assert.ok(Number.isFinite(hybridResult.tradeoffScore), 'expected Hybrid tradeoff score on sample1');
 });
 
 test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {

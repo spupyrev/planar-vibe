@@ -10,6 +10,7 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var edgeKey = GraphUtils.edgeKey;
+  var createZeroVector = GeometryUtils.createZeroVector;
   var filterPositions = GeometryUtils.filterPositionMap;
   var luFactorize = LinearAlgebraUtils.luFactorize;
   var normalizeOuterFace = GraphUtils.normalizeOuterFace;
@@ -27,33 +28,15 @@
     });
   }
 
-  function buildDegreeMap(graph) {
-    var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
-    var degreeById = {};
-    for (var i = 0; i < ids.length; i += 1) {
-      degreeById[ids[i]] = 0;
-    }
-    for (i = 0; i < pairs.length; i += 1) {
-      var u = pairs[i][0];
-      var v = pairs[i][1];
-      degreeById[u] = (degreeById[u] || 0) + 1;
-      degreeById[v] = (degreeById[v] || 0) + 1;
-    }
-    return degreeById;
-  }
-
   function buildTutteWeights(graph, augmentedGraph) {
     var originalPairs = graph.edgePairs;
     var augmentedPairs = augmentedGraph.edgePairs;
-    var degreeById = buildDegreeMap(augmentedGraph);
+    var adjacency = augmentedGraph.adjacency || null;
+    var degreeById = {};
     var originalEdgeSet = {};
     var outerDummyIds = Array.isArray(augmentedGraph.outerDummyIds) ? augmentedGraph.outerDummyIds : [];
     var outerDummySet = {};
     var weights = {};
-    var originalWeight = 1;
-    var internalDummyWeight = 1;
-    var outerDummyWeight = 10;
     var i;
 
     for (i = 0; i < originalPairs.length; i += 1) {
@@ -62,17 +45,21 @@
     for (i = 0; i < outerDummyIds.length; i += 1) {
       outerDummySet[String(outerDummyIds[i])] = true;
     }
+    if (!adjacency) {
+      for (i = 0; i < augmentedPairs.length; i += 1) {
+        degreeById[augmentedPairs[i][0]] = (degreeById[augmentedPairs[i][0]] || 0) + 1;
+        degreeById[augmentedPairs[i][1]] = (degreeById[augmentedPairs[i][1]] || 0) + 1;
+      }
+    }
 
     for (i = 0; i < augmentedPairs.length; i += 1) {
       var u = augmentedPairs[i][0];
       var v = augmentedPairs[i][1];
       var key = edgeKey(u, v);
       var touchesOuterDummy = !!outerDummySet[String(u)] || !!outerDummySet[String(v)];
-      var baseWeight = originalEdgeSet[key]
-        ? originalWeight
-        : (touchesOuterDummy ? outerDummyWeight : internalDummyWeight);
-      var du = Math.max(1, degreeById[u] || 0);
-      var dv = Math.max(1, degreeById[v] || 0);
+      var baseWeight = (!originalEdgeSet[key] && touchesOuterDummy) ? 10 : 1;
+      var du = Math.max(1, adjacency ? (adjacency[u] || []).length : (degreeById[u] || 0));
+      var dv = Math.max(1, adjacency ? (adjacency[v] || []).length : (degreeById[v] || 0));
       baseWeight /= Math.sqrt(du * dv);
       weights[key] = baseWeight;
     }
@@ -81,18 +68,12 @@
   }
 
   function defaultOuterPlacementOptions(overrides) {
-    var out = {
+    return Object.assign({
       defaultCenterX: 450,
       defaultCenterY: 310,
       defaultRadius: 300,
       outerRotation: null
-    };
-    var extra = overrides || {};
-    var keys = Object.keys(extra);
-    for (var i = 0; i < keys.length; i += 1) {
-      out[keys[i]] = extra[keys[i]];
-    }
-    return out;
+    }, overrides || {});
   }
 
   function placeOuterFaceVertices(nodeIds, outerFace, options) {
@@ -123,14 +104,21 @@
     }
     if (opts.fixedOuterPos) {
       for (i = 0; i < face.length; i += 1) {
-        var fpVertex = face[i];
-        var fp = opts.fixedOuterPos[fpVertex];
+        var fp = opts.fixedOuterPos[face[i]];
         if (fp && Number.isFinite(fp.x) && Number.isFinite(fp.y)) {
-          pos[fpVertex] = { x: fp.x, y: fp.y };
+          pos[face[i]] = { x: fp.x, y: fp.y };
         }
       }
     }
     return pos;
+  }
+
+  function barycentricError(message, graph, face) {
+    return buildLayoutError({
+      message: message,
+      graph: graph,
+      outerFace: face
+    });
   }
 
   function computeBarycentricPositions(graph, outerFace, options) {
@@ -147,25 +135,13 @@
     var j;
 
     if (ids.length < 1) {
-      return buildLayoutError({
-        message: 'No vertices',
-        graph: graph,
-        outerFace: face
-      });
+      return barycentricError('No vertices', graph, face);
     }
     if (face.length < 3) {
-      return buildLayoutError({
-        message: 'Outer face is invalid',
-        graph: graph,
-        outerFace: face
-      });
+      return barycentricError('Outer face is invalid', graph, face);
     }
     if (!weights || typeof weights !== 'object') {
-      return buildLayoutError({
-        message: 'Barycentric weights are required',
-        graph: graph,
-        outerFace: face
-      });
+      return barycentricError('Barycentric weights are required', graph, face);
     }
 
     for (i = 0; i < ids.length; i += 1) {
@@ -177,7 +153,6 @@
     }
     if (interiorIds.length === 0) {
       return buildLayoutResult({
-        ok: true,
         graph: graph,
         outerFace: face,
         positions: pos,
@@ -186,16 +161,11 @@
     }
 
     var L = new Array(interiorIds.length);
-    var bx = new Array(interiorIds.length);
-    var by = new Array(interiorIds.length);
+    var bx = createZeroVector(interiorIds.length);
+    var by = createZeroVector(interiorIds.length);
     for (i = 0; i < interiorIds.length; i += 1) {
-      L[i] = new Array(interiorIds.length);
-      for (j = 0; j < interiorIds.length; j += 1) {
-        L[i][j] = 0;
-      }
+      L[i] = createZeroVector(interiorIds.length);
       L[i][i] = 1;
-      bx[i] = 0;
-      by[i] = 0;
 
       var v = interiorIds[i];
       var neighbors = adjacency[v] || [];
@@ -228,20 +198,9 @@
     }
 
     var factor = luFactorize(L);
-    if (!factor) {
-      return buildLayoutError({
-        message: 'Exact barycentric solve failed',
-        graph: graph,
-        outerFace: face
-      });
-    }
-    var solved = solveLUWithTwoRhs(factor, bx, by);
+    var solved = factor ? solveLUWithTwoRhs(factor, bx, by) : null;
     if (!solved) {
-      return buildLayoutError({
-        message: 'Exact barycentric solve failed',
-        graph: graph,
-        outerFace: face
-      });
+      return barycentricError('Exact barycentric solve failed', graph, face);
     }
 
     for (i = 0; i < interiorIds.length; i += 1) {
@@ -249,7 +208,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       graph: graph,
       outerFace: face,
       positions: pos,
@@ -290,7 +248,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       nodeIds: ids,
       edgePairs: pairs,
       outerFace: prepared.outerFace,
@@ -299,19 +256,11 @@
       graph: prepared.graph,
       debugPositions: barycentric.positions,
       positions: projected,
-      posById: projected,
       iters: barycentric.iters
     });
   }
 
   function computeTutteLayout(graph, options) {
-    var ids = graph.nodeIds;
-    if (ids.length < 3) {
-      return buildLayoutError({
-        message: 'Tutte requires at least 3 vertices',
-        graph: graph
-      });
-    }
     return computeTutteLayoutWithPrepared(graph, LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'Tutte layout',
       augmentationMethod: options.augmentationMethod || null,
@@ -329,14 +278,7 @@
       prepared.augmentedOuterFace,
       defaultOuterPlacementOptions()
     );
-    var outerPos = {};
-    for (var i = 0; i < prepared.augmentedOuterFace.length; i += 1) {
-      var id = String(prepared.augmentedOuterFace[i]);
-      if (fullPos[id] && Number.isFinite(fullPos[id].x) && Number.isFinite(fullPos[id].y)) {
-        outerPos[id] = { x: fullPos[id].x, y: fullPos[id].y };
-      }
-    }
-    return outerPos;
+    return filterPositions(fullPos, prepared.augmentedOuterFace);
   }
 
   function applyTutteLayout(cy, options) {

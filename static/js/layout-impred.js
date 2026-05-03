@@ -4,8 +4,6 @@
   var GraphUtils = global.GraphUtils;
   var GeometryUtils = global.GeometryUtils;
   var LayoutPreprocessing = global.LayoutPreprocessing;
-  var Metrics = global.PlanarVibeMetrics;
-  var PlanarGraphUtils = global.PlanarGraphUtils;
   var CyRuntime = global.CyRuntime;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
@@ -77,19 +75,13 @@
     return Infinity;
   }
 
-  function moveWouldCross(v, oldPos, newPos, nodeIds, edgePairs, posById) {
+  function moveWouldCross(v, oldPos, newPos, nodeIds, edgePairs, adjacency, posById) {
     var EPS = 1e-9;
-    var incidentNeighbors = [];
 
     for (var i = 0; i < edgePairs.length; i += 1) {
       var a = String(edgePairs[i][0]);
       var b = String(edgePairs[i][1]);
-      if (a === v) {
-        incidentNeighbors.push(b);
-        continue;
-      }
-      if (b === v) {
-        incidentNeighbors.push(a);
+      if (a === v || b === v) {
         continue;
       }
       var pa = posById[a];
@@ -103,6 +95,7 @@
       }
     }
 
+    var incidentNeighbors = adjacency[v] || [];
     for (i = 0; i < incidentNeighbors.length; i += 1) {
       var u = String(incidentNeighbors[i]);
       var pu = posById[u];
@@ -193,7 +186,7 @@
         }
         ux = dx / dist;
         uy = dy / dist;
-        var fa = cEdgeAttr * Math.pow(dist / delta, 1);
+        var fa = cEdgeAttr * (dist / delta);
         forces[v].x += fa * ux;
         forces[v].y += fa * uy;
       }
@@ -222,13 +215,9 @@
         } else {
           var da = Math.hypot(pv.x - pa.x, pv.y - pa.y);
           var db = Math.hypot(pv.x - pb.x, pv.y - pb.y);
-          if (da <= db) {
-            qx = pa.x;
-            qy = pa.y;
-          } else {
-            qx = pb.x;
-            qy = pb.y;
-          }
+          var q = da <= db ? pa : pb;
+          qx = q.x;
+          qy = q.y;
         }
         dx = pv.x - qx;
         dy = pv.y - qy;
@@ -254,16 +243,13 @@
     var limits = {};
     var i;
     for (i = 0; i < nodeIds.length; i += 1) {
-      limits[nodeIds[i]] = new Array(sectorCount);
-      for (var s = 0; s < sectorCount; s += 1) {
-        limits[nodeIds[i]][s] = maxMove;
-      }
+      limits[nodeIds[i]] = new Array(sectorCount).fill(maxMove);
     }
 
     for (i = 0; i < nodeIds.length; i += 1) {
       var v = nodeIds[i];
       var pv = posById[v];
-      for (s = 0; s < sectorCount; s += 1) {
+      for (var s = 0; s < sectorCount; s += 1) {
         var ang = ((s + 0.5) / sectorCount) * 2 * Math.PI;
         var dx = Math.cos(ang);
         var dy = Math.sin(ang);
@@ -369,33 +355,6 @@
   }
 
   function buildImPrEdSeedFromPrepared(g, options, prepared) {
-    var currentSource = options.currentPositions || {};
-    var currentPositions = {};
-    var currentCount = 0;
-    for (var ci = 0; ci < g.nodeIds.length; ci += 1) {
-      var currentId = g.nodeIds[ci];
-      var currentPos = currentSource[currentId];
-      if (currentPos && Number.isFinite(currentPos.x) && Number.isFinite(currentPos.y)) {
-        currentPositions[currentId] = { x: currentPos.x, y: currentPos.y };
-        currentCount += 1;
-      }
-    }
-
-    var seed = null;
-    var currentEmbedding = currentCount === g.nodeIds.length
-      ? PlanarGraphUtils.extractEmbeddingFromPositions(g.nodeIds, g.edgePairs, currentPositions)
-      : null;
-    if (currentEmbedding && currentEmbedding.ok) {
-      seed = {
-        ok: true,
-        graph: g,
-        baseEmbedding: currentEmbedding,
-        outerFace: currentEmbedding.outerFace.slice().map(String),
-        posById: currentPositions,
-        movableVertices: GraphUtils.collectMovableVertices(g.nodeIds, currentEmbedding.outerFace),
-        initSource: 'current-plane'
-      };
-    }
     var init = LayoutPreprocessing.computeInitialPositions(
       prepared.augmentedGraph,
       prepared.augmentedOuterFace,
@@ -406,13 +365,9 @@
       return buildLayoutError(init || { message: 'ImPrEd initialization failed', graph: g });
     }
     return {
-      ok: true,
-      graph: prepared.graph,
       baseEmbedding: prepared.baseEmbedding || null,
       outerFace: prepared.outerFace ? prepared.outerFace.slice() : null,
-      posById: copyPositions(init.positions || {}),
-      movableVertices: GraphUtils.collectMovableVertices(g.nodeIds, prepared.outerFace || []),
-      initSource: 'barycentric-seed'
+      posById: copyPositions(init.positions)
     };
   }
 
@@ -422,7 +377,7 @@
     }
 
     var seed = buildImPrEdSeedFromPrepared(g, options, prepared);
-    if (!seed || !seed.ok) {
+    if (!seed || seed.ok === false) {
       return buildLayoutError(seed || { message: 'ImPrEd initialization failed', graph: g });
     }
 
@@ -432,9 +387,6 @@
   async function computeImPrEdPositions(g, options) {
     if (!g.nodeIds || g.nodeIds.length < 3) {
       return buildLayoutError({ message: 'ImPrEd requires at least 3 vertices', graph: g });
-    }
-    if (!g.edgePairs || g.edgePairs.length === 0) {
-      return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
     }
 
     var prepared = LayoutPreprocessing.prepareGraphData(g, {
@@ -446,27 +398,16 @@
       return buildLayoutError(prepared || { message: 'ImPrEd initialization failed', graph: g });
     }
 
-    var seed = buildImPrEdSeedFromPrepared(g, options, prepared);
-    if (!seed || !seed.ok) {
-      return buildLayoutError(seed || { message: 'ImPrEd initialization failed', graph: g });
-    }
-
-    return runImPrEdIterations(g, options, seed);
+    return computeImPrEdPositionsFromPrepared(g, options, prepared);
   }
 
   async function runImPrEdIterations(g, options, seed) {
     var posById = copyPositions(seed.posById || {});
-    var adj = g.adjacency;
-    var emb = seed.baseEmbedding || null;
     var fixedOuter = new Set(seed.outerFace.map(String));
     var delta = resolvePositiveOption(options.delta, estimateDelta(g.edgePairs, posById));
     var maxIters = resolveIntOption(options.maxIters, 600, 1);
     var startMaxMove = resolvePositiveOption(options.maxMove, 3 * delta);
     var minMaxMove = resolveNonNegativeOption(options.minMaxMove, 0.05 * delta);
-    var minItersBeforeStop = resolveIntOption(options.minItersBeforeStop, 60, 1);
-    var stableIterLimit = resolveIntOption(options.stableIterLimit, 16, 1);
-    var movementStopTol = resolveNonNegativeOption(options.movementStopTol, 0.008 * delta);
-    var avgMovementStopTol = resolveNonNegativeOption(options.avgMovementStopTol, 0.0015 * delta);
     var sectorCount = 8;
     var forceScale = resolvePositiveOption(options.forceScale, 0.04);
     var cNodeRep = resolveFiniteOption(options.cNodeRep, 1.0);
@@ -481,10 +422,10 @@
     var stopReason = 'max-iters';
     var lastStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
     var movementTracker = createMovementConvergenceTracker({
-      minItersBeforeStop: minItersBeforeStop,
-      stableIterLimit: stableIterLimit,
-      maxMoveTol: movementStopTol,
-      avgMoveTol: avgMovementStopTol
+      minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, 60, 1),
+      stableIterLimit: resolveIntOption(options.stableIterLimit, 16, 1),
+      maxMoveTol: resolveNonNegativeOption(options.movementStopTol, 0.008 * delta),
+      avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 0.0015 * delta)
     });
     var velocityById = {};
     for (iter = 0; iter < g.nodeIds.length; iter += 1) {
@@ -496,7 +437,7 @@
       var prevPosById = copyPositions(posById);
       var alpha = maxIters > 1 ? (iter / (maxIters - 1)) : 1;
       var maxMove = startMaxMove + alpha * (minMaxMove - startMaxMove);
-      var forces = computeNodeForces(g.nodeIds, g.edgePairs, adj, posById, {
+      var forces = computeNodeForces(g.nodeIds, g.edgePairs, g.adjacency, posById, {
         delta: delta,
         cNodeRep: cNodeRep * (1.0 + 3.0 * alpha), // 1 -> 4
         cEdgeAttr: cEdgeAttr * (1.0 - 0.6 * alpha), // 1 -> 0.4
@@ -537,12 +478,12 @@
 
         // Additional safeguard: binary-shrink movement until no node-edge crossing.
         var shrink = 0;
-        while (moveWouldCross(v, oldP, newP, g.nodeIds, g.edgePairs, posById) && shrink < 12) {
+        while (moveWouldCross(v, oldP, newP, g.nodeIds, g.edgePairs, g.adjacency, posById) && shrink < 12) {
           newP.x = oldP.x + (newP.x - oldP.x) * 0.5;
           newP.y = oldP.y + (newP.y - oldP.y) * 0.5;
           shrink += 1;
         }
-        if (moveWouldCross(v, oldP, newP, g.nodeIds, g.edgePairs, posById)) {
+        if (moveWouldCross(v, oldP, newP, g.nodeIds, g.edgePairs, g.adjacency, posById)) {
           velocityById[v].x *= rejectedVelocityDamp;
           velocityById[v].y *= rejectedVelocityDamp;
           continue;
@@ -592,17 +533,11 @@
         }
       }
 
-      var rawMoveStats = computePositionMoveStats(g.nodeIds, prevPosById, posById, { moveTol: 1e-6 });
-      lastStats = {
-        movedVertices: rawMoveStats.movedVertices,
-        totalMove: rawMoveStats.totalMove,
-        avgMove: rawMoveStats.avgMove,
-        maxMove: rawMoveStats.maxMove
-      };
-      var movementStatus = movementTracker ? movementTracker.update({
+      lastStats = computePositionMoveStats(g.nodeIds, prevPosById, posById, { moveTol: 1e-6 });
+      var movementStatus = movementTracker.update({
         maxMove: lastStats.maxMove,
         avgMove: lastStats.avgMove
-      }, iter + 1) : { stableIterations: 0, stableIterLimit: stableIterLimit, converged: false };
+      }, iter + 1);
 
       if (typeof options.onIteration === 'function') {
         await options.onIteration({
@@ -632,12 +567,11 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
       graph: g,
-      outerFace: seed.outerFace ? seed.outerFace.slice() : (emb && emb.outerFace ? emb.outerFace.slice() : null),
-      embedding: emb,
+      outerFace: seed.outerFace ? seed.outerFace.slice() : null,
+      embedding: seed.baseEmbedding || null,
       positions: posById,
       iterations: iter + 1,
       stopReason: stopReason,

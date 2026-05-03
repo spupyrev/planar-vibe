@@ -10,8 +10,10 @@
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var edgeKey = GraphUtils.edgeKey;
+  var computeFaceCentroid = GeometryUtils.computeFaceCentroid;
   var filterPositions = GeometryUtils.filterPositionMap;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
+  var rotatePositionMap = GeometryUtils.rotatePositionMap;
   var resolveFiniteOption = GraphUtils.resolveFiniteOption;
   var resolveGreaterThanOption = GraphUtils.resolveGreaterThanOption;
   var resolveIntOption = GraphUtils.resolveIntOption;
@@ -19,12 +21,11 @@
   var prepareGraphAndLayoutData = LayoutPreprocessing.prepareGraphAndLayoutData;
 
   function buildUniformWeights(edgePairs, value) {
-    var pairs = edgePairs;
     var weights = {};
     var w = Number.isFinite(value) && value > 0 ? value : 1;
-    for (var i = 0; i < pairs.length; i += 1) {
-      var u = pairs[i][0];
-      var v = pairs[i][1];
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var u = edgePairs[i][0];
+      var v = edgePairs[i][1];
       weights[edgeKey(u, v)] = w;
     }
     return weights;
@@ -71,9 +72,6 @@
     var weights = {};
     var scale = Number.isFinite(a) && a > 0 ? a : 1;
     var ratio = Number.isFinite(r) && r > 1 ? r : 1.35;
-    if (!edgeKey) {
-      return weights;
-    }
 
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
@@ -87,47 +85,6 @@
       weights[edgeKey(u, v)] = w;
     }
     return weights;
-  }
-
-  function computePositionCenter(nodeIds, posById) {
-    var cx = 0;
-    var cy = 0;
-    var count = 0;
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var pos = posById[String(nodeIds[i])];
-      if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) continue;
-      cx += pos.x;
-      cy += pos.y;
-      count += 1;
-    }
-    if (count < 1) {
-      return { x: 0, y: 0 };
-    }
-    return { x: cx / count, y: cy / count };
-  }
-
-  function rotatePositions(nodeIds, posById, angle) {
-    var out = {};
-    var theta = Number.isFinite(angle) ? angle : 0;
-    var center = computePositionCenter(nodeIds, posById);
-    var cos = Math.cos(theta);
-    var sin = Math.sin(theta);
-
-    for (var i = 0; i < nodeIds.length; i += 1) {
-      var id = String(nodeIds[i]);
-      var pos = posById[id];
-      if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) {
-        out[id] = { x: 0, y: 0 };
-        continue;
-      }
-      var dx = pos.x - center.x;
-      var dy = pos.y - center.y;
-      out[id] = {
-        x: center.x + dx * cos - dy * sin,
-        y: center.y + dx * sin + dy * cos
-      };
-    }
-    return out;
   }
 
   function hasVerticalSpreadEdge(edgePairs, posById, epsilon) {
@@ -146,6 +103,7 @@
   }
 
   function rotateForSpread(nodeIds, edgePairs, posById) {
+    var center = computeFaceCentroid(posById, nodeIds);
     var angles = [
       0,
       1e-6, -1e-6,
@@ -156,23 +114,16 @@
       Math.PI / 180, -Math.PI / 180
     ];
     for (var i = 0; i < angles.length; i += 1) {
-      var rotated = rotatePositions(nodeIds, posById, angles[i]);
+      var rotated = rotatePositionMap(posById, center, angles[i]);
       if (!hasVerticalSpreadEdge(edgePairs, rotated, 1e-7)) {
         return rotated;
       }
     }
-    return rotatePositions(nodeIds, posById, 1e-2);
+    return rotatePositionMap(posById, center, 1e-2);
   }
 
   function buildFixedOuterPositions(outerFace, posById) {
-    var fixed = {};
-    for (var i = 0; i < outerFace.length; i += 1) {
-      var id = String(outerFace[i]);
-      var pos = posById[id];
-      if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) continue;
-      fixed[id] = { x: pos.x, y: pos.y };
-    }
-    return fixed;
+    return filterPositions(posById, outerFace);
   }
 
   function buildSpreadOrientation(nodeIds, edgePairs, posById) {
@@ -367,10 +318,6 @@
     return target;
   }
 
-  function buildTargetCoordinates(sorted, outerFace, posById) {
-    return buildRankSpacedTargetCoordinates(sorted, posById);
-  }
-
   function buildSpreadPathWeights(state, workingPositions, failureLabel) {
     var orientation = buildSpreadOrientation(state.augmentedIds, state.augmentedPairs, workingPositions);
     var forwardTree = buildForwardTree(orientation.sorted, orientation.inAdj, orientation.source);
@@ -384,7 +331,7 @@
       });
     }
 
-    var targetX = buildTargetCoordinates(orientation.sorted, state.augmentedOuterFace, workingPositions);
+    var targetX = buildRankSpacedTargetCoordinates(orientation.sorted, workingPositions);
     var forwardSum = computeForwardSubtreeSums(orientation.sorted, forwardTree.children, orientation.outDegree);
     var backwardSum = computeBackwardSubtreeSums(orientation.sorted, backwardTree.parent, orientation.inDegree);
     var weights = {};
@@ -416,7 +363,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       weights: weights,
       orientation: orientation,
       targetX: targetX
@@ -424,7 +370,7 @@
   }
 
   function buildSpreadState(state, basePositions, angle, failureLabel) {
-    var rotatedPositions = rotatePositions(state.augmentedIds, basePositions, angle);
+    var rotatedPositions = rotatePositionMap(basePositions, computeFaceCentroid(basePositions, state.augmentedIds), Number.isFinite(angle) ? angle : 0);
     var workingPositions = rotateForSpread(state.augmentedIds, state.augmentedPairs, rotatedPositions);
     var spread = buildSpreadPathWeights(state, workingPositions, failureLabel);
     if (!spread.ok) {
@@ -432,7 +378,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       weights: spread.weights
     });
   }
@@ -478,19 +423,17 @@
     var baseGraph = prepared.graph;
     var ids = baseGraph.nodeIds;
     var pairs = baseGraph.edgePairs;
-    var augmented = prepared.augmented;
     return buildLayoutResult({
-      ok: true,
       failureLabel: failureLabel,
       ids: ids,
       pairs: pairs,
       prepared: prepared,
-      augmented: augmented,
+      augmented: prepared.augmented,
       augmentedGraph: prepared.augmentedGraph,
       outerFace: prepared.outerFace,
       augmentedOuterFace: prepared.augmentedOuterFace,
-      augmentedIds: augmented.graph.nodeIds,
-      augmentedPairs: augmented.graph.edgePairs,
+      augmentedIds: prepared.augmented.graph.nodeIds,
+      augmentedPairs: prepared.augmented.graph.edgePairs,
       adjacency: prepared.augmentedGraph.adjacency
     });
   }
@@ -523,7 +466,6 @@
       });
     }
     return buildLayoutResult({
-      ok: true,
       projected: projected
     });
   }
@@ -535,7 +477,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       nodeIds: state.ids,
       edgePairs: state.pairs,
       outerFace: state.outerFace,
@@ -545,13 +486,11 @@
       posById: posById,
       iters: iters,
       message: message,
-      debugState: typeof createAugmentationDebugState === 'function'
-        ? createAugmentationDebugState(
-          state.prepared.graph,
-          state.augmented,
-          posById
-        )
-        : null
+      debugState: createAugmentationDebugState(
+        state.prepared.graph,
+        state.augmented,
+        posById
+      )
     });
   }
 
@@ -565,17 +504,6 @@
 
     var A = resolvePositiveOption(options.a, 1.0);
     var R = resolveGreaterThanOption(options.r, 1.35, 1);
-    var baseWeights = buildUniformWeights(state.augmentedPairs, 1);
-    var base = solveAugmentedWeightedLayout(state, baseWeights);
-    if (!base.ok) {
-      return buildLayoutError({
-        message: base.message || 'CEG-bfs baseline solve failed',
-        graph: state.prepared.graph,
-        outerFace: state.augmentedOuterFace,
-        augmented: state.augmented
-      });
-    }
-
     var depthById = bfsDepthFromOuter(state.augmentedIds, state.adjacency, state.augmentedOuterFace);
     var weights = buildDepthWeights(state.augmentedPairs, depthById, A, R);
     var out = solveAugmentedWeightedLayout(state, weights);
@@ -590,10 +518,10 @@
     return buildCEGSuccessResult(
       state,
       out.positions,
-      base.iters + out.iters,
+      out.iters,
       'Applied CEG-bfs (' + state.augmentedOuterFace.length + '-vertex outer face, multi-source outer BFS, edgeDepth=1+min(endpointDepth), r=' + R +
       (state.augmented.dummyCount > 0 ? ', +' + state.augmented.dummyCount + ' dummy vertices' : '') +
-      ', ' + (base.iters + out.iters) + ' total iters)'
+      ', ' + out.iters + ' total iters)'
     );
   }
 

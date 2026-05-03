@@ -12,6 +12,10 @@
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
 
+  var FPP_PREPARE_OPTIONS = {
+    triangulateOuterFace: true
+  };
+
   async function emitSingleIteration(options, result) {
     if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
       return;
@@ -20,32 +24,6 @@
       iter: 1,
       maxIters: 1,
       positions: result.positions
-    });
-  }
-
-  function prepareTriangulatedEmbedding(graph, options) {
-    var prepared = prepareGraphData(graph, {
-      failureLabel: 'FPP',
-      currentPositions: options ? options.currentPositions : undefined,
-      augmentationOptions: {
-        triangulateOuterFace: true
-      }
-    });
-    if (!prepared || !prepared.ok) {
-      return prepared;
-    }
-
-    return buildLayoutResult({
-      ok: true,
-      graph: prepared.graph,
-      baseEmbedding: prepared.baseEmbedding,
-      outerFace: prepared.outerFace,
-      embedding: prepared.embedding,
-      augmented: prepared.augmented,
-      augmentedGraph: prepared.augmentedGraph,
-      augmentedNodeIds: prepared.augmentedNodeIds,
-      augmentedEdgePairs: prepared.augmentedEdgePairs,
-      augmentedDummyCount: prepared.augmentedDummyCount
     });
   }
 
@@ -319,39 +297,10 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       order: order.slice(),
       outerFace: [v1, v2, v3],
       contourNeighborsByVertex: contourNeighborsByVertex
     });
-  }
-
-  function normalizeCoordinates(coords, order) {
-    var minX = Infinity;
-    var minY = Infinity;
-    var i;
-    for (i = 0; i < order.length; i += 1) {
-      var v = order[i];
-      if (!coords[v]) {
-        continue;
-      }
-      if (coords[v].x < minX) {
-        minX = coords[v].x;
-      }
-      if (coords[v].y < minY) {
-        minY = coords[v].y;
-      }
-    }
-    if (!isFinite(minX) || !isFinite(minY)) {
-      return;
-    }
-    for (i = 0; i < order.length; i += 1) {
-      v = order[i];
-      if (coords[v]) {
-        coords[v].x -= minX;
-        coords[v].y -= minY;
-      }
-    }
   }
 
   function findNeighborSegment(contour, neighborPath) {
@@ -489,8 +438,6 @@
       contour = contour.slice(0, p + 1).concat([vk]).concat(contour.slice(q));
     }
 
-    normalizeCoordinates(coords, order);
-
     var SCALE = 30;
     var maxY = 0;
     for (var yi = 0; yi < order.length; yi += 1) {
@@ -510,47 +457,9 @@
       };
     }
     return buildLayoutResult({
-      ok: true,
       order: order.slice(),
       outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
       positions: normalizePositionMapToViewport(screenPos)
-    });
-  }
-
-  function computeFPPPositions(graph, options) {
-    var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
-    var prepared = prepareTriangulatedEmbedding(graph, options);
-    if (!prepared.ok) {
-      return buildLayoutError({
-        message: prepared.message || prepared.reason,
-        graph: graph
-      });
-    }
-
-    var canonical = computeCanonicalOrdering(prepared);
-    if (!canonical.ok) {
-      return buildLayoutError({
-        message: canonical.reason,
-        graph: graph,
-        outerFace: prepared.outerFace
-      });
-    }
-
-    var result = computeFPPPositionsFromCanonical(canonical);
-    if (!result || !result.ok) {
-      return buildLayoutError(result || { message: 'FPP placement failed' });
-    }
-    return buildLayoutResult({
-      ok: true,
-      nodeIds: ids,
-      edgePairs: pairs,
-      outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
-      graph: graph,
-      augmentedDummyCount: prepared.augmentedDummyCount || 0,
-      prepared: prepared,
-      canonical: canonical,
-      positions: result.positions
     });
   }
 
@@ -578,7 +487,6 @@
       return buildLayoutError(result || { message: 'FPP placement failed' });
     }
     return buildLayoutResult({
-      ok: true,
       nodeIds: ids,
       edgePairs: pairs,
       outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
@@ -588,6 +496,14 @@
       canonical: canonical,
       positions: result.positions
     });
+  }
+
+  function computeFPPPositions(graph, options) {
+    return computeFPPPositionsFromPrepared(graph, prepareGraphData(graph, {
+      failureLabel: 'FPP',
+      currentPositions: options ? options.currentPositions : undefined,
+      augmentationOptions: FPP_PREPARE_OPTIONS
+    }));
   }
 
   function applyFPPLayout(cy, options) {
@@ -601,9 +517,7 @@
         return { x1: 0, y1: 0, x2: width, y2: height };
       },
       prepareOptions: {
-        augmentationOptions: {
-          triangulateOuterFace: true
-        }
+        augmentationOptions: FPP_PREPARE_OPTIONS
       },
       computePositions: async function (graph, computeOptions, prepared) {
         var result = computeFPPPositionsFromPrepared(graph, prepared);

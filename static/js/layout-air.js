@@ -121,7 +121,6 @@
 
     if (triangles.length === 0) {
       return buildLayoutResult({
-        ok: true,
         triangles: triangles,
         incident: incident,
         targetTriangleArea: 0
@@ -138,7 +137,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       outerFace: outerFace.slice().map(String),
       triangles: triangles,
       incident: incident,
@@ -339,7 +337,6 @@
 
     if (airData.triangles.length === 0) {
       return buildLayoutResult({
-        ok: true,
         opts: opts,
         graph: context.graph,
         baseEmbedding: context.baseEmbedding,
@@ -372,7 +369,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       opts: opts,
       graph: context.graph,
       baseEmbedding: context.baseEmbedding,
@@ -424,13 +420,8 @@
       lastStats.acceptedCount = 0;
       lastStats.sweeps = 0;
       return {
-        ok: !hasPositionCrossings(posById, g.edgePairs),
         status: 'realized',
-        positions: posById,
         stats: lastStats,
-        moveStats: lastMoveStats,
-        boundedFaceCount: airData.triangles.length,
-        dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
         hasCrossings: hasPositionCrossings(posById, g.edgePairs)
       };
     }
@@ -592,13 +583,8 @@
     }
 
     return {
-      ok: !hasPositionCrossings(posById, g.edgePairs),
       status: status,
-      positions: posById,
       stats: lastStats,
-      moveStats: lastMoveStats,
-      boundedFaceCount: airData.triangles.length,
-      dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
       hasCrossings: hasPositionCrossings(posById, g.edgePairs)
     };
   }
@@ -608,75 +594,7 @@
     if (!prepared.ok) {
       return buildLayoutError(prepared);
     }
-    var finalPositions = filterPositions(prepared.posById, prepared.graph.nodeIds);
-
-    if (prepared.airData.triangles.length === 0) {
-      return buildLayoutResult({
-        ok: true,
-        status: 'realized',
-        positions: finalPositions,
-        debugPositions: prepared.posById,
-        graph: prepared.graph,
-        outerFace: prepared.outerFace,
-        augmented: prepared.augmented,
-        airData: prepared.airData,
-        boundedFaceCount: 0,
-        dummyCount: prepared.augmented.dummyCount,
-        faceAreaScore: null,
-        maxRelError: 0
-      });
-    }
-
-    var solveResult = await runAirIterations(prepared, prepared.opts);
-    var status = solveResult.status;
-    var lastStats = solveResult.stats;
-    finalPositions = filterPositions(prepared.posById, prepared.graph.nodeIds);
-
-    if (solveResult.hasCrossings) {
-      return buildLayoutError({
-        status: status,
-        message: 'Air produced a non-plane drawing',
-        graph: prepared.graph,
-        outerFace: prepared.outerFace,
-        augmented: prepared.augmented,
-        maxRelError: lastStats ? lastStats.maxRelError : null,
-        boundedFaceCount: prepared.airData.triangles.length,
-        dummyCount: prepared.augmented.dummyCount
-      });
-    }
-
-    var faceScore = Metrics.computeUniformFaceAreaScore(
-      prepared.graph.nodeIds,
-      prepared.graph.edgePairs,
-      prepared.posById,
-      prepared.baseEmbedding
-    );
-
-    var message = buildLayoutStatusMessage('Air', {
-      outerFaceVertexCount: Array.isArray(prepared.outerFace) ? prepared.outerFace.length : null,
-      boundedFaceCount: prepared.airData.triangles.length,
-      dummyCount: prepared.augmented.dummyCount,
-      status: status,
-      maxRelError: lastStats ? lastStats.maxRelError : null,
-      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null
-    });
-
-    return buildLayoutResult({
-      ok: true,
-      status: status,
-      positions: finalPositions,
-      debugPositions: prepared.posById,
-      graph: prepared.graph,
-      outerFace: prepared.outerFace,
-      augmented: prepared.augmented,
-      airData: prepared.airData,
-      message: message,
-      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
-      maxRelError: lastStats ? lastStats.maxRelError : null,
-      boundedFaceCount: prepared.airData.triangles.length,
-      dummyCount: prepared.augmented.dummyCount,
-      iters: lastStats && Number.isFinite(lastStats.sweeps) ? lastStats.sweeps : null
-    });
+    return finishAirPositions(prepared);
   }
 
   async function computeAirPositionsFromPrepared(_graph, options, prepared) {
@@ -685,11 +603,14 @@
     if (!state.ok) {
       return buildLayoutError(state);
     }
+    return finishAirPositions(state);
+  }
+
+  async function finishAirPositions(state) {
     var finalPositions = filterPositions(state.posById, state.graph.nodeIds);
 
     if (state.airData.triangles.length === 0) {
       return buildLayoutResult({
-        ok: true,
         status: 'realized',
         positions: finalPositions,
         debugPositions: state.posById,
@@ -729,17 +650,17 @@
       state.baseEmbedding
     );
 
+    var quality = faceScore && faceScore.ok ? faceScore.quality : null;
     var message = buildLayoutStatusMessage('Air', {
       outerFaceVertexCount: Array.isArray(state.outerFace) ? state.outerFace.length : null,
       boundedFaceCount: state.airData.triangles.length,
       dummyCount: state.augmented.dummyCount,
       status: status,
       maxRelError: lastStats ? lastStats.maxRelError : null,
-      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null
+      faceAreaScore: quality
     });
 
     return buildLayoutResult({
-      ok: true,
       status: status,
       positions: finalPositions,
       debugPositions: state.posById,
@@ -748,7 +669,7 @@
       augmented: state.augmented,
       airData: state.airData,
       message: message,
-      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
+      faceAreaScore: quality,
       maxRelError: lastStats ? lastStats.maxRelError : null,
       boundedFaceCount: state.airData.triangles.length,
       dummyCount: state.augmented.dummyCount,

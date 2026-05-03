@@ -12,11 +12,10 @@
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var collectMovableVertices = GraphUtils.collectMovableVertices;
   var computeDrawingDiameter = GeometryUtils.computeDrawingDiameter;
-  var computeDistributionQuality = Metrics && Metrics.computeDistributionQuality;
+  var computeDistributionQuality = Metrics.computeDistributionQuality;
   var computePositionMoveStats = GraphUtils.computePositionMoveStats;
   var createAugmentationDebugState = LayoutPreprocessing.createAugmentationDebugState;
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
-  var createGraph = GraphUtils.createGraph;
   var edgeKey = GraphUtils.edgeKey;
   var filterPositions = GeometryUtils.filterPositionMap;
   var findOuterFaceIndex = global.PlanarGraphUtils.findOuterFaceIndex;
@@ -26,12 +25,12 @@
   var resolveIntOption = GraphUtils.resolveIntOption;
   var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
 
-  function barycentricLayoutWeighted(nodeIds, adj, outerFace, weights, fixedOuterPos) {
-    return Tutte.computeBarycentricPositions(createGraph(nodeIds, []), outerFace, {
-      adjacency: adj,
+  function solveWeighted(prepared, weights) {
+    return Tutte.computeBarycentricPositions(prepared.augmentedGraph, prepared.outerFace, {
+      adjacency: prepared.adj,
       weights: weights,
       initOptions: Tutte.defaultOuterPlacementOptions({
-        fixedOuterPos: fixedOuterPos || null
+        fixedOuterPos: prepared.fixedOuterPos
       })
     });
   }
@@ -51,23 +50,22 @@
     return map;
   }
 
-  function updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, stepSize, clampValue, deltaClamp) {
+  function updateFacePressures(prepared, faceAreas, facePressure) {
+    var options = prepared.opts;
+    var boundedFaceIdx = prepared.boundedFaceIdx;
     var next = facePressure.slice();
-    var safeStep = Number.isFinite(stepSize) ? Math.max(0, stepSize) : 0.08;
-    var safeClamp = Number.isFinite(clampValue) ? Math.max(0.05, clampValue) : 0.7;
-    var safeDeltaClamp = Number.isFinite(deltaClamp) ? Math.max(0.05, deltaClamp) : 1.0;
     var sum = 0;
     var cnt = 0;
     for (var i = 0; i < boundedFaceIdx.length; i += 1) {
       var fi = boundedFaceIdx[i];
       var area = faceAreas[fi];
       if (!Number.isFinite(area) || !(area > 1e-12)) continue;
-      var delta = Math.log(Math.max(desired, 1e-12) / Math.max(area, 1e-12));
-      if (delta < -safeDeltaClamp) delta = -safeDeltaClamp;
-      if (delta > safeDeltaClamp) delta = safeDeltaClamp;
-      var p = next[fi] + safeStep * delta;
-      if (p < -safeClamp) p = -safeClamp;
-      if (p > safeClamp) p = safeClamp;
+      var delta = Math.log(Math.max(prepared.desired, 1e-12) / Math.max(area, 1e-12));
+      if (delta < -options.pressureDeltaClamp) delta = -options.pressureDeltaClamp;
+      if (delta > options.pressureDeltaClamp) delta = options.pressureDeltaClamp;
+      var p = next[fi] + options.pressureStep * delta;
+      if (p < -options.pressureClamp) p = -options.pressureClamp;
+      if (p > options.pressureClamp) p = options.pressureClamp;
       next[fi] = p;
       sum += p;
       cnt += 1;
@@ -83,16 +81,13 @@
     return next;
   }
 
-  function adjustWeights(edgePairs, outerFace, faceAreas, desired, oldWeights, facePressure, e2f, boundedSet, pressureBeta, scaleMin, scaleMax, pressureScaleMin, pressureScaleMax) {
-    var outerSet = new Set(outerFace.map(String));
+  function adjustWeights(prepared, faceAreas, oldWeights, facePressure) {
+    var edgePairs = prepared.augmented.graph.edgePairs;
+    var outerSet = new Set(prepared.outerFace.map(String));
+    var options = prepared.opts;
     var newWeights = {};
     var sumW = 0;
     var cnt = 0;
-    var beta = Number.isFinite(pressureBeta) ? Math.max(0, pressureBeta) : 0.12;
-    var sMin = Number.isFinite(scaleMin) ? Math.max(0.01, scaleMin) : 0.2;
-    var sMax = Number.isFinite(scaleMax) ? Math.max(sMin, scaleMax) : 10.0;
-    var psMin = Number.isFinite(pressureScaleMin) ? Math.max(0.01, pressureScaleMin) : 0.85;
-    var psMax = Number.isFinite(pressureScaleMax) ? Math.max(psMin, pressureScaleMax) : 1.15;
 
     for (var i = 0; i < edgePairs.length; i += 1) {
       var u = String(edgePairs[i][0]);
@@ -106,7 +101,7 @@
         continue;
       }
 
-      var facesIdx = e2f[k] || [];
+      var facesIdx = prepared.e2f[k] || [];
       var areaSum = 0;
       var areaCnt = 0;
       for (var j = 0; j < facesIdx.length; j += 1) {
@@ -124,26 +119,26 @@
         continue;
       }
 
-      var penalty = (areaSum / areaCnt) / Math.max(desired, 1e-12);
+      var penalty = (areaSum / areaCnt) / Math.max(prepared.desired, 1e-12);
       var scale = penalty > 1 ? Math.sqrt(penalty) : penalty;
-      if (scale < sMin) scale = sMin;
-      if (scale > sMax) scale = sMax;
+      if (scale < options.scaleMin) scale = options.scaleMin;
+      if (scale > options.scaleMax) scale = options.scaleMax;
 
       var pSum = 0;
       var pCnt = 0;
       for (j = 0; j < facesIdx.length; j += 1) {
         fi = facesIdx[j];
-        if (!boundedSet[fi]) continue;
+        if (!prepared.boundedSet.has(fi)) continue;
         var p = facePressure[fi];
         if (Number.isFinite(p)) {
           pSum += p;
           pCnt += 1;
         }
       }
-      if (pCnt > 0 && beta > 0) {
-        var pressureScale = Math.exp(-beta * (pSum / pCnt));
-        if (pressureScale < psMin) pressureScale = psMin;
-        if (pressureScale > psMax) pressureScale = psMax;
+      if (pCnt > 0 && options.pressureBeta > 0) {
+        var pressureScale = Math.exp(-options.pressureBeta * (pSum / pCnt));
+        if (pressureScale < options.pressureScaleMin) pressureScale = options.pressureScaleMin;
+        if (pressureScale > options.pressureScaleMax) pressureScale = options.pressureScaleMax;
         scale *= pressureScale;
       }
 
@@ -186,25 +181,21 @@
       return null;
     }
 
-    var normalized = [];
     for (j = 0; j < values.length; j += 1) {
-      normalized.push(values[j] / sum);
+      values[j] /= sum;
     }
-    normalized.sort(function (a, b) { return a - b; });
+    values.sort(function (a, b) { return a - b; });
 
-    var ideal = 1 / normalized.length;
-    var minVal = normalized[0];
-    var maxVal = normalized[normalized.length - 1];
-    var score = null;
-    if (typeof computeDistributionQuality === 'function') {
-      score = computeDistributionQuality(normalized);
-    }
+    var ideal = 1 / values.length;
+    var minVal = values[0];
+    var maxVal = values[values.length - 1];
+    var score = computeDistributionQuality(values);
 
     return {
       score: Number.isFinite(score) ? score : null,
       minRatio: minVal / ideal,
       maxRatio: maxVal / ideal,
-      faceCount: normalized.length
+      faceCount: values.length
     };
   }
 
@@ -264,23 +255,15 @@
       });
     }
 
-    var adj = context.augmentedGraph.adjacency;
     var e2f = buildEdgeToFaceMap(faces);
     var weights = {};
     for (i = 0; i < augmented.graph.edgePairs.length; i += 1) {
       weights[edgeKey(augmented.graph.edgePairs[i][0], augmented.graph.edgePairs[i][1])] = 1;
     }
-    var facePressure = [];
-    for (i = 0; i < faces.length; i += 1) facePressure[i] = 0;
-    var boundedSet = {};
-    for (i = 0; i < boundedFaceIdx.length; i += 1) boundedSet[boundedFaceIdx[i]] = true;
+    var facePressure = new Array(faces.length).fill(0);
+    var boundedSet = new Set(boundedFaceIdx);
     var desired = 1 / boundedFaceIdx.length;
-    var fixedOuterPos = {};
-    var initPos = context.posById;
-    for (var oi = 0; oi < outer.length; oi += 1) {
-      var ov = String(outer[oi]);
-      fixedOuterPos[ov] = { x: initPos[ov].x, y: initPos[ov].y };
-    }
+    var fixedOuterPos = filterPositions(context.posById, outer);
     var currentPos = context.posById;
     var movableVertices = collectMovableVertices(augmented.graph.nodeIds, outer);
     var movementScale = computeDrawingDiameter(augmented.graph.nodeIds, currentPos);
@@ -297,9 +280,10 @@
       graph: g,
       outerFace: outer,
       augmented: augmented,
+      augmentedGraph: context.augmentedGraph,
       faces: faces,
       boundedFaceIdx: boundedFaceIdx,
-      adj: adj,
+      adj: context.augmentedGraph.adjacency,
       e2f: e2f,
       weights: weights,
       facePressure: facePressure,
@@ -313,32 +297,14 @@
     };
   }
 
-  function prepareReweightState(graph, options) {
-    fillReweightSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'ReweightTutte',
-      augmentationMethod: options.augmentationMethod,
-      currentPositions: options.currentPositions
-    });
-    return buildReweightStateFromPrepared(context, options);
-  }
-
   async function runReweightIterations(prepared, options) {
-    var g = prepared.graph;
     var outer = prepared.outerFace;
     var augmented = prepared.augmented;
     var faces = prepared.faces;
     var boundedFaceIdx = prepared.boundedFaceIdx;
-    var adj = prepared.adj;
-    var e2f = prepared.e2f;
     var weights = prepared.weights;
     var facePressure = prepared.facePressure;
-    var boundedSet = prepared.boundedSet;
-    var desired = prepared.desired;
-    var fixedOuterPos = prepared.fixedOuterPos;
     var currentPos = prepared.currentPos;
-    var movableVertices = prepared.movableVertices;
-    var movementTracker = prepared.movementTracker;
     var totalInnerIters = prepared.initIters || 0;
     var stopReason = 'max-iters';
     var performedOuterIters = 0;
@@ -346,14 +312,14 @@
 
     for (var iter = 0; iter < options.maxOuterIters; iter += 1) {
       var prevPos = currentPos;
-      var inner = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, fixedOuterPos);
+      var inner = solveWeighted(prepared, weights);
       totalInnerIters += inner.iters;
       performedOuterIters = iter + 1;
 
       var pos = inner.positions;
       currentPos = pos;
-      var moveStats = computePositionMoveStats(movableVertices, prevPos, pos, { moveTol: 1e-9 });
-      var movementStatus = movementTracker.update({
+      var moveStats = computePositionMoveStats(prepared.movableVertices, prevPos, pos, { moveTol: 1e-9 });
+      var movementStatus = prepared.movementTracker.update({
         maxMove: moveStats.maxMove,
         avgMove: moveStats.avgMove
       }, iter + 1);
@@ -367,23 +333,9 @@
       var iterStats = computeFaceAreaIterationStats(faceAreas, boundedFaceIdx);
       finalIterationStats = iterStats;
 
-      facePressure = updateFacePressures(faceAreas, boundedFaceIdx, desired, facePressure, options.pressureStep, options.pressureClamp, options.pressureDeltaClamp);
-      weights = adjustWeights(
-        augmented.graph.edgePairs,
-        outer,
-        faceAreas,
-        desired,
-        weights,
-        facePressure,
-        e2f,
-        boundedSet,
-        options.pressureBeta,
-        options.scaleMin,
-        options.scaleMax,
-        options.pressureScaleMin,
-        options.pressureScaleMax
-      );
-      if (typeof options.onIteration === 'function') {
+      facePressure = updateFacePressures(prepared, faceAreas, facePressure);
+      weights = adjustWeights(prepared, faceAreas, weights, facePressure);
+      if (options.onIteration) {
         await options.onIteration({
           iter: iter + 1,
           maxIters: options.maxOuterIters,
@@ -408,20 +360,18 @@
       }
     }
 
-    var finalLayout = barycentricLayoutWeighted(augmented.graph.nodeIds, adj, outer, weights, fixedOuterPos);
+    var finalLayout = solveWeighted(prepared, weights);
     totalInnerIters += finalLayout.iters;
-    var finalPositions = filterPositions(finalLayout.positions, g.nodeIds);
+    var finalPositions = filterPositions(finalLayout.positions, prepared.graph.nodeIds);
 
     return buildLayoutResult({
-      ok: true,
-      graph: g,
+      graph: prepared.graph,
       outerFace: outer,
       augmented: augmented,
       positions: finalPositions,
       debugPositions: finalLayout.positions,
       iters: totalInnerIters,
       stopReason: stopReason,
-      totalInnerIters: totalInnerIters,
       outerSteps: performedOuterIters,
       faceAreaScore: finalIterationStats ? finalIterationStats.score : null,
       boundedFaceCount: finalIterationStats ? finalIterationStats.faceCount : boundedFaceIdx.length,
@@ -431,7 +381,11 @@
   }
 
   async function computeReweightTuttePositions(graph, options) {
-    var prepared = prepareReweightState(graph, options);
+    var prepared = buildReweightStateFromPrepared(LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+      failureLabel: 'ReweightTutte',
+      augmentationMethod: options.augmentationMethod,
+      currentPositions: options.currentPositions
+    }), options);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'ReweightTutte setup failed' });
     }
@@ -440,7 +394,6 @@
 
   async function computeReweightTuttePositionsFromPrepared(_graph, options, prepared) {
     var opts = options || {};
-    fillReweightSettings(opts);
     var state = buildReweightStateFromPrepared(prepared, opts);
     if (!state || !state.ok) {
       return buildLayoutError(state || { message: 'ReweightTutte setup failed' });

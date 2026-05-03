@@ -1,13 +1,11 @@
 (function (global) {
   'use strict';
 
-  var GeometryUtils = global.GeometryUtils;
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
-  var PlanarityTest = global.PlanarVibePlanarityTest;
   var CyRuntime = global.CyRuntime;
-  var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
+  var normalizePositionMapToViewport = global.GeometryUtils.normalizePositionMapToViewport;
 
   async function emitSingleIteration(options, result) {
     if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
@@ -30,8 +28,7 @@
 
   function computeP3TPositions(graph) {
     var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
-    var info = PlanarityTest.analyzePlanar3Tree(graph);
+    var info = global.PlanarVibePlanarityTest.analyzePlanar3Tree(graph);
     if (!info.ok) {
       return buildLayoutError({
         message: 'P3T requires a planar 3-tree: ' + info.reason
@@ -42,10 +39,9 @@
     var outer = info.outerFace;
     var indexById = emb.indexById;
 
-    var insertion = info.elimination.slice().reverse();
     var parents2v = {};
-    for (var i = 0; i < insertion.length; i += 1) {
-      var rec = insertion[i];
+    for (var i = info.elimination.length - 1; i >= 0; i -= 1) {
+      var rec = info.elimination[i];
       parents2v[cliqueKey(rec.parents[0], rec.parents[1], rec.parents[2], indexById)] = rec.vertex;
     }
 
@@ -66,17 +62,11 @@
     }
 
     var coord = {};
-    for (i = 0; i < ids.length; i += 1) {
-      coord[ids[i]] = { x: 0, y: 0 };
-    }
-
-    var R = 1000;
-    var gamma = 2.0 * Math.PI / outer.length;
     for (i = 0; i < outer.length; i += 1) {
-      var ov = outer[outer.length - i - 1];
-      coord[ov] = {
-        x: R * Math.cos(gamma * i) + 2.0 * R,
-        y: R * Math.sin(gamma * i) + 2.0 * R
+      var angle = 2.0 * Math.PI * i / outer.length;
+      coord[outer[outer.length - i - 1]] = {
+        x: 1000 * Math.cos(angle) + 2000,
+        y: 1000 * Math.sin(angle) + 2000
       };
     }
 
@@ -111,14 +101,10 @@
     processClique(outer[0], outer[1], outer[2]);
 
     return buildLayoutResult({
-      ok: true,
       nodeIds: ids,
-      edgePairs: pairs,
+      edgePairs: graph.edgePairs,
       outerFace: outer.slice(),
-      graph: {
-        nodeIds: ids,
-        edgePairs: pairs
-      },
+      graph: graph,
       embedding: emb,
       positions: normalizePositionMapToViewport(coord)
     });
@@ -133,16 +119,15 @@
         return { x1: 0, y1: 0, x2: width, y2: height };
       },
       computePositions: async function (graph, computeOptions) {
-        var result = computeP3TPositions(graph, computeOptions || {});
+        var result = computeP3TPositions(graph);
         await emitSingleIteration(computeOptions || {}, result);
         return result;
       },
       buildResult: function (ctx) {
-        var result = ctx.result;
         return {
           ok: true,
           message: buildLayoutStatusMessage('P3T equal-face-area layout', {
-            vertexCount: result.nodeIds.length
+            vertexCount: ctx.result.nodeIds.length
           })
         };
       },

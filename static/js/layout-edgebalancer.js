@@ -16,7 +16,6 @@
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var filterPositions = GeometryUtils.filterPositionMap;
   var luFactorize = LinearAlgebraUtils.luFactorize;
-  var segmentsIntersectStrict = GeometryUtils.segmentsIntersectStrict;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
   var solveTransposeLUWithTwoRhs = LinearAlgebraUtils.solveTransposeLUWithTwoRhs;
   var createZeroVector = GeometryUtils.createZeroVector;
@@ -114,34 +113,19 @@
     }
 
     var outerKey = faceKey(outerFace);
-    var boundedFaceKeys = [];
     var boundedFaces = [];
     for (i = 0; i < augmentedEmbedding.faces.length; i += 1) {
       var rawFace = Array.isArray(augmentedEmbedding.faces[i])
         ? augmentedEmbedding.faces[i].slice().map(String)
         : [];
-      var faceK = faceKey(rawFace);
-      if (faceK === outerKey) continue;
+      if (faceKey(rawFace) === outerKey) continue;
       if (!rawFace || rawFace.length < 3) {
         return buildLayoutError({ reason: 'EdgeBalancer requires a valid triangulated augmentation' });
       }
       if (rawFace.length !== 3) {
         return buildLayoutError({ reason: 'EdgeBalancer requires all non-outer augmented faces to be triangles' });
       }
-      boundedFaceKeys.push(faceK);
-      var boundedFace = rawFace.map(function (id) { return augIndexById[String(id)]; });
-      boundedFaces.push(boundedFace);
-    }
-
-    var triangles = [];
-    for (i = 0; i < boundedFaces.length; i += 1) {
-      var triFace = boundedFaces[i];
-      triangles.push([
-        triFace[0],
-        triFace[1],
-        triFace[2],
-        i
-      ]);
+      boundedFaces.push(rawFace.map(function (id) { return augIndexById[String(id)]; }));
     }
 
     var outerMask = new Array(augIds.length);
@@ -180,22 +164,17 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       augIds: augIds,
-      augIndexById: augIndexById,
       x0: x0,
       y0: y0,
       interiorAugIndices: interiorAugIndices,
-      interiorVertexIds: interiorAugIndices.map(function (idx) { return augIds[idx]; }),
       interiorIndexByAug: interiorIndexByAug,
       rowStart: rowStart,
       rowLength: rowLength,
       neighborAugIndices: neighborAugIndices,
       neighborInteriorIndices: neighborInteriorIndices,
       qSize: qSize,
-      triangles: triangles,
       boundedFaces: boundedFaces,
-      boundedFaceKeys: boundedFaceKeys,
       edges: edges,
       objectiveEdges: objectiveEdges,
       areaTol: Math.max(0, input.areaTol),
@@ -204,10 +183,7 @@
       rangeBeta: input.rangeBeta,
       logAbsWeight: Math.max(0, input.logAbsWeight),
       logAbsEpsilon: Math.max(0, input.logAbsEpsilon),
-      augmentedEdgeWeight: augmentedEdgeWeight,
       edgeBarrierScale2: 1,
-      initialMinEdgeLength2: 0,
-      initialObjectiveMinEdgeLength2: 0,
       initialAvgFaceArea: 1,
       initialMinFaceArea: 0,
       minFaceArea: Math.max(0, input.minFaceArea)
@@ -249,7 +225,7 @@
         q0[rowOffset + k] = Math.log(rowWeights[k] / rowWeightSum);
       }
     }
-    return buildLayoutResult({ ok: true, q0: q0 });
+    return buildLayoutResult({ q0: q0 });
   }
 
   function computeInteriorMoveStats(data, prevX, prevY, nextX, nextY) {
@@ -379,13 +355,7 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       edgeObjectiveTerm: edgeObjectiveTerm,
-      edgeVarianceTerm: edgeVarianceTerm,
-      edgeSmoothLogAbsTerm: edgeSmoothLogAbsTerm,
-      edgeSoftRangeTerm: edgeSoftRangeTerm,
-      logLen2: logLen2,
-      logMean: logMean,
       edgeStats: edgeStats,
       maxLogDeviation: maxLogDeviation
     });
@@ -454,46 +424,6 @@
     return sum;
   }
 
-  function polygonHasSelfIntersection(vertexIds, getPoint, eps) {
-    if (typeof getPoint !== 'function') {
-      throw new Error('polygonHasSelfIntersection requires a point lookup function');
-    }
-    if (!vertexIds || vertexIds.length < 4) return false;
-    var n = vertexIds.length;
-    for (var i = 0; i < n; i += 1) {
-      var a0 = vertexIds[i];
-      var a1 = vertexIds[(i + 1) % n];
-      var pa0 = getPoint(a0);
-      var pa1 = getPoint(a1);
-      if (!pa0 || !pa1) {
-        throw new Error('polygonHasSelfIntersection found a missing polygon point');
-      }
-      for (var j = i + 1; j < n; j += 1) {
-        var nextI = (i + 1) % n;
-        var nextJ = (j + 1) % n;
-        if (i === j || i === nextJ || nextI === j) continue;
-        if (i === 0 && nextJ === 0) continue;
-        var b0 = vertexIds[j];
-        var b1 = vertexIds[nextJ];
-        var pb0 = getPoint(b0);
-        var pb1 = getPoint(b1);
-        if (!pb0 || !pb1) {
-          throw new Error('polygonHasSelfIntersection found a missing polygon point');
-        }
-        if (segmentsIntersectStrict(pa0, pa1, pb0, pb1, eps)) {
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  function getIndexedPoint(x, y) {
-    return function (index) {
-      return { x: x[index], y: y[index] };
-    };
-  }
-
   function realizeEdgeBalancerState(q, data) {
     var nI = data.interiorAugIndices.length;
     var lambda = createZeroVector(data.qSize);
@@ -533,7 +463,6 @@
       y[aug] = primal.x2[i];
     }
     return buildLayoutResult({
-      ok: true,
       lambda: lambda,
       factor: factor,
       x: x,
@@ -551,7 +480,6 @@
     var y = realized.y;
     var edgeScaleSum = 0;
     var edgeScaleWeight = 0;
-    var initialMinEdgeLength2 = Infinity;
     var i;
     for (i = 0; i < data.edges.length; i += 1) {
       var edge = data.edges[i];
@@ -561,25 +489,9 @@
       if (len2 > 1e-12) {
         edgeScaleSum += edge[2] * len2;
         edgeScaleWeight += edge[2];
-        if (len2 < initialMinEdgeLength2) initialMinEdgeLength2 = len2;
       }
     }
     data.edgeBarrierScale2 = edgeScaleWeight > 0 ? (edgeScaleSum / edgeScaleWeight) : 1;
-    data.initialMinEdgeLength2 = Number.isFinite(initialMinEdgeLength2) ? initialMinEdgeLength2 : 0;
-
-    var initialObjectiveMinEdgeLength2 = Infinity;
-    for (i = 0; i < data.objectiveEdges.length; i += 1) {
-      edge = data.objectiveEdges[i];
-      dx = x[edge[0]] - x[edge[1]];
-      dy = y[edge[0]] - y[edge[1]];
-      len2 = dx * dx + dy * dy;
-      if (len2 > 1e-12 && len2 < initialObjectiveMinEdgeLength2) {
-        initialObjectiveMinEdgeLength2 = len2;
-      }
-    }
-    data.initialObjectiveMinEdgeLength2 = Number.isFinite(initialObjectiveMinEdgeLength2)
-      ? initialObjectiveMinEdgeLength2
-      : 0;
 
     var initialFaceMinArea = Infinity;
     var initialFaceAreaSum = 0;
@@ -595,13 +507,11 @@
         initialFaceCount += 1;
         if (area < initialFaceMinArea) initialFaceMinArea = area;
       }
-      data.triangles[i] = [face[0], face[1], face[2], i];
     }
     data.initialAvgFaceArea = initialFaceCount > 0 ? (initialFaceAreaSum / initialFaceCount) : 1;
     data.initialMinFaceArea = Number.isFinite(initialFaceMinArea) ? initialFaceMinArea : 0;
 
     return buildLayoutResult({
-      ok: true,
       positions: buildPositionMap(data, x, y)
     });
   }
@@ -618,11 +528,9 @@
     var factor = realized.factor;
     var x = realized.x;
     var y = realized.y;
-    var getPoint = getIndexedPoint(x, y);
-
-    var faceAreas = createZeroVector(data.boundedFaceKeys.length);
-    for (i = 0; i < data.triangles.length; i += 1) {
-      var tri = data.triangles[i];
+    var faceAreas = createZeroVector(data.boundedFaces.length);
+    for (i = 0; i < data.boundedFaces.length; i += 1) {
+      var tri = data.boundedFaces[i];
       var a = tri[0];
       var b = tri[1];
       var c = tri[2];
@@ -630,7 +538,7 @@
       if (!(area > -triangleSlack)) {
         return buildLayoutError({ reason: 'invalid-triangulation-step' });
       }
-      faceAreas[tri[3]] += area > triangleSlack ? area : triangleSlack;
+      faceAreas[i] += area > triangleSlack ? area : triangleSlack;
     }
     for (i = 0; i < faceAreas.length; i += 1) {
       if (!(faceAreas[i] > data.minFaceArea)) {
@@ -639,9 +547,6 @@
     }
     for (i = 0; i < data.boundedFaces.length; i += 1) {
       var boundary = data.boundedFaces[i];
-      if (polygonHasSelfIntersection(boundary, getPoint, 1e-9)) {
-        return buildLayoutError({ reason: 'invalid-face-step' });
-      }
       if (!(polygonArea2FromArrays(boundary, x, y) > 2 * data.areaTol)) {
         return buildLayoutError({ reason: 'invalid-face-step' });
       }
@@ -656,39 +561,27 @@
     var zY = createZeroVector(nI);
     var E = 0;
     var edgeTol2 = Math.max(1e-24, data.areaTol);
-    var u;
-    var v;
-    var dx;
-    var dy;
-    var len2;
     var iu;
-    var iv;
     var objectiveEval = evaluateObjectiveEdgeTerms(data, objectiveEdges, x, y, edgeTol2, zX, zY);
     if (!objectiveEval.ok) {
       return objectiveEval;
     }
-    var edgeVarianceTerm = objectiveEval.edgeVarianceTerm;
-    var edgeSmoothLogAbsTerm = objectiveEval.edgeSmoothLogAbsTerm;
-    var edgeSoftRangeTerm = objectiveEval.edgeSoftRangeTerm;
-    var edgeObjectiveTerm = objectiveEval.edgeObjectiveTerm;
     var edgeStats = objectiveEval.edgeStats;
     var maxLogDeviation = objectiveEval.maxLogDeviation;
-    E += edgeObjectiveTerm;
+    E += objectiveEval.edgeObjectiveTerm;
 
     var faceBarrierTerm = 0;
     if (data.faceBarrierWeight > 0) {
-      var faceScale = data.initialAvgFaceArea > 1e-12 ? data.initialAvgFaceArea : 1;
       for (i = 0; i < faceAreas.length; i += 1) {
-        faceBarrierTerm -= data.faceBarrierWeight * Math.log(faceAreas[i] / faceScale);
+        faceBarrierTerm -= data.faceBarrierWeight * Math.log(faceAreas[i] / data.initialAvgFaceArea);
       }
       E += faceBarrierTerm;
-      for (i = 0; i < data.triangles.length; i += 1) {
-        tri = data.triangles[i];
+      for (i = 0; i < data.boundedFaces.length; i += 1) {
+        tri = data.boundedFaces[i];
         a = tri[0];
         b = tri[1];
         c = tri[2];
-        var faceIdx = tri[3];
-        var coeff = -data.faceBarrierWeight / faceAreas[faceIdx];
+        var coeff = -data.faceBarrierWeight / faceAreas[i];
         var dAxA = 0.5 * (y[b] - y[c]);
         var dAxB = 0.5 * (y[c] - y[a]);
         var dAxC = 0.5 * (y[a] - y[b]);
@@ -740,7 +633,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       E: E,
       gradVec: gradVec,
       gradNorm: vecNorm(gradVec),
@@ -913,11 +805,8 @@
     }
 
     return buildLayoutResult({
-      ok: true,
-      q: q,
       positions: buildPositionMap(data, current.x, current.y),
       E: current.E,
-      gradNorm: current.gradNorm,
       maxLogDeviation: current.maxLogDeviation,
       edgeStats: current.edgeStats || null,
       stopReason: stopReason,
@@ -1027,7 +916,6 @@
     }
     var edgeDeviation = Metrics.computeEdgeLengthDeviationScore(g.edgePairs, finalPositions);
     return buildLayoutResult({
-      ok: true,
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
       outerFace: outerFace,

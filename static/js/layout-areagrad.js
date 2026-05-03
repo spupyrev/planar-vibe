@@ -66,7 +66,6 @@
 
     if (triangles.length === 0) {
       return buildLayoutResult({
-        ok: true,
         outerFace: outerFace.slice().map(String),
         incidentTrianglesByVertex: incidentTrianglesByVertex,
         triangles: triangles,
@@ -80,7 +79,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       outerFace: outerFace.slice().map(String),
       incidentTrianglesByVertex: incidentTrianglesByVertex,
       triangles: triangles,
@@ -159,7 +157,6 @@
       }
     }
     return buildLayoutResult({
-      ok: true,
       residuals: residuals,
       areas: areas,
       areaEnergy: areaEnergy,
@@ -174,7 +171,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       objective: residualState.areaEnergy,
       areaEnergy: residualState.areaEnergy,
       residuals: residualState.residuals,
@@ -275,7 +271,6 @@
 
     if (areaGradData.triangles.length === 0) {
       return buildLayoutResult({
-        ok: true,
         opts: options,
         graph: context.graph,
         baseEmbedding: context.baseEmbedding,
@@ -297,7 +292,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       opts: options,
       graph: context.graph,
       baseEmbedding: context.baseEmbedding,
@@ -449,68 +443,7 @@
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'AreaGrad setup failed' });
     }
-    var finalPositions = filterPositions(prepared.posById, prepared.graph.nodeIds);
-
-    if (prepared.areaGradData.triangles.length === 0) {
-      return buildLayoutResult({
-        ok: true,
-        status: 'realized',
-        positions: finalPositions,
-        debugPositions: prepared.posById,
-        graph: prepared.graph,
-        outerFace: prepared.outerFace,
-        augmented: prepared.augmented,
-        areaGradData: prepared.areaGradData,
-        boundedFaceCount: 0,
-        dummyCount: prepared.augmented.dummyCount,
-        iters: 0,
-        maxRelError: 0,
-        faceAreaScore: null
-      });
-    }
-
-    var result = await runAreaGradIterations(prepared, prepared.opts);
-
-    if (!result.ok && result.reason) {
-      return buildLayoutError({
-        status: result.status,
-        graph: prepared.graph,
-        outerFace: prepared.outerFace,
-        augmented: prepared.augmented,
-        message: result.reason
-      });
-    }
-    if (result.hasCrossings) {
-      return buildLayoutError({
-        status: result.status,
-        graph: prepared.graph,
-        outerFace: prepared.outerFace,
-        augmented: prepared.augmented,
-        message: 'AreaGrad produced a non-plane drawing'
-      });
-    }
-
-    var faceScore = Metrics && Metrics.computeUniformFaceAreaScore
-      ? Metrics.computeUniformFaceAreaScore(prepared.graph.nodeIds, prepared.graph.edgePairs, prepared.posById, prepared.baseEmbedding)
-      : null;
-    var lastStats = result.stats || {};
-    finalPositions = filterPositions(prepared.posById, prepared.graph.nodeIds);
-
-    return buildLayoutResult({
-      ok: true,
-      status: result.status,
-      positions: finalPositions,
-      debugPositions: prepared.posById,
-      graph: prepared.graph,
-      outerFace: prepared.outerFace,
-      augmented: prepared.augmented,
-      areaGradData: prepared.areaGradData,
-      iters: result.iters,
-      faceAreaScore: faceScore && faceScore.ok ? faceScore.quality : null,
-      maxRelError: Number.isFinite(lastStats.maxRelError) ? lastStats.maxRelError : null,
-      boundedFaceCount: prepared.areaGradData.triangles.length,
-      dummyCount: prepared.augmented.dummyCount
-    });
+    return finishAreaGradPositions(prepared, prepared.opts);
   }
 
   async function computeAreaGradPositionsFromPrepared(_graph, options, prepared) {
@@ -518,11 +451,14 @@
     if (!state || !state.ok) {
       return buildLayoutError(state || { message: 'AreaGrad setup failed' });
     }
+    return finishAreaGradPositions(state, state.opts || options || {});
+  }
+
+  async function finishAreaGradPositions(state, options) {
     var finalPositions = filterPositions(state.posById, state.graph.nodeIds);
 
     if (state.areaGradData.triangles.length === 0) {
       return buildLayoutResult({
-        ok: true,
         status: 'realized',
         positions: finalPositions,
         debugPositions: state.posById,
@@ -538,7 +474,7 @@
       });
     }
 
-    var result = await runAreaGradIterations(state, state.opts || options || {});
+    var result = await runAreaGradIterations(state, options);
 
     if (!result.ok && result.reason) {
       return buildLayoutError({
@@ -559,14 +495,11 @@
       });
     }
 
-    var faceScore = Metrics && Metrics.computeUniformFaceAreaScore
-      ? Metrics.computeUniformFaceAreaScore(state.graph.nodeIds, state.graph.edgePairs, state.posById, state.baseEmbedding)
-      : null;
+    var faceScore = Metrics.computeUniformFaceAreaScore(state.graph.nodeIds, state.graph.edgePairs, state.posById, state.baseEmbedding);
     var lastStats = result.stats || {};
     finalPositions = filterPositions(state.posById, state.graph.nodeIds);
 
     return buildLayoutResult({
-      ok: true,
       status: result.status,
       positions: finalPositions,
       debugPositions: state.posById,

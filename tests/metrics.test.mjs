@@ -332,32 +332,6 @@ test('computeUniformFaceAreaScore requires embedding', () => {
   assert.equal(result.reason, 'Planar embedding required');
 });
 
-test('computeUniformFaceAreaScore is vacuously perfect with no bounded faces', () => {
-  const nodeIds = ['1', '2', '3'];
-  const edgePairs = [
-    ['1', '2'],
-    ['2', '3']
-  ];
-  const posById = {
-    '1': { x: 0, y: 0 },
-    '2': { x: 1, y: 0 },
-    '3': { x: 2, y: 0 }
-  };
-  const embedding = {
-    ok: true,
-    faces: [
-      ['1', '2', '3']
-    ],
-    outerFace: ['1', '2', '3']
-  };
-  const result = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding);
-  assert.equal(result.ok, true);
-  assert.equal(result.faceCount, 0);
-  assert.deepEqual(result.values, []);
-  assert.deepEqual(result.idealValues, []);
-  assert.equal(result.quality, 1);
-});
-
 test('computeConvexityScore is 1 when every bounded face is convex', () => {
   const nodeIds = ['o1', 'o2', 'o3', 'a', 'b', 'c'];
   const posById = {

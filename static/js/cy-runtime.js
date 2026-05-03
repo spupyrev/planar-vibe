@@ -348,7 +348,9 @@
         livePositions = positions || livePositions;
         rendererState.livePositions = livePositions;
       }
-      renderer.finish();
+      if (renderer) {
+        renderer.finish();
+      }
 
       if (!result || !result.ok) {
         return result || { ok: false, message: String(cfg.failureMessage || 'Layout failed') };

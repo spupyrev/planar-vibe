@@ -9,32 +9,28 @@
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
 
   function graphToElements(graph) {
-    var elements = [];
     var ids = Array.isArray(graph && graph.nodeIds) ? graph.nodeIds : [];
     var pairs = Array.isArray(graph && graph.edgePairs) ? graph.edgePairs : [];
-    var i;
-    for (i = 0; i < ids.length; i += 1) {
-      elements.push({
+    return ids.map(function (id) {
+      return {
         data: {
-          id: String(ids[i]),
-          label: String(ids[i])
+          id: String(id),
+          label: String(id)
         }
-      });
-    }
-    for (i = 0; i < pairs.length; i += 1) {
-      elements.push({
+      };
+    }).concat(pairs.map(function (edge, i) {
+      return {
         data: {
           id: '__native__e' + i,
-          source: String(pairs[i][0]),
-          target: String(pairs[i][1])
+          source: String(edge[0]),
+          target: String(edge[1])
         }
-      });
-    }
-    return elements;
+      };
+    }));
   }
 
   function applyInitialPositions(cy, currentPositions) {
-    if (!cy || !currentPositions) {
+    if (!currentPositions) {
       return;
     }
     cy.nodes().forEach(function (node) {
@@ -47,9 +43,6 @@
 
   function collectPositions(cy) {
     var positions = {};
-    if (!cy) {
-      return positions;
-    }
     cy.nodes().forEach(function (node) {
       var p = node.position();
       positions[String(node.id())] = { x: p.x, y: p.y };
@@ -58,11 +51,8 @@
   }
 
   function nativeLayoutOptions(name) {
-    if (name === 'circle') {
-      return { name: 'circle', fit: false, animate: false, padding: 24 };
-    }
-    if (name === 'grid') {
-      return { name: 'grid', fit: false, animate: false, padding: 24 };
+    if (name === 'circle' || name === 'grid') {
+      return { name: name, fit: false, animate: false, padding: 24 };
     }
     return {
       name: 'cose',
@@ -97,7 +87,6 @@
         function buildSuccessResult() {
           var positions = normalizePositionMapToViewport(collectPositions(tempCy));
           finishWith(buildLayoutResult({
-            ok: true,
             nodeIds: graph.nodeIds.slice(),
             edgePairs: graph.edgePairs.slice(),
             graph: graph,
@@ -121,9 +110,6 @@
           graph: graph
         }));
       } catch (err) {
-        if (tempCy) {
-          tempCy.destroy();
-        }
         finishWith(buildLayoutError({
           message: (err && err.message) ? err.message : ('Cytoscape layout "' + layoutName + '" failed'),
           graph: graph
@@ -166,21 +152,15 @@
     });
   }
 
-  function applyCircleLayout(cy, options) {
-    return applyNativeLayout(cy, options, 'circle', 'circle');
-  }
-
-  function applyGridLayout(cy, options) {
-    return applyNativeLayout(cy, options, 'grid', 'grid');
-  }
-
-  function applyCoseLayout(cy, options) {
-    return applyNativeLayout(cy, options, 'cose', 'cose');
-  }
-
   global.PlanarVibeCytoscape = {
-    applyCircleLayout: applyCircleLayout,
-    applyGridLayout: applyGridLayout,
-    applyCoseLayout: applyCoseLayout
+    applyCircleLayout: function (cy, options) {
+      return applyNativeLayout(cy, options, 'circle', 'circle');
+    },
+    applyGridLayout: function (cy, options) {
+      return applyNativeLayout(cy, options, 'grid', 'grid');
+    },
+    applyCoseLayout: function (cy, options) {
+      return applyNativeLayout(cy, options, 'cose', 'cose');
+    }
   };
 })(window);

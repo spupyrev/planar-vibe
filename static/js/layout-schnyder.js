@@ -13,6 +13,10 @@
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
   var prepareGraphData = LayoutPreprocessing.prepareGraphData;
 
+  var SCHNYDER_PREPARE_OPTIONS = {
+    triangulateOuterFace: true
+  };
+
   async function emitSingleIteration(options, result) {
     if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
       return;
@@ -30,23 +34,6 @@
       byId[String(embedding.idByIndex[i])] = (embedding.rotation[i] || []).map(String);
     }
     return byId;
-  }
-
-  function cycleIndex(arr, value) {
-    for (var i = 0; i < arr.length; i += 1) {
-      if (arr[i] === value) {
-        return i;
-      }
-    }
-    return -1;
-  }
-
-  function cyclicSucc(arr, idx) {
-    return (idx + 1) % arr.length;
-  }
-
-  function cyclicPred(arr, idx) {
-    return (idx - 1 + arr.length) % arr.length;
   }
 
   function contract(nodeIds, adjacency, a, b, c) {
@@ -118,11 +105,7 @@
     return L;
   }
 
-  function addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, src, dst, label) {
-    if (!outEdgesByLabel[label]) {
-      outEdgesByLabel[label] = [];
-    }
-    outEdgesByLabel[label].push({ source: src, target: dst });
+  function addDirectedLabeledEdge(outAdjByLabel, src, dst, label) {
     var a = outAdjByLabel[label];
     if (!a[src]) {
       a[src] = [];
@@ -144,11 +127,6 @@
       1: {},
       2: {},
       3: {}
-    };
-    var outEdgesByLabel = {
-      1: [],
-      2: [],
-      3: []
     };
 
     for (var n = 0; n < nodeIds.length; n += 1) {
@@ -178,34 +156,33 @@
 
       var idx1 = firstIdx;
       while ((ord[rot[idx1]] || 0) > (ord[v] || 0)) {
-        idx1 = cyclicSucc(rot, idx1);
+        idx1 = (idx1 + 1) % rot.length;
       }
-      addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, rot[idx1], v, 2);
+      addDirectedLabeledEdge(outAdjByLabel, rot[idx1], v, 2);
 
       var idx2 = firstIdx;
       while ((ord[rot[idx2]] || 0) > (ord[v] || 0)) {
-        idx2 = cyclicPred(rot, idx2);
+        idx2 = (idx2 - 1 + rot.length) % rot.length;
       }
-      addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, rot[idx2], v, 3);
+      addDirectedLabeledEdge(outAdjByLabel, rot[idx2], v, 3);
 
-      var walk = cyclicSucc(rot, idx1);
+      var walk = (idx1 + 1) % rot.length;
       while (walk !== idx2) {
-        addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, v, rot[walk], 1);
-        walk = cyclicSucc(rot, walk);
+        addDirectedLabeledEdge(outAdjByLabel, v, rot[walk], 1);
+        walk = (walk + 1) % rot.length;
       }
     }
 
     var an = adjacency[a] || [];
     for (i = 0; i < an.length; i += 1) {
-      addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, a, an[i], 1);
+      addDirectedLabeledEdge(outAdjByLabel, a, an[i], 1);
     }
-    addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, b, a, 2);
-    addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, b, c, 2);
-    addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, c, a, 3);
-    addDirectedLabeledEdge(outEdgesByLabel, outAdjByLabel, c, b, 3);
+    addDirectedLabeledEdge(outAdjByLabel, b, a, 2);
+    addDirectedLabeledEdge(outAdjByLabel, b, c, 2);
+    addDirectedLabeledEdge(outAdjByLabel, c, a, 3);
+    addDirectedLabeledEdge(outAdjByLabel, c, b, 3);
 
     return buildLayoutResult({
-      ok: true,
       ord: ord,
       outAdjByLabel: outAdjByLabel
     });
@@ -300,7 +277,6 @@
 
   function buildScreenPositions(coords, nodeIds) {
     var minX = Infinity;
-    var minY = Infinity;
     var maxY = -Infinity;
     var i;
     for (i = 0; i < nodeIds.length; i += 1) {
@@ -311,19 +287,15 @@
         return null;
       }
       if (xi < minX) minX = xi;
-      if (yi < minY) minY = yi;
       if (yi > maxY) maxY = yi;
     }
-    if (!Number.isFinite(minX) || !Number.isFinite(minY)) {
+    if (!Number.isFinite(minX) || !Number.isFinite(maxY)) {
       return null;
     }
     var SCALE = 30;
     var out = {};
     for (i = 0; i < nodeIds.length; i += 1) {
       var id2 = nodeIds[i];
-      if (coords.x[id2] === undefined || coords.y[id2] === undefined) {
-        continue;
-      }
       out[id2] = {
         x: (coords.x[id2] - minX) * SCALE + 20,
         y: (maxY - coords.y[id2]) * SCALE + 20
@@ -332,52 +304,15 @@
     return out;
   }
 
-  function hasOverlappingVertices(posById) {
-    var seen = new Set();
-    var keys = Object.keys(posById || {});
-    for (var i = 0; i < keys.length; i += 1) {
-      var id = keys[i];
-      var p = posById[id];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      var k = String(p.x) + ',' + String(p.y);
-      if (seen.has(k)) {
-        return true;
-      }
-      seen.add(k);
-    }
-    return false;
-  }
-
-  function countOverlappingVertices(posById) {
-    var buckets = {};
-    var ids = Object.keys(posById || {});
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      var p = posById[id];
-      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-        continue;
-      }
-      var k = String(p.x) + ',' + String(p.y);
-      buckets[k] = (buckets[k] || 0) + 1;
-    }
-    var overlaps = 0;
-    var keys = Object.keys(buckets);
-    for (i = 0; i < keys.length; i += 1) {
-      if (buckets[keys[i]] > 1) {
-        overlaps += (buckets[keys[i]] - 1);
-      }
-    }
-    return overlaps;
-  }
-
   function groupOverlaps(posById) {
     var buckets = {};
     var ids = Object.keys(posById || {});
     for (var i = 0; i < ids.length; i += 1) {
       var id = ids[i];
       var p = posById[id];
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+        continue;
+      }
       var k = String(p.x) + ',' + String(p.y);
       if (!buckets[k]) {
         buckets[k] = [];
@@ -396,12 +331,20 @@
     return out;
   }
 
+  function countOverlapExtras(groups) {
+    var count = 0;
+    for (var i = 0; i < groups.length; i += 1) {
+      count += groups[i].length - 1;
+    }
+    return count;
+  }
+
   function resolveOverlapsWithoutCrossings(posById, edgePairs) {
-    if (!hasOverlappingVertices(posById)) {
+    var overlapGroups = groupOverlaps(posById);
+    if (overlapGroups.length === 0) {
       return copyPositions(posById);
     }
     var pos = copyPositions(posById);
-    var overlapGroups = groupOverlaps(pos);
     var ring = [];
     var DIRS = 24;
     for (var a = 0; a < DIRS; a += 1) {
@@ -429,7 +372,7 @@
               y: anchor.y + dy * radius
             };
           }
-          if (hasOverlappingVertices(trial)) {
+          if (groupOverlaps(trial).length > 0) {
             continue;
           }
           if (hasPositionCrossings(trial, edgePairs)) {
@@ -444,7 +387,7 @@
       }
     }
 
-    if (hasOverlappingVertices(pos) || hasPositionCrossings(pos, edgePairs)) {
+    if (groupOverlaps(pos).length > 0 || hasPositionCrossings(pos, edgePairs)) {
       return null;
     }
     return pos;
@@ -459,12 +402,12 @@
     var a = String(e0[0]);
     var b = String(e0[1]);
     var rotB = rotationById[b] || [];
-    var idxA = cycleIndex(rotB, a);
-    if (idxA === -1 || rotB.length === 0) {
+    var idxA = rotB.indexOf(a);
+    if (idxA === -1) {
       return out;
     }
     // Mimic OGDF default: adja = firstEdge->adjSource, then faceCyclePred twice.
-    var c = String(rotB[cyclicPred(rotB, idxA)]);
+    var c = String(rotB[(idxA - 1 + rotB.length) % rotB.length]);
     out.push([a, b, c]);
     // Try mirrored orientation as deterministic fallback.
     out.push([a, c, b]);
@@ -504,13 +447,15 @@
       if (hasPositionCrossings(pos, g.edgePairs)) {
         continue;
       }
-      if (hasOverlappingVertices(pos)) {
+      var overlapGroups = groupOverlaps(pos);
+      if (overlapGroups.length > 0) {
         var resolved = resolveOverlapsWithoutCrossings(pos, g.edgePairs);
         if (resolved) {
           pos = resolved;
+          overlapGroups = groupOverlaps(pos);
         }
       }
-      var overlapCount = countOverlappingVertices(pos);
+      var overlapCount = countOverlapExtras(overlapGroups);
       if (overlapCount < bestOverlapCount) {
         bestOverlapCount = overlapCount;
         bestPos = pos;
@@ -528,7 +473,6 @@
     }
 
     return buildLayoutResult({
-      ok: true,
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
       graph: g,
@@ -540,9 +484,7 @@
     var prepared = prepareGraphData(g, {
       failureLabel: 'Schnyder',
       currentPositions: options ? options.currentPositions : undefined,
-      augmentationOptions: {
-        triangulateOuterFace: true
-      }
+      augmentationOptions: SCHNYDER_PREPARE_OPTIONS
     });
     if (!prepared || !prepared.ok) {
       return buildLayoutError({
@@ -564,9 +506,7 @@
         return { x1: 0, y1: 0, x2: width, y2: height };
       },
       prepareOptions: {
-        augmentationOptions: {
-          triangulateOuterFace: true
-        }
+        augmentationOptions: SCHNYDER_PREPARE_OPTIONS
       },
       computePositions: async function (graph, computeOptions, prepared) {
         var result = computeSchnyderPositionsFromPrepared(graph, prepared);
