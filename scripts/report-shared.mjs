@@ -97,9 +97,9 @@ export function createAlgorithmSpecs(windowObj) {
       run: (cy) => windowObj.PlanarVibeHybrid.applyHybridLayout(cy, sharedLayoutMethodOptions('hybrid'))
     },
     {
-      key: 'agentic',
-      label: 'Agentic',
-      run: (cy) => windowObj.PlanarVibeAgentic.applyAgenticLayout(cy, sharedLayoutMethodOptions('agentic'))
+      key: 'gpt',
+      label: 'GPT',
+      run: (cy) => windowObj.PlanarVibeGPT.applyGPTLayout(cy, sharedLayoutMethodOptions('gpt'))
     },
     {
       key: 'reweight',
@@ -360,7 +360,7 @@ export function loadBrowserModules() {
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
     'static/js/layout-hybridbalancer.js',
-    'static/js/layout-agentic.js',
+    'static/js/layout-gpt.js',
     'static/js/layout-reweight.js',
     'static/js/layout-forcedir.js',
     'static/js/layout-impred.js',
