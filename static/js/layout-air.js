@@ -589,9 +589,9 @@
     };
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     var opts = normalizeAirOptions(options);
-    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'Air layout',
       augmentationMethod: opts.augmentationMethod,
       augmentationOptions: opts.augmentationOptions,
@@ -724,7 +724,7 @@
   }
 
 	  global.PlanarVibeAir = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyAirLayout
 	  };

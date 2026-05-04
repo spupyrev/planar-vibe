@@ -11,7 +11,6 @@
   var copyPositions = GeometryUtils.copyPositionMap;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
-  var prepareGraphData = LayoutPreprocessing.prepareGraphData;
 
   var SCHNYDER_PREPARE_OPTIONS = {
     triangulateOuterFace: true
@@ -415,9 +414,9 @@
   }
 
   function computeSchnyderPositionsFromPrepared(g, prepared) {
-    var emb = prepared.embedding;
+    var emb = prepared.augmented.embedding;
     var rotationById = buildRotationById(emb);
-    var adjacency = prepared.augmentedGraph.adjacency;
+    var adjacency = prepared.augmented.graph.adjacency;
     var bestPos = null;
     var bestOverlapCount = Infinity;
     var candidates = candidateOuterTriples(emb, rotationById);
@@ -430,16 +429,16 @@
       var b = tri[1];
       var c = tri[2];
 
-      var L = contract(prepared.augmentedNodeIds, adjacency, a, b, c);
-      if (L.length !== prepared.augmentedNodeIds.length - 3) {
+      var L = contract(prepared.augmented.graph.nodeIds, adjacency, a, b, c);
+      if (L.length !== prepared.augmented.graph.nodeIds.length - 3) {
         continue;
       }
-      var r = realizer(prepared.augmentedNodeIds, L, a, b, c, rotationById, adjacency);
+      var r = realizer(prepared.augmented.graph.nodeIds, L, a, b, c, rotationById, adjacency);
       if (!r.ok) {
         continue;
       }
 
-      var coords = computeSchnyderCoordinates(prepared.augmentedNodeIds, r, a, b, c);
+      var coords = computeSchnyderCoordinates(prepared.augmented.graph.nodeIds, r, a, b, c);
       var pos = buildScreenPositions(coords, g.nodeIds);
       if (!pos) {
         continue;
@@ -480,8 +479,8 @@
     });
   }
 
-  function createLayoutInput(g, options) {
-    return prepareGraphData(g, {
+  function prepareGraphData(g, options) {
+    return LayoutPreprocessing.prepareGraphData(g, {
       failureLabel: 'Schnyder',
       currentPositions: options ? options.currentPositions : undefined,
       augmentationOptions: SCHNYDER_PREPARE_OPTIONS
@@ -500,7 +499,7 @@
   }
 
   function computeSchnyderPositions(g, options) {
-    return computePositions(g, createLayoutInput(g, options));
+    return computePositions(g, prepareGraphData(g, options));
   }
 
   function applySchnyderLayout(cy, options) {
@@ -535,7 +534,7 @@
   }
 
 	  global.PlanarVibeSchnyder = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applySchnyderLayout
 	  };

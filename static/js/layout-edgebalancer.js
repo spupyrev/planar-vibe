@@ -847,7 +847,7 @@
         augmented: augmented
       });
     }
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmented.graph);
     var q0Result = buildInitialLogitSeed(data, tutteWeights);
     if (!q0Result.ok) {
       return buildLayoutError({
@@ -936,7 +936,7 @@
       throw new Error('buildEdgeBalancerOuterPositions requires prepared graph data');
     }
     var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
-      prepared.augmentedGraph.nodeIds,
+      prepared.augmented.graph.nodeIds,
       prepared.augmentedOuterFace,
       PlanarVibeTutte.defaultOuterPlacementOptions()
     );
@@ -950,9 +950,9 @@
     return outerPos;
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     options = options || {};
-    return LayoutPreprocessing.createLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'EdgeBalancer layout',
       augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
       augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
@@ -968,7 +968,7 @@
 
   async function computeEdgeBalancerPositions(graph, options) {
     options = options || {};
-    return computeEdgeBalancerPositionsFromPrepared(options, createLayoutInput(graph, options));
+    return computeEdgeBalancerPositionsFromPrepared(options, prepareGraphData(graph, options));
   }
 
   async function applyEdgeBalancerLayout(cy, options) {
@@ -1009,7 +1009,7 @@
   }
 
 	  global.PlanarVibeEdgeBalancer = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyEdgeBalancerLayout
 	  };

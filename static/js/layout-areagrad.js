@@ -448,9 +448,9 @@
     };
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     var settings = buildAreaGradSettings(options);
-    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'AreaGrad layout',
       augmentationMethod: settings.augmentationMethod,
       augmentationOptions: settings.augmentationOptions,
@@ -579,7 +579,7 @@
   }
 
 	  global.PlanarVibeAreaGrad = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyAreaGradLayout
 	  };

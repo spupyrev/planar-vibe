@@ -1271,7 +1271,7 @@
 
 	  async function computeCoreTreePositions(graph, options) {
 	    if (!global.PlanarVibeEdgeBalancer ||
-	        typeof global.PlanarVibeEdgeBalancer.createLayoutInput !== 'function' ||
+	        typeof global.PlanarVibeEdgeBalancer.prepareGraphData !== 'function' ||
 	        typeof global.PlanarVibeEdgeBalancer.computePositions !== 'function') {
 	      return { ok: false, message: 'CoreTree requires EdgeBalancer' };
 	    }
@@ -1832,12 +1832,12 @@
 
 	  function hasComputeInterface(module) {
 	    return !!module &&
-	      typeof module.createLayoutInput === 'function' &&
+	      typeof module.prepareGraphData === 'function' &&
 	      typeof module.computePositions === 'function';
 	  }
 
 	  function computeWithLayoutModule(module, graph, runtime) {
-	    var layoutInput = module.createLayoutInput(graph, runtime || {});
+	    var layoutInput = module.prepareGraphData(graph, runtime || {});
 	    return module.computePositions(graph, layoutInput);
 	  }
 

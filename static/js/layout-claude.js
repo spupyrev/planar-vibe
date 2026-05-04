@@ -384,13 +384,13 @@
  
 	  function hasComputeInterface(module) {
 	    return !!module &&
-	      typeof module.createLayoutInput === 'function' &&
+	      typeof module.prepareGraphData === 'function' &&
 	      typeof module.computePositions === 'function';
 	  }
 
 	  function runCandidate(module, graph, runtime) {
 	    return Promise.resolve().then(function () {
-	      var layoutInput = module.createLayoutInput(graph, runtime || {});
+	      var layoutInput = module.prepareGraphData(graph, runtime || {});
 	      return module.computePositions(graph, layoutInput);
 	    }).then(function (result) {
 	      if (result && result.ok && result.positions) {

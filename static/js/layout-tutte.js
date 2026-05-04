@@ -222,7 +222,7 @@
       return buildLayoutError(prepared || { message: 'Tutte failed' });
     }
 
-    var augmentedGraph = prepared.augmentedGraph;
+    var augmentedGraph = prepared.augmented.graph;
     var augmentedOuterFace = prepared.augmentedOuterFace;
     var barycentric = computeBarycentricPositions(
       augmentedGraph,
@@ -260,9 +260,9 @@
     });
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     var runtime = options || {};
-    return LayoutPreprocessing.createLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'Tutte layout',
       augmentationMethod: runtime.augmentationMethod || null,
       augmentationOptions: runtime.augmentationOptions || null,
@@ -275,7 +275,7 @@
   }
 
   function computeTutteLayout(graph, options) {
-    return computePositions(graph, createLayoutInput(graph, options));
+    return computePositions(graph, prepareGraphData(graph, options));
   }
 
   function buildTutteOuterPositions(prepared) {
@@ -283,7 +283,7 @@
       throw new Error('buildTutteOuterPositions requires prepared graph data');
     }
     var fullPos = placeOuterFaceVertices(
-      prepared.augmentedGraph.nodeIds,
+      prepared.augmented.graph.nodeIds,
       prepared.augmentedOuterFace,
       defaultOuterPlacementOptions()
     );
@@ -324,7 +324,7 @@
   }
 
   global.PlanarVibeTutte = {
-    createLayoutInput: createLayoutInput,
+    prepareGraphData: prepareGraphData,
     computePositions: computePositions,
     applyLayout: applyTutteLayout,
     buildTutteWeights: buildTutteWeights,

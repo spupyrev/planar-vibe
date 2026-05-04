@@ -686,7 +686,7 @@
         augmented: augmented
       });
     }
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, prepared.augmentedGraph);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, prepared.augmented.graph);
     var q0Result = buildInitialLogitSeed(data, tutteWeights);
     if (!q0Result.ok) {
       return buildLayoutError({
@@ -783,7 +783,7 @@
       throw new Error('buildFaceBalancerOuterPositions requires prepared graph data');
     }
     var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
-      prepared.augmentedGraph.nodeIds,
+      prepared.augmented.graph.nodeIds,
       prepared.augmentedOuterFace,
       PlanarVibeTutte.defaultOuterPlacementOptions()
     );
@@ -797,9 +797,9 @@
     return outerPos;
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     options = options || {};
-    return LayoutPreprocessing.createLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'FaceBalancer layout',
       augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
       augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
@@ -815,7 +815,7 @@
 
   async function computeFaceBalancerPositions(graph, options) {
     options = options || {};
-    return computeFaceBalancerPositionsFromPrepared(options, createLayoutInput(graph, options));
+    return computeFaceBalancerPositionsFromPrepared(options, prepareGraphData(graph, options));
   }
 
   async function applyFaceBalancerLayout(cy, options) {
@@ -856,7 +856,7 @@
   }
 
 	  global.PlanarVibeFaceBalancer = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyFaceBalancerLayout
 	  };

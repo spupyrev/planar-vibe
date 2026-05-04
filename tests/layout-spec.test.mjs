@@ -168,7 +168,7 @@ function assertNormalizedFailureResult(result, label) {
 }
 
 function runStrictCompute(module, graph, runtime) {
-  const layoutInput = module.createLayoutInput(graph, runtime);
+  const layoutInput = module.prepareGraphData(graph, runtime);
   return module.computePositions(graph, layoutInput);
 }
 

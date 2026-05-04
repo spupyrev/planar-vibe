@@ -110,7 +110,7 @@
     });
   }
 
-  function createLayoutInput(graph) {
+  function prepareGraphData(graph) {
     return { ok: true, graph: graph };
   }
 
@@ -130,7 +130,7 @@
         return { x1: 0, y1: 0, x2: width, y2: height };
 	      },
 	      computePositions: async function (graph, computeOptions) {
-	        var result = computePositions(graph, createLayoutInput(graph));
+	        var result = computePositions(graph, prepareGraphData(graph));
 	        await emitSingleIteration(computeOptions || {}, result);
 	        return result;
 	      },
@@ -147,7 +147,7 @@
   }
 
 	  global.PlanarVibeP3T = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyP3TLayout
 	  };

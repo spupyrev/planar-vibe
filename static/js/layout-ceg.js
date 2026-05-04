@@ -430,21 +430,20 @@
       pairs: pairs,
       prepared: prepared,
       augmented: prepared.augmented,
-      augmentedGraph: prepared.augmentedGraph,
       outerFace: prepared.outerFace,
       augmentedOuterFace: prepared.augmentedOuterFace,
       augmentedIds: prepared.augmented.graph.nodeIds,
       augmentedPairs: prepared.augmented.graph.edgePairs,
-      adjacency: prepared.augmentedGraph.adjacency
+      adjacency: prepared.augmented.graph.adjacency
     });
   }
 
   function prepareCEGState(graph, failureLabel, options) {
-    return buildCEGStateFromPrepared(createLayoutInput(graph, failureLabel, options), failureLabel);
+    return buildCEGStateFromPrepared(prepareGraphData(graph, failureLabel, options), failureLabel);
   }
 
-  function createLayoutInput(graph, failureLabel, options) {
-    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+  function prepareGraphData(graph, failureLabel, options) {
+    return LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: failureLabel,
       augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
       currentPositions: options ? options.currentPositions : undefined
@@ -453,7 +452,7 @@
 
   function solveAugmentedWeightedLayout(state, weights, initOptions) {
     return Tutte.computeBarycentricPositions(
-      state.augmentedGraph,
+      state.augmented.graph,
       state.augmentedOuterFace,
       {
         adjacency: state.adjacency,
@@ -621,8 +620,8 @@
   }
 
   global.PlanarVibeCEGBfs = {
-    createLayoutInput: function (graph, options) {
-      return createLayoutInput(graph, 'CEG-bfs', options);
+    prepareGraphData: function (graph, options) {
+      return prepareGraphData(graph, 'CEG-bfs', options);
     },
 	    computePositions: function (graph, layoutInput) {
 	      return computeCEGBfsPositions(graph, null, layoutInput);
@@ -630,8 +629,8 @@
 	    applyLayout: applyCEGBfsLayout
 	  };
   global.PlanarVibeCEGXy = {
-    createLayoutInput: function (graph, options) {
-      return createLayoutInput(graph, 'CEG-xy', options);
+    prepareGraphData: function (graph, options) {
+      return prepareGraphData(graph, 'CEG-xy', options);
     },
 	    computePositions: function (graph, layoutInput) {
 	      return computeCEGXyPositions(graph, null, layoutInput);

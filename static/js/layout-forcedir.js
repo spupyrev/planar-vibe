@@ -459,9 +459,9 @@
     });
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     var runtime = options || {};
-    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'ForceDir',
       augmentationMethod: runtime.augmentationMethod || null,
       currentPositions: runtime.currentPositions
@@ -476,7 +476,7 @@
   }
 
   function computeForceDirPositions(graph, options) {
-    var context = createLayoutInput(graph, options);
+    var context = prepareGraphData(graph, options);
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'ForceDir setup failed' });
     }
@@ -516,7 +516,7 @@
   }
 
 	  global.PlanarVibeForceDir = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyForceDirLayout
 	  };

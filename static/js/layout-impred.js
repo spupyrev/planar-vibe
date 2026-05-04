@@ -370,9 +370,9 @@
 
   function buildImPrEdSeedFromPrepared(g, options, prepared) {
     var init = LayoutPreprocessing.computeInitialPositions(
-      prepared.augmentedGraph,
+      prepared.augmented.graph,
       prepared.augmentedOuterFace,
-      prepared.embedding,
+      prepared.augmented.embedding,
       prepared.graph
     );
     if (!init || !init.ok || !init.positions) {
@@ -398,9 +398,9 @@
     return runImPrEdIterations(g, options, seed);
   }
 
-  function createLayoutInput(g, options) {
+  function prepareGraphData(g, options) {
     var runtime = options || {};
-    return LayoutPreprocessing.createLayoutInput(g, {
+    return LayoutPreprocessing.prepareGraphData(g, {
       failureLabel: 'ImPrEd layout',
       augmentationMethod: runtime.augmentationMethod || null,
       currentPositions: runtime.currentPositions || null
@@ -417,7 +417,7 @@
       return buildLayoutError({ message: 'ImPrEd requires at least 3 vertices', graph: g });
     }
 
-    var prepared = createLayoutInput(g, runtime);
+    var prepared = prepareGraphData(g, runtime);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'ImPrEd initialization failed', graph: g });
     }
@@ -637,7 +637,7 @@
   }
 
   global.PlanarVibeImPrEd = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyImPrEdLayout,
 	    buildImPrEdSeedFromPrepared: buildImPrEdSeedFromPrepared

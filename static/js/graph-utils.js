@@ -33,24 +33,6 @@
     return hashString(value, seed) / 4294967295;
   }
 
-  function resolveFiniteOption(value, fallback) {
-    return Number.isFinite(value) ? value : fallback;
-  }
-
-  function resolveFloatOption(value, fallback, min, max) {
-    if (!Number.isFinite(value)) {
-      return fallback;
-    }
-    var out = value;
-    if (Number.isFinite(min)) {
-      out = Math.max(min, out);
-    }
-    if (Number.isFinite(max)) {
-      out = Math.min(max, out);
-    }
-    return out;
-  }
-
   function resolveIntOption(value, fallback, min, max) {
     if (!Number.isFinite(value)) {
       return fallback;
@@ -65,29 +47,8 @@
     return out;
   }
 
-  function resolvePositiveOption(value, fallback) {
-    return Number.isFinite(value) && value > 0 ? value : fallback;
-  }
-
   function resolveNonNegativeOption(value, fallback) {
     return Number.isFinite(value) && value >= 0 ? value : fallback;
-  }
-
-  function resolveGreaterThanOption(value, fallback, threshold) {
-    return Number.isFinite(value) && value > threshold ? value : fallback;
-  }
-
-  function resolveOpenIntervalOption(value, fallback, minExclusive, maxExclusive) {
-    if (!Number.isFinite(value)) {
-      return fallback;
-    }
-    if (Number.isFinite(minExclusive) && !(value > minExclusive)) {
-      return fallback;
-    }
-    if (Number.isFinite(maxExclusive) && !(value < maxExclusive)) {
-      return fallback;
-    }
-    return value;
   }
 
   function resolveFunctionOption(value, fallback) {
@@ -176,156 +137,6 @@
 
   function createGraph(nodeIds, edgePairs) {
     return new Graph(nodeIds, edgePairs);
-  }
-
-  function connectivityAfterRemoving(nodeIds, adjacency, removedSet) {
-    var ids = nodeIds;
-    var start = null;
-    var remaining = 0;
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      if (removedSet && removedSet.has(id)) {
-        continue;
-      }
-      remaining += 1;
-      if (start === null) {
-        start = id;
-      }
-    }
-    if (remaining <= 1) {
-      return { connected: true, remaining: remaining };
-    }
-
-    var seen = new Set([start]);
-    var queue = [start];
-    while (queue.length > 0) {
-      var u = queue.shift();
-      var neighbors = adjacency[u];
-      if (!neighbors) {
-        continue;
-      }
-      neighbors.forEach(function (v) {
-        if (removedSet && removedSet.has(v)) {
-          return;
-        }
-        if (seen.has(v)) {
-          return;
-        }
-        seen.add(v);
-        queue.push(v);
-      });
-    }
-
-    return {
-      connected: seen.size === remaining,
-      remaining: remaining
-    };
-  }
-
-  function analyzeThreeConnectivity(graph) {
-    var ids = graph.nodeIds;
-    if (ids.length < 4) {
-      return {
-        ok: false,
-        reason: 'Graph is not 3-connected: requires at least 4 vertices'
-      };
-    }
-
-    var adj = graph.adjacencySets;
-    for (var i = 0; i < ids.length; i += 1) {
-      if ((adj[ids[i]] ? adj[ids[i]].size : 0) < 3) {
-        return {
-          ok: false,
-          reason: 'Graph is not 3-connected: vertex ' + ids[i] + ' has degree < 3',
-          witness: { type: 'low-degree', vertex: ids[i] }
-        };
-      }
-    }
-
-    var base = connectivityAfterRemoving(ids, adj, new Set());
-    if (!base.connected) {
-      return {
-        ok: false,
-        reason: 'Graph is not 3-connected: graph is disconnected',
-        witness: { type: 'disconnected' }
-      };
-    }
-
-    for (i = 0; i < ids.length; i += 1) {
-      var cut1 = new Set([ids[i]]);
-      if (!connectivityAfterRemoving(ids, adj, cut1).connected) {
-        return {
-          ok: false,
-          reason: 'Graph is not 3-connected: articulation vertex ' + ids[i],
-          witness: { type: 'articulation', vertex: ids[i] }
-        };
-      }
-    }
-
-    for (i = 0; i < ids.length; i += 1) {
-      for (var j = i + 1; j < ids.length; j += 1) {
-        var cut2 = new Set([ids[i], ids[j]]);
-        if (!connectivityAfterRemoving(ids, adj, cut2).connected) {
-          return {
-            ok: false,
-            reason: 'Graph is not 3-connected: separation pair {' + ids[i] + ', ' + ids[j] + '}',
-            witness: { type: 'separation-pair', vertices: [ids[i], ids[j]] }
-          };
-        }
-      }
-    }
-
-    return { ok: true };
-  }
-
-  function analyzeInternallyThreeConnected(graph, outerFace) {
-    var ids = graph.nodeIds;
-    var outer = Array.isArray(outerFace) ? outerFace.slice() : [];
-    if (outer.length < 3) {
-      return {
-        ok: false,
-        reason: 'Graph is not internally 3-connected: outer face must have at least 3 vertices'
-      };
-    }
-
-    var idSet = new Set(ids);
-    for (var i = 0; i < outer.length; i += 1) {
-      if (!idSet.has(outer[i])) {
-        return {
-          ok: false,
-          reason: 'Graph is not internally 3-connected: outer face contains unknown vertex ' + outer[i]
-        };
-      }
-    }
-
-    var hubId = '@internal3connOuterHub';
-    var suffix = 0;
-    while (idSet.has(hubId)) {
-      suffix += 1;
-      hubId = '@internal3connOuterHub' + suffix;
-    }
-
-    var augmentedNodeIds = ids.concat([hubId]);
-    var augmentedEdgePairs = cloneEdgePairs(graph.edgePairs);
-    var seenOuter = new Set();
-    for (i = 0; i < outer.length; i += 1) {
-      var v = outer[i];
-      if (seenOuter.has(v)) {
-        continue;
-      }
-      seenOuter.add(v);
-      augmentedEdgePairs.push([hubId, v]);
-    }
-
-    var result = analyzeThreeConnectivity(createGraph(augmentedNodeIds, augmentedEdgePairs));
-    if (result.ok) {
-      return result;
-    }
-    return {
-      ok: false,
-      reason: 'Graph is not internally 3-connected for the chosen outer face: ' + result.reason,
-      witness: result.witness || null
-    };
   }
 
   function collectMovableVertices(nodeIds, outerFace) {
@@ -508,19 +319,10 @@
   }
 
   global.GraphUtils = {
-    Graph: Graph,
     createGraph: createGraph,
     faceKey: faceKey,
     edgeKey: edgeKey,
-    hashString: hashString,
     normalizedHash: normalizedHash,
-    resolveFiniteOption: resolveFiniteOption,
-    resolveFloatOption: resolveFloatOption,
-    resolveIntOption: resolveIntOption,
-    resolvePositiveOption: resolvePositiveOption,
-    resolveNonNegativeOption: resolveNonNegativeOption,
-    resolveGreaterThanOption: resolveGreaterThanOption,
-    resolveOpenIntervalOption: resolveOpenIntervalOption,
     resolveFunctionOption: resolveFunctionOption,
     normalizeOuterFace: normalizeOuterFace,
     cloneEdgePairs: cloneEdgePairs,
@@ -530,8 +332,6 @@
     buildLayoutError: buildLayoutError,
     buildLayoutStatusMessage: buildLayoutStatusMessage,
     computePositionMoveStats: computePositionMoveStats,
-    createMovementConvergenceTracker: createMovementConvergenceTracker,
-    analyzeThreeConnectivity: analyzeThreeConnectivity,
-    analyzeInternallyThreeConnected: analyzeInternallyThreeConnected
+    createMovementConvergenceTracker: createMovementConvergenceTracker
   };
 })(window);

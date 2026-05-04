@@ -35,7 +35,7 @@
   };
 
   function solveWeighted(prepared, weights) {
-    return Tutte.computeBarycentricPositions(prepared.augmentedGraph, prepared.outerFace, {
+    return Tutte.computeBarycentricPositions(prepared.augmented.graph, prepared.outerFace, {
       adjacency: prepared.adj,
       weights: weights,
       initOptions: Tutte.defaultOuterPlacementOptions({
@@ -289,10 +289,9 @@
       graph: g,
       outerFace: outer,
       augmented: augmented,
-      augmentedGraph: context.augmentedGraph,
       faces: faces,
       boundedFaceIdx: boundedFaceIdx,
-      adj: context.augmentedGraph.adjacency,
+      adj: context.augmented.graph.adjacency,
       e2f: e2f,
       weights: weights,
       facePressure: facePressure,
@@ -389,9 +388,9 @@
     });
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     var settings = buildReweightSettings(options);
-    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'Reweight',
       augmentationMethod: settings.augmentationMethod,
       currentPositions: settings.currentPositions
@@ -404,7 +403,7 @@
 
   async function computeReweightPositions(graph, options) {
     var settings = buildReweightSettings(options);
-    var prepared = buildReweightStateFromPrepared(createLayoutInput(graph, settings), settings);
+    var prepared = buildReweightStateFromPrepared(prepareGraphData(graph, settings), settings);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'Reweight setup failed' });
     }
@@ -456,7 +455,7 @@
   }
 
 	  global.PlanarVibeReweight = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyReweightLayout
 	  };

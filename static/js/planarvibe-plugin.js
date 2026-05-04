@@ -2734,7 +2734,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['hasPositionCrossings', 'copyPositionMap', 'pointOnSegmentInterior', 'segmentsIntersectOrTouch'],
-            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'resolveFiniteOption', 'resolveFloatOption', 'resolveIntOption', 'resolveNonNegativeOption', 'resolvePositiveOption'],
+            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker'],
             planarGraph: ['extractEmbeddingFromPositions', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
@@ -2746,7 +2746,7 @@
           missingMessage: 'Tutte layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
-            graph: ['analyzeInternallyThreeConnected', 'normalizeOuterFace', 'edgeKey'],
+            graph: ['normalizeOuterFace', 'edgeKey'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
@@ -2763,7 +2763,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
-            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            graph: ['collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
@@ -2777,7 +2777,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
-            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            graph: ['collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
@@ -2791,7 +2791,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['copyPositionMap', 'orientFaceCCW', 'outerFaceDiameter', 'polygonArea2', 'triangleArea2', 'hasPositionCrossings'],
-            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices', 'computePositionMoveStats'],
+            graph: ['collectMovableVertices', 'computePositionMoveStats'],
             planarGraph: ['findOuterFaceIndex', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }
@@ -2805,7 +2805,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
-            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            graph: ['collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
             tutte: ['defaultOuterPlacementOptions']
@@ -2820,7 +2820,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
             geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
-            graph: ['analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            graph: ['collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
             tutte: ['defaultOuterPlacementOptions']
@@ -2863,7 +2863,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['hasPositionCrossings'],
-            graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            graph: ['edgeKey', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
             tutte: ['computeBarycentricPositions', 'defaultOuterPlacementOptions']
@@ -2878,7 +2878,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['hasPositionCrossings'],
-            graph: ['edgeKey', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            graph: ['edgeKey', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
             tutte: ['computeBarycentricPositions', 'defaultOuterPlacementOptions']
@@ -2927,7 +2927,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['computeDrawingDiameter', 'polygonAreaAbs'],
-            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'analyzeInternallyThreeConnected'],
+            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey'],
             planarGraph: ['findOuterFaceIndex', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
             tutte: ['placeOuterFaceVertices', 'defaultOuterPlacementOptions']
@@ -2942,7 +2942,7 @@
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
             geometry: ['computeDrawingDiameter', 'copyPositionMap', 'segmentsIntersectOrTouch'],
-            graph: ['computePositionMoveStats', 'createMovementConvergenceTracker', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
+            graph: ['computePositionMoveStats', 'createMovementConvergenceTracker', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
           }

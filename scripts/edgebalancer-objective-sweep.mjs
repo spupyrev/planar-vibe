@@ -227,7 +227,7 @@ async function runVariant(windowObj, graphName, variant) {
       augmentationMethod: 'outer-cycle',
       currentPositions
     };
-    result = await EdgeBalancer.computePositions(graph, EdgeBalancer.createLayoutInput(graph, runtime));
+    result = await EdgeBalancer.computePositions(graph, EdgeBalancer.prepareGraphData(graph, runtime));
   } catch (err) {
     result = { ok: false, message: err && err.message ? err.message : String(err) };
   }

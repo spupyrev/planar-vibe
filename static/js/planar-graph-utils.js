@@ -564,12 +564,15 @@
 
     var finalEmbedding = pe.toEmbeddingObject();
     var finalGraph = pe.toGraph();
+    var outerDummyIds = Array.isArray(outer.outerDummyIds) ? outer.outerDummyIds.slice().map(String) : [];
+    finalGraph.outerDummyIds = outerDummyIds.slice();
     return {
       ok: true,
       graph: finalGraph,
       dummyCount: interior.dummyCount + outer.dummyCount,
       embedding: finalEmbedding,
-      outerDummyIds: Array.isArray(outer.outerDummyIds) ? outer.outerDummyIds.slice().map(String) : []
+      outerFace: finalEmbedding.outerFace ? finalEmbedding.outerFace.slice().map(String) : null,
+      outerDummyIds: outerDummyIds
     };
   }
 
@@ -631,12 +634,15 @@
           : 'Outer-cycle augmentation did not produce an internally triangulated embedding'
       };
     }
+    outerDummyIds = outerDummyIds.concat(Array.isArray(outer.outerDummyIds) ? outer.outerDummyIds : []).map(String);
+    finalGraph.outerDummyIds = outerDummyIds.slice();
     return {
       ok: true,
       graph: finalGraph,
       dummyCount: dummyCount,
       embedding: finalEmbedding,
-      outerDummyIds: outerDummyIds.concat(Array.isArray(outer.outerDummyIds) ? outer.outerDummyIds : []).map(String)
+      outerFace: finalEmbedding.outerFace ? finalEmbedding.outerFace.slice().map(String) : null,
+      outerDummyIds: outerDummyIds
     };
   }
 

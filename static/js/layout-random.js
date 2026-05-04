@@ -40,7 +40,7 @@
     });
   }
 
-  function createLayoutInput(_graph, runtime) {
+  function prepareGraphData(_graph, runtime) {
     runtime = runtime || {};
     return {
       ok: true,
@@ -71,7 +71,7 @@
         };
 	      },
 	      computePositions: async function (graph, computeOptions) {
-	        var result = computePositions(graph, createLayoutInput(graph, computeOptions));
+	        var result = computePositions(graph, prepareGraphData(graph, computeOptions));
 	        await emitSingleIteration(computeOptions || {}, result);
 	        return result;
 	      },
@@ -83,7 +83,7 @@
   }
 
 	  global.PlanarVibeRandom = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyRandomLayout
 	  };

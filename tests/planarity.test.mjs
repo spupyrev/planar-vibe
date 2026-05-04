@@ -238,7 +238,7 @@ function buildMockCy(nodeIds, edgePairs) {
 }
 
 function runStrictCompute(module, graph, runtime) {
-  const layoutInput = module.createLayoutInput(graph, runtime);
+  const layoutInput = module.prepareGraphData(graph, runtime);
   return module.computePositions(graph, layoutInput);
 }
 
@@ -511,13 +511,13 @@ test('planar augmentation triangulates non-triangular planar faces', () => {
 
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed');
   assert.equal(prepared.ok, true);
-  assert.equal(prepared.augmentedDummyCount > 0, true);
-  assert.equal(prepared.embedding.ok, true);
+  assert.equal((prepared.augmented.dummyCount || 0) > 0, true);
+  assert.equal(prepared.augmented.embedding.ok, true);
 
-  const n = prepared.embedding.idByIndex.length;
-  const m = prepared.embedding.edges.length;
+  const n = prepared.augmented.embedding.idByIndex.length;
+  const m = prepared.augmented.embedding.edges.length;
   assert.equal(m, 3 * n - 6);
-  for (const f of prepared.embedding.faces) {
+  for (const f of prepared.augmented.embedding.faces) {
     assert.equal(f.length, 3);
   }
 });
@@ -658,7 +658,7 @@ test('raw shared barycentric seed rejects an outer face that does not belong to 
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
 
   const seed = LayoutPreprocessing.computeInitialPositions(
-    prepared.augmentedGraph,
+    prepared.augmented.graph,
     prepared.outerFace,
     prepared.augmented.embedding
   );
@@ -676,8 +676,8 @@ test('prepareGraphData defaults to outer-cycle triangulation', () => {
   });
 
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
-  assert.equal(prepared.augmentationMethod, 'triangulateByOuterCycle');
-  assert.equal(prepared.augmented && prepared.augmented.method, 'triangulateByOuterCycle');
+  assert.equal(prepared.augmentedOuterFace.length, prepared.outerFace.length);
+  assert.equal((prepared.augmented.dummyCount || 0) > 0, true);
 });
 
 test('prepareGraphData can use the outer-cycle augmentation on a drawing with repeated outer-face vertices', () => {
@@ -700,11 +700,9 @@ test('prepareGraphData can use the outer-cycle augmentation on a drawing with re
   });
 
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
-  assert.equal(prepared.augmentationMethod, 'triangulateByOuterCycle');
-  assert.equal(prepared.augmented && prepared.augmented.method, 'triangulateByOuterCycle');
   assert.equal((prepared.outerFace || []).filter((id) => id === 'b').length, 2);
-  assert.equal(prepared.augmentedDummyCount, prepared.outerFace.length);
-  assert.deepEqual(prepared.augmentedOuterFace, prepared.embedding.outerFace);
+  assert.equal((prepared.augmented.dummyCount || 0), prepared.outerFace.length);
+  assert.deepEqual(prepared.augmentedOuterFace, prepared.augmented.embedding.outerFace);
   assert.equal(new Set(prepared.augmentedOuterFace).size, prepared.augmentedOuterFace.length, 'outer dummy cycle should use distinct dummy vertices');
 });
 
@@ -715,7 +713,7 @@ test('outer-cycle augmentation fully triangulates the Tutte regression instance'
 
   assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
   const internal = PlanarGraphUtils.analyzeInternallyTriangulated(
-    prepared.embedding,
+    prepared.augmented.embedding,
     prepared.augmentedOuterFace
   );
   assert.equal(internal && internal.ok, true, internal && internal.reason ? internal.reason : 'embedding should be internally triangulated');
@@ -1090,7 +1088,7 @@ test('canonical ordering works on 10 random planar 3-trees (100 vertices)', () =
     assert.equal(result.ok, true, `FPP compute failed for seed=${seed}: ${result.message || result.reason || ''}`);
     assert.equal(prepared.ok, true, `prepare failed for seed=${seed}`);
     assert.equal(canonical.ok, true, `canonical ordering failed for seed=${seed}`);
-    assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+    assert.equal(canonical.order.length, prepared.augmented.embedding.idByIndex.length);
     assert.equal(new Set(canonical.order).size, canonical.order.length);
     assert.equal(canonical.outerFace.length, 3);
     assert.equal(canonical.order[0], canonical.outerFace[0]);
@@ -1108,7 +1106,7 @@ test('canonical ordering works on sample planar3tree10', () => {
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on planar3tree10');
   assert.equal(prepared.ok, true);
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on planar3tree10');
-  assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+  assert.equal(canonical.order.length, prepared.augmented.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
 });
 
@@ -1122,7 +1120,7 @@ test('canonical ordering works on 10 random small planar 3-trees', () => {
     assert.equal(result.ok, true, `FPP compute failed for small seed=${seed}: ${result.message || result.reason || ''}`);
     assert.equal(prepared.ok, true, `prepare failed for small seed=${seed}`);
     assert.equal(canonical.ok, true, `canonical ordering failed for small seed=${seed}: ${canonical.reason || ''}`);
-    assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+    assert.equal(canonical.order.length, prepared.augmented.embedding.idByIndex.length);
     assert.equal(new Set(canonical.order).size, canonical.order.length);
   }
 });
@@ -1145,9 +1143,9 @@ test('canonical ordering works on small triangulated planar non-3-tree (octahedr
   assert.equal(prepared.ok, true);
   assert.equal(prepared.baseEmbedding.edges.length, 12);
   assert.equal(prepared.baseEmbedding.idByIndex.length, 6);
-  assert.equal(prepared.embedding.outerFace.length, 3);
+  assert.equal(prepared.augmented.embedding.outerFace.length, 3);
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on octahedron');
-  assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+  assert.equal(canonical.order.length, prepared.augmented.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
 });
 
@@ -1178,7 +1176,7 @@ test('canonical ordering works on random planar non-3-tree graph', () => {
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on random non-3-tree');
   assert.equal(prepared.ok, true);
   assert.equal(canonical.ok, true, canonical.reason || 'canonical ordering failed on random non-3-tree');
-  assert.equal(canonical.order.length, prepared.embedding.idByIndex.length);
+  assert.equal(canonical.order.length, prepared.augmented.embedding.idByIndex.length);
   assert.equal(new Set(canonical.order).size, canonical.order.length);
 });
 
@@ -1429,20 +1427,6 @@ test('FPP uses graph preparation with outer-face triangulation in the runtime', 
   }
 });
 
-test('3-connectivity helpers distinguish strict and internal 3-connectivity', () => {
-  const graph = GraphUtils.createGraph(
-    ['1', '2', '3', '4'],
-    [['1', '2'], ['2', '3'], ['3', '4'], ['4', '1']]
-  );
-
-  const strict = GraphUtils.analyzeThreeConnectivity(graph);
-  assert.equal(strict.ok, false);
-  assert.match(String(strict.reason || ''), /3-connected/i);
-
-  const internal = GraphUtils.analyzeInternallyThreeConnected(graph, ['1', '2', '3', '4']);
-  assert.equal(internal.ok, true, internal.reason || 'cycle should be internally 3-connected with its outer cycle');
-});
-
 test('Tutte uses the common outer face and succeeds on grid2x10 after augmentation', async () => {
   const text = Generator.getSample('grid2x10');
   const graph = parseEdgeListText(text);
@@ -1450,7 +1434,6 @@ test('Tutte uses the common outer face and succeeds on grid2x10 after augmentati
   const outer = PlanarGraphUtils.chooseOuterFaceFromEmbedding(embedding);
   assert.equal(Array.isArray(outer), true);
   assert.equal(outer.length, 4);
-  assert.equal(GraphUtils.analyzeInternallyThreeConnected(graph, outer).ok, false);
 
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 

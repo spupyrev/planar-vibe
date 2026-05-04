@@ -1393,7 +1393,7 @@
     var augmented = context.augmented;
     var baseEmbedding = context.baseEmbedding;
     var outerPos = buildFABalancerOuterPositions(context);
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmented.graph);
     var STAGE_COUNT = 3;
 
     function filteredOriginalPositions(posById) {
@@ -1595,7 +1595,7 @@
       throw new Error('buildFABalancerOuterPositions requires prepared graph data');
     }
     var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
-      prepared.augmentedGraph.nodeIds,
+      prepared.augmented.graph.nodeIds,
       prepared.augmentedOuterFace,
       PlanarVibeTutte.defaultOuterPlacementOptions()
     );
@@ -1609,9 +1609,9 @@
     return outerPos;
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     options = options || {};
-    return LayoutPreprocessing.createLayoutInput(graph, {
+    return LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'FABalancer layout',
       augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
       augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
@@ -1627,7 +1627,7 @@
 
   async function computeFABalancerPositions(graph, options) {
     options = options || {};
-    return computeFABalancerPositionsFromPrepared(options, createLayoutInput(graph, options));
+    return computeFABalancerPositionsFromPrepared(options, prepareGraphData(graph, options));
   }
 
   async function applyFABalancerLayout(cy, options) {
@@ -1671,7 +1671,7 @@
   }
 
 	  global.PlanarVibeFABalancer = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyFABalancerLayout
 	  };

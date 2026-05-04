@@ -9,7 +9,6 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var edgeKey = GraphUtils.edgeKey;
-  var prepareGraphData = LayoutPreprocessing.prepareGraphData;
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
 
   var FPP_PREPARE_OPTIONS = {
@@ -31,11 +30,11 @@
     if (!prepared || !prepared.ok) {
       return buildLayoutError({ reason: 'Missing prepared embedding' });
     }
-    if (!prepared.embedding || !prepared.embedding.ok) {
+    if (!prepared.augmented.embedding || !prepared.augmented.embedding.ok) {
       return buildLayoutError({ reason: 'Missing embedding' });
     }
 
-    var embedding = prepared.embedding;
+    var embedding = prepared.augmented.embedding;
     var nodeIds = embedding.idByIndex.slice();
     if (nodeIds.length < 3) {
       return buildLayoutError({ reason: 'Need at least 3 vertices' });
@@ -51,7 +50,7 @@
       rotationById[embedding.idByIndex[r]] = embedding.rotation[r] ? embedding.rotation[r].slice() : [];
     }
 
-    var adjacency = prepared.augmentedGraph.adjacencySets;
+    var adjacency = prepared.augmented.graph.adjacencySets;
 
     function rotationPathInclusive(v, start, end) {
       var nbrs = rotationById[v] || [];
@@ -491,15 +490,15 @@
       edgePairs: pairs,
       outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
       graph: graph,
-      augmentedDummyCount: prepared.augmentedDummyCount || 0,
+      augmentedDummyCount: prepared.augmented.dummyCount || 0,
       prepared: prepared,
       canonical: canonical,
       positions: result.positions
     });
   }
 
-  function createLayoutInput(graph, options) {
-    return prepareGraphData(graph, {
+  function prepareGraphData(graph, options) {
+    return LayoutPreprocessing.prepareGraphData(graph, {
       failureLabel: 'FPP',
       currentPositions: options ? options.currentPositions : undefined,
       augmentationOptions: FPP_PREPARE_OPTIONS
@@ -511,7 +510,7 @@
   }
 
   function computeFPPPositions(graph, options) {
-    return computePositions(graph, createLayoutInput(graph, options));
+    return computePositions(graph, prepareGraphData(graph, options));
   }
 
   function applyFPPLayout(cy, options) {
@@ -549,7 +548,7 @@
   }
 
 	  global.PlanarVibeFPP = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyFPPLayout
 	  };

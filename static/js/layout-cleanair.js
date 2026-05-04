@@ -126,12 +126,12 @@
   function computeTutteSeedPositions(graph) {
     if (
       !PlanarVibeTutte ||
-      typeof PlanarVibeTutte.createLayoutInput !== 'function' ||
+      typeof PlanarVibeTutte.prepareGraphData !== 'function' ||
       typeof PlanarVibeTutte.computePositions !== 'function'
     ) {
       return buildLayoutError({ message: 'CleanAir initialization failed: Tutte layout is unavailable' });
     }
-    var result = PlanarVibeTutte.computePositions(graph, PlanarVibeTutte.createLayoutInput(graph));
+    var result = PlanarVibeTutte.computePositions(graph, PlanarVibeTutte.prepareGraphData(graph));
     if (!result || !result.ok || !result.positions) {
       return buildLayoutError({
         message: result && result.message
@@ -1001,7 +1001,7 @@
     };
   }
 
-  function createLayoutInput(graph, options) {
+  function prepareGraphData(graph, options) {
     return buildCleanAirState(graph, options || {});
   }
 
@@ -1094,7 +1094,7 @@
 	  }
 
 	  async function computeCleanAirPositions(graph, options) {
-	    return computePositions(graph, createLayoutInput(graph, options));
+	    return computePositions(graph, prepareGraphData(graph, options));
 	  }
 
 	  async function applyCleanAirLayout(cy, options) {
@@ -1125,7 +1125,7 @@
   }
 
 	  global.PlanarVibeCleanAir = {
-	    createLayoutInput: createLayoutInput,
+	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
 	    applyLayout: applyCleanAirLayout
 	  };

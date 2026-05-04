@@ -5,53 +5,6 @@
   var GeometryUtils = global.GeometryUtils;
   var PlanarGraphUtils = global.PlanarGraphUtils;
 
-  function normalizePreparedAugmentationResult(augmented, failureLabel) {
-    var label = failureLabel || 'layout';
-    if (!augmented || !augmented.ok) {
-      return { ok: false, reason: (augmented && augmented.reason) || (label + ' augmentation failed') };
-    }
-    var dummyFaceVerticesById = augmented.dummyFaceVerticesById || {};
-    var outerDummyIds = Array.isArray(augmented.outerDummyIds)
-      ? augmented.outerDummyIds.slice().map(String)
-      : [];
-    if (augmented.graph && typeof augmented.graph === 'object') {
-      augmented.graph.outerDummyIds = outerDummyIds.slice();
-    }
-    return {
-      ok: true,
-      graph: augmented.graph,
-      dummyCount: augmented.dummyCount || 0,
-      dummyFaceVerticesById: dummyFaceVerticesById,
-      outerDummyIds: outerDummyIds,
-      embedding: augmented.embedding,
-      outerFace: augmented.embedding && Array.isArray(augmented.embedding.outerFace)
-        ? augmented.embedding.outerFace.slice().map(String)
-        : null
-    };
-  }
-
-  function prepareAugmentedTriangulation(graph, embedding, outerFace, failureLabel, options) {
-    if (!embedding || !embedding.ok) {
-      return { ok: false, reason: 'prepareAugmentedTriangulation requires a planar embedding' };
-    }
-    if (!Array.isArray(outerFace) || outerFace.length < 3) {
-      return { ok: false, reason: 'prepareAugmentedTriangulation requires an outer face' };
-    }
-    var augmented = PlanarGraphUtils.triangulateByFaceStellation(graph, embedding, outerFace, options);
-    return normalizePreparedAugmentationResult(augmented, failureLabel);
-  }
-
-  function prepareOuterCycleTriangulation(graph, embedding, outerFace, failureLabel, options) {
-    if (!embedding || !embedding.ok) {
-      return { ok: false, reason: 'prepareOuterCycleTriangulation requires a planar embedding' };
-    }
-    if (!Array.isArray(outerFace) || outerFace.length < 3) {
-      return { ok: false, reason: 'prepareOuterCycleTriangulation requires an outer face' };
-    }
-    var augmented = PlanarGraphUtils.triangulateByOuterCycle(graph, embedding, outerFace, options);
-    return normalizePreparedAugmentationResult(augmented, failureLabel);
-  }
-
   function chooseLongestFaceFromEmbedding(embedding) {
     if (!embedding) {
       return null;
@@ -101,29 +54,54 @@
     };
   }
 
-  function resolveAugmentationMethod(rawValue) {
-    var augmentationKey = String(rawValue || '').trim().toLowerCase();
-    if (!augmentationKey || augmentationKey === 'default' || augmentationKey === 'outer-cycle') {
-      return 'triangulateByOuterCycle';
+  function augmentGraph(graph, embedding, outerFace, augmentationMethod, label, options) {
+    var augmentationOptions = options || null;
+    var augmented = null;
+    if (augmentationMethod === 'face-stellation') {
+      augmented = PlanarGraphUtils.triangulateByFaceStellation(
+        graph,
+        embedding,
+        outerFace,
+        augmentationOptions
+      );
+    } else if (augmentationMethod === 'outer-cycle') {
+      augmented = PlanarGraphUtils.triangulateByOuterCycle(
+        graph,
+        embedding,
+        outerFace,
+        augmentationOptions
+      );
+    } else {
+      return { ok: false, message: 'Unknown augmentation method: ' + String(augmentationMethod) };
     }
-    if (augmentationKey === 'face-stellation') {
-      return 'triangulateByFaceStellation';
+    if (!augmented || !augmented.ok) {
+      return { ok: false, message: augmented && augmented.reason ? augmented.reason : (label + ' augmentation failed') };
     }
-    return null;
+    if (!Array.isArray(augmented.outerFace) || augmented.outerFace.length < 3) {
+      return { ok: false, message: label + ' augmentation did not return an outer face' };
+    }
+    augmented.outerFace = augmented.outerFace.slice().map(String);
+    var triangulated = PlanarGraphUtils.analyzeInternallyTriangulated(augmented.embedding, augmented.outerFace);
+    if (!triangulated || !triangulated.ok) {
+      return {
+        ok: false,
+        message: (triangulated && triangulated.reason) || (label + ' augmentation did not produce an internally triangulated embedding')
+      };
+    }
+    return augmented;
   }
 
   function prepareGraphData(graph, config) {
-    var label = String(config.failureLabel || 'Layout');
     if (!graph || !Array.isArray(graph.nodeIds) || !Array.isArray(graph.edgePairs)) {
       throw new Error('prepareGraphData requires a graph');
     }
 
     if (graph.nodeIds.length < 3) {
-      return { ok: false, message: label + ' requires at least 3 vertices' };
+      return { ok: false, message: config.failureLabel + ' requires at least 3 vertices' };
     }
 
-    var augmentationMethod = resolveAugmentationMethod(config.augmentationMethod);
-    if (!augmentationMethod) {
+    var augmentationMethod = config.augmentationMethod || 'outer-cycle';
+    if (augmentationMethod !== 'outer-cycle' && augmentationMethod !== 'face-stellation') {
       return { ok: false, message: 'Unknown augmentation method: ' + String(config.augmentationMethod) };
     }
 
@@ -137,11 +115,11 @@
     var baseEmbedding = extractedEmbedding ||
       global.PlanarVibePlanarityTest.computePlanarEmbedding(graph.nodeIds, graph.edgePairs);
     if (!baseEmbedding || !baseEmbedding.ok) {
-      return { ok: false, message: label + ' requires a planar graph' };
+      return { ok: false, message: config.failureLabel + ' requires a planar graph' };
     }
 
     var selectedOuterFace = null;
-    if (augmentationMethod === 'triangulateByOuterCycle') {
+    if (augmentationMethod === 'outer-cycle') {
       selectedOuterFace = extractedEmbedding && extractedEmbedding.ok
         ? extractedEmbedding.outerFace.slice().map(String)
         : chooseLongestFaceFromEmbedding(baseEmbedding);
@@ -151,48 +129,28 @@
         : null;
     }
     if (!selectedOuterFace || selectedOuterFace.length < 3) {
-      return { ok: false, message: 'Could not determine outer boundary for ' + label };
+      return { ok: false, message: 'Could not determine outer boundary for ' + config.failureLabel };
     }
 
-    var augmented;
-    if (augmentationMethod === 'triangulateByFaceStellation') {
-      augmented = prepareAugmentedTriangulation(
-        graph,
-        baseEmbedding,
-        selectedOuterFace,
-        label,
-        config.augmentationOptions || null
-      );
-    } else if (augmentationMethod === 'triangulateByOuterCycle') {
-      augmented = prepareOuterCycleTriangulation(
-        graph,
-        baseEmbedding,
-        selectedOuterFace,
-        label,
-        config.augmentationOptions || null
-      );
-    }
+    var augmented = augmentGraph(
+      graph,
+      baseEmbedding,
+      selectedOuterFace,
+      augmentationMethod,
+      config.failureLabel,
+      config.augmentationOptions || null
+    );
     if (!augmented.ok) {
-      return { ok: false, message: augmented.reason || (label + ' augmentation failed') };
+      return augmented;
     }
-    augmented.method = augmentationMethod;
-    var augmentedOuterFace = Array.isArray(augmented.outerFace) && augmented.outerFace.length >= 3
-      ? augmented.outerFace.slice().map(String)
-      : selectedOuterFace.slice().map(String);
 
     return {
       ok: true,
       graph: graph,
       baseEmbedding: baseEmbedding,
       outerFace: selectedOuterFace.slice().map(String),
-      augmentedOuterFace: augmentedOuterFace,
-      augmented: augmented,
-      augmentedGraph: augmented.graph,
-      embedding: augmented.embedding,
-      augmentationMethod: augmentationMethod,
-      augmentedNodeIds: augmented.graph.nodeIds,
-      augmentedEdgePairs: augmented.graph.edgePairs,
-      augmentedDummyCount: augmented.dummyCount || 0
+      augmentedOuterFace: augmented.outerFace.slice(),
+      augmented: augmented
     };
   }
 
@@ -257,13 +215,6 @@
     }
     if (!PlanarGraphUtils.embeddingHasFace(embedding, outerFace)) {
       return { ok: false, message: 'Provided outer face is not a face of the embedding' };
-    }
-    var connectivity = GraphUtils.analyzeInternallyThreeConnected(graph, outerFace);
-    if (!connectivity || !connectivity.ok) {
-      return {
-        ok: false,
-        message: (connectivity && connectivity.reason) || 'Barycentric layout requires an internally 3-connected planar graph'
-      };
     }
     var initialPositions = global.PlanarVibeTutte.computeBarycentricPositions(
       graph,
@@ -349,7 +300,7 @@
     var augmented = prepared.augmented;
 
     var init = computeInitialPositions(
-      prepared.augmentedGraph,
+      prepared.augmented.graph,
       augmentedOuterFace,
       augmented.embedding,
       prepared.graph
@@ -372,7 +323,6 @@
       outerFace: outerFace,
       augmentedOuterFace: augmentedOuterFace,
       augmented: augmented,
-      augmentedGraph: prepared.augmentedGraph,
       posById: init.positions,
       movableVertices: GraphUtils.collectMovableVertices(augmented.graph.nodeIds, augmentedOuterFace),
       initResult: init
@@ -381,8 +331,6 @@
 
   global.LayoutPreprocessing = {
     createAugmentationDebugState: createAugmentationDebugState,
-    createLayoutInput: prepareGraphData,
-    createSeededLayoutInput: prepareGraphAndLayoutData,
     computeInitialPositions: computeInitialPositions,
     verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
     prepareGraphData: prepareGraphData,
