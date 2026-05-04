@@ -589,6 +589,20 @@
     };
   }
 
+  function createLayoutInput(graph, options) {
+    var opts = normalizeAirOptions(options);
+    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+      failureLabel: 'Air layout',
+      augmentationMethod: opts.augmentationMethod,
+      augmentationOptions: opts.augmentationOptions,
+      currentPositions: options && options.currentPositions
+    });
+  }
+
+  async function computePositions(graph, layoutInput) {
+    return computeAirPositionsFromPrepared(graph, null, layoutInput);
+  }
+
   async function computeAirPositions(graph, options) {
     var prepared = prepareAirState(graph, options);
     if (!prepared.ok) {
@@ -709,8 +723,9 @@
     });
   }
 
-  global.PlanarVibeAir = {
-    computeAirPositions: computeAirPositions,
-    applyAirLayout: applyAirLayout
-  };
+	  global.PlanarVibeAir = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyAirLayout
+	  };
 })(window);

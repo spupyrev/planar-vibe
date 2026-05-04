@@ -110,6 +110,17 @@
     });
   }
 
+  function createLayoutInput(graph) {
+    return { ok: true, graph: graph };
+  }
+
+  function computePositions(graph, layoutInput) {
+    if (!layoutInput.ok) {
+      return layoutInput;
+    }
+    return computeP3TPositions(graph);
+  }
+
   function applyP3TLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       initialFitBounds: function (ctx) {
@@ -117,12 +128,12 @@
         var width = Number.isFinite(defaults.width) ? defaults.width : 900;
         var height = Number.isFinite(defaults.height) ? defaults.height : 620;
         return { x1: 0, y1: 0, x2: width, y2: height };
-      },
-      computePositions: async function (graph, computeOptions) {
-        var result = computeP3TPositions(graph);
-        await emitSingleIteration(computeOptions || {}, result);
-        return result;
-      },
+	      },
+	      computePositions: async function (graph, computeOptions) {
+	        var result = computePositions(graph, createLayoutInput(graph));
+	        await emitSingleIteration(computeOptions || {}, result);
+	        return result;
+	      },
       buildResult: function (ctx) {
         return {
           ok: true,
@@ -135,8 +146,9 @@
     });
   }
 
-  global.PlanarVibeP3T = {
-    computeP3TPositions: computeP3TPositions,
-    applyP3TLayout: applyP3TLayout
-  };
+	  global.PlanarVibeP3T = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyP3TLayout
+	  };
 })(window);

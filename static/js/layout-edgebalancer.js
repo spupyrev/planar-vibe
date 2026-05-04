@@ -950,16 +950,25 @@
     return outerPos;
   }
 
-  async function computeEdgeBalancerPositions(graph, options) {
+  function createLayoutInput(graph, options) {
     options = options || {};
-    return computeEdgeBalancerPositionsFromPrepared(options, LayoutPreprocessing.prepareGraphData(graph, {
+    return LayoutPreprocessing.createLayoutInput(graph, {
       failureLabel: 'EdgeBalancer layout',
       augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
       augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
         ? Object.assign({}, options.augmentationOptions)
         : null,
       currentPositions: options.currentPositions
-    }));
+    });
+  }
+
+  async function computePositions(graph, layoutInput) {
+    return computeEdgeBalancerPositionsFromPrepared(null, layoutInput);
+  }
+
+  async function computeEdgeBalancerPositions(graph, options) {
+    options = options || {};
+    return computeEdgeBalancerPositionsFromPrepared(options, createLayoutInput(graph, options));
   }
 
   async function applyEdgeBalancerLayout(cy, options) {
@@ -999,8 +1008,9 @@
     });
   }
 
-  global.PlanarVibeEdgeBalancer = {
-    computeEdgeBalancerPositions: computeEdgeBalancerPositions,
-    applyEdgeBalancerLayout: applyEdgeBalancerLayout
-  };
+	  global.PlanarVibeEdgeBalancer = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyEdgeBalancerLayout
+	  };
 })(window);

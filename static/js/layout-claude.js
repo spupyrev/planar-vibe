@@ -382,20 +382,25 @@
     });
   }
  
-  // Run a candidate layout, collect resulting positions, restore on exit.
-  function runCandidate(runFn, cy) {
-    var originalPos = positionsFromCy(cy);
-    return Promise.resolve().then(function () { return runFn(cy); })
-      .then(function (result) {
-        if (result && result.ok) {
-          var pos = positionsFromCy(cy);
-          applyPositions(cy, originalPos);
-          return { ok: true, posById: pos };
-        }
-        applyPositions(cy, originalPos);
-        return { ok: false };
-      }, function () { applyPositions(cy, originalPos); return { ok: false }; });
-  }
+	  function hasComputeInterface(module) {
+	    return !!module &&
+	      typeof module.createLayoutInput === 'function' &&
+	      typeof module.computePositions === 'function';
+	  }
+
+	  function runCandidate(module, graph, runtime) {
+	    return Promise.resolve().then(function () {
+	      var layoutInput = module.createLayoutInput(graph, runtime || {});
+	      return module.computePositions(graph, layoutInput);
+	    }).then(function (result) {
+	      if (result && result.ok && result.positions) {
+	        return { ok: true, posById: result.positions };
+	      }
+	      return { ok: false };
+	    }, function () {
+	      return { ok: false };
+	    });
+	  }
  
   // Try a candidate + generate base/rot/rot+align/align variants, scoring each.
   function expandVariants(label, posById, nodeIds, edgePairs) {
@@ -452,41 +457,45 @@
     return best;
   }
  
-  async function applyClaudeLayout(cy, options) {
+	  async function applyLayout(cy, options) {
     options = options || {};
     var startMs = Date.now();
     var globalBudgetMs = Number.isFinite(options.claudeBudgetMs) ? options.claudeBudgetMs : 25000;
     var timeLeft = function () { return globalBudgetMs - (Date.now() - startMs); };
  
-    var parsed = snapshotCy(cy);
-    var nodeIds = parsed.nodeIds, edgePairs = parsed.edgePairs;
-    if (nodeIds.length === 0) return { ok: false, error: 'Claude: empty graph' };
+	    var parsed = snapshotCy(cy);
+	    var nodeIds = parsed.nodeIds, edgePairs = parsed.edgePairs;
+	    if (nodeIds.length === 0) return { ok: false, message: 'Claude: empty graph' };
+	    var graph = GraphUtils.createGraph(nodeIds, edgePairs);
+	    var runtime = Object.assign({}, options, {
+	      currentPositions: parsed.posById
+	    });
  
     // 1. Candidate layouts — ensemble of the strongest base optimizers plus several
     //    "grid-like" options as cheap insurance against unusual graph distributions.
-    var runners = [
-      ['EdgeBalancer',   global.PlanarVibeEdgeBalancer   && global.PlanarVibeEdgeBalancer.applyEdgeBalancerLayout],
-      ['Hybrid',         global.PlanarVibeHybrid         && global.PlanarVibeHybrid.applyHybridLayout],
-      ['AngleBalancer',  global.PlanarVibeAngleBalancer  && global.PlanarVibeAngleBalancer.applyAngleBalancerLayout],
-      ['AreaGrad',       global.PlanarVibeAreaGrad       && global.PlanarVibeAreaGrad.applyAreaGradLayout],
-      ['FaceBalancer',   global.PlanarVibeFaceBalancer   && global.PlanarVibeFaceBalancer.applyFaceBalancerLayout],
-      ['ReweightTutte',  global.PlanarVibeReweightTutte  && global.PlanarVibeReweightTutte.applyReweightTutteLayout],
-      ['Schnyder',       global.PlanarVibeSchnyder       && global.PlanarVibeSchnyder.applySchnyderLayout],
-      ['CEGBfs',         global.PlanarVibeCEGBfs         && global.PlanarVibeCEGBfs.applyCEGBfsLayout],
-      ['Tutte',          global.PlanarVibeTutte          && global.PlanarVibeTutte.applyTutteLayout]
-    ];
+	    var runners = [
+	      ['EdgeBalancer',   global.PlanarVibeEdgeBalancer],
+	      ['FABalancer',     global.PlanarVibeFABalancer],
+	      ['AngleBalancer',  global.PlanarVibeAngleBalancer],
+	      ['AreaGrad',       global.PlanarVibeAreaGrad],
+	      ['FaceBalancer',   global.PlanarVibeFaceBalancer],
+	      ['Reweight',       global.PlanarVibeReweight],
+	      ['Schnyder',       global.PlanarVibeSchnyder],
+	      ['CEGBfs',         global.PlanarVibeCEGBfs],
+	      ['Tutte',          global.PlanarVibeTutte]
+	    ];
  
-    var variants = [];
-    for (var i = 0; i < runners.length; i += 1) {
-      var label = runners[i][0], fn = runners[i][1];
-      if (!fn) continue;
-      var out = await runCandidate(function (c) { return fn(c, options); }, cy);
+	    var variants = [];
+	    for (var i = 0; i < runners.length; i += 1) {
+	      var label = runners[i][0], module = runners[i][1];
+	      if (!hasComputeInterface(module)) continue;
+	      var out = await runCandidate(module, graph, runtime);
       if (out.ok) {
         var expanded = expandVariants(label, out.posById, nodeIds, edgePairs);
         for (var k = 0; k < expanded.length; k += 1) variants.push(expanded[k]);
       }
     }
-    if (variants.length === 0) return { ok: false, error: 'Claude: all candidates failed' };
+    if (variants.length === 0) return { ok: false, message: 'Claude: all candidates failed' };
  
     variants.sort(function (a, b) { return b.scores.total - a.scores.total; });
     var best = variants[0];
@@ -607,5 +616,5 @@
     };
   }
  
-  global.PlanarVibeClaude = { applyClaudeLayout: applyClaudeLayout };
+	  global.PlanarVibeClaude = { applyLayout: applyLayout };
 })(typeof window !== 'undefined' ? window : globalThis);

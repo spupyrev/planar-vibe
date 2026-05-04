@@ -2,7 +2,7 @@
  
 ## Target
  
-Maximize the evaluation score on `planar_train.dot`: mean of p50 scores across 10 metrics. Baselines: **EdgeBalancer 0.622226**, **Hybrid 0.596484**.
+Maximize the evaluation score on `planar_train.dot`: mean of p50 scores across 10 metrics. Baselines: **EdgeBalancer 0.622226**, **FABalancer 0.596484**.
  
 Per-metric p50 of EdgeBalancer (reproduced locally, matches docs):
  
@@ -33,14 +33,14 @@ Biggest weak spots of the best current baseline: **convexity (0.20)**, **edgeRat
  
 **Goal:** Identify per-metric champions.
  
-**Method:** Run every algorithm (tutte, air, cleanair, areagrad, facebalancer, edgebalancer, anglebalancer, hybrid, reweight, forcedir, impred, fpp, schnyder, ceg_bfs, ceg_xy) on `planar_train.dot` with 10s timeout.
+**Method:** Run every algorithm (tutte, air, cleanair, areagrad, facebalancer, edgebalancer, anglebalancer, fabalancer, reweight, forcedir, impred, fpp, schnyder, ceg_bfs, ceg_xy) on `planar_train.dot` with 10s timeout.
  
 **Results — total score, ranked:**
  
 | algo | total | top metric(s) |
 |---|---|---|
 | edgebalancer | 0.622 | edgeLengthDeviation, edgeRatio, face, nodeUniformity, spacing |
-| hybrid | 0.596 | edgeOrthogonality (0.604) |
+| FABalancer | 0.596 | edgeOrthogonality (0.604) |
 | anglebalancer | 0.592 | angularResolution (0.65) |
 | facebalancer | 0.586 | — |
 | areagrad | 0.580 | — |
@@ -62,7 +62,7 @@ Biggest weak spots of the best current baseline: **convexity (0.20)**, **edgeRat
 - convexity: 8-way tie at 0.333; edgebalancer = 0.200 (loses)
 - edgeLengthDeviation: **edgebalancer (0.849)** >> all else (≤0.69)
 - edgeRatio: **edgebalancer (0.413)** >> ALL others ≤ 0.09 (massive gap — critical to preserve!)
-- edgeOrthogonality: **hybrid (0.604)** > edgebalancer (0.500)
+- edgeOrthogonality: **FABalancer (0.604)** > edgebalancer (0.500)
 - face: edgebalancer (0.912), all others 0.65–0.94
 - nodeUniformity: edgebalancer (0.647)
 - alignment: **schnyder (0.853)**, fpp (0.736); edgebalancer only 0.546
@@ -75,12 +75,12 @@ Biggest weak spots of the best current baseline: **convexity (0.20)**, **edgeRat
 3. **alignment** has huge headroom: schnyder 0.85 shows it's achievable; axis-align post-processing should close the gap.
 4. **convexity** tops out at 0.33 naturally — need a targeted repair pass.
 5. CEG-bfs has excellent angularResolution; worth including.
-6. Hybrid leads edgeOrthogonality — worth including.
+6. FABalancer leads edgeOrthogonality — worth including.
  
 ## Stage 2 — Selection & candidate variants
  
 Tried:
-- **v2** — added FaceBalancer/ReweightTutte, selection = `0.5*mean + 0.5*geomean`. Score: **0.6525** (slight regression). Geomean didn't meaningfully deprioritize bad-edgeRatio variants.
+- **v2** — added FaceBalancer/Reweight, selection = `0.5*mean + 0.5*geomean`. Score: **0.6525** (slight regression). Geomean didn't meaningfully deprioritize bad-edgeRatio variants.
 - **v3** — mean selection, added alignment-on-base variant (in addition to rot+align). Score: **0.6553** (same as v1).
 - **v4** — v3 + Schnyder/CEGBfs/Tutte candidates. Score: **0.6553** (same). Low-total candidates never win per-graph mean selection.
  
@@ -123,7 +123,7 @@ Runtime: zero TLE at 30s budget, zero breakages.
 | version | description | total |
 |---|---|---|
 | EdgeBalancer (baseline) | — | 0.6222 |
-| agentic v1 | best-of-4 (EB/Hybrid/AngleBal/AreaGrad) + rotation sweep + axis-align | 0.6548 |
+| agentic v1 | best-of-4 (EB/FABalancer/AngleBal/AreaGrad) + rotation sweep + axis-align | 0.6548 |
 | agentic v6 | v1 + budget-aware local polish | 0.7025 |
 | agentic v7 | v6 + rot2/align2 + more passes | 0.7077 |
 | agentic v8 | v7 + multi-start polish (top-3) | 0.7222 |
@@ -132,7 +132,7 @@ Runtime: zero TLE at 30s budget, zero breakages.
 | agentic v11 | v10 + micro-polish (step 0.004 → 0.0003) + align3 | 0.7431 (3 TLE on dense graphs) |
 | **agentic v12** | **v11 + 25s global budget cap across all stages** | **0.7435, 0 TLE, 0 breakages** |
  
-**Net: +0.121 over EdgeBalancer, +0.147 over Hybrid.**
+**Net: +0.121 over EdgeBalancer, +0.147 over FABalancer.**
  
 ### Stage 3 observations
  
@@ -157,7 +157,7 @@ Runtime: ~80 min for full run at concurrency=4. Mean runtime 6.5s / graph.
  
 ```
 1. Run candidate layouts in sequence:
-   EdgeBalancer, Hybrid, AngleBalancer, AreaGrad, FaceBalancer, ReweightTutte.
+   EdgeBalancer, FABalancer, AngleBalancer, AreaGrad, FaceBalancer, Reweight.
    (Schnyder/CEGBfs/Tutte removed in v43 — won only 1.2% of graphs.)
 2. For each successful candidate, generate 4 variants:
    base, +rot (best over 19 rotations of [0, π/2]),
@@ -193,7 +193,7 @@ Global wall-clock budget of 25 s guards every phase. Each phase only runs if ≥
 | algo | total |
 |---|---|
 | EdgeBalancer (baseline) | 0.6222 |
-| Hybrid (baseline) | 0.5965 |
+| FABalancer (baseline) | 0.5965 |
 | agentic v12 | 0.7435 (+0.121 over EB) |
  
 Stages 5–31 added another +0.006 of improvement, for a **final score of 0.7492** (v43, budget=28s, zero TLE, zero breakages).
@@ -253,7 +253,7 @@ Continued development after v12. All stages preserve zero TLE / zero breakages.
 3. **Restart/perturbation** (add small jitter, re-polish) added +0.0011. Most gains on small graphs where the budget permits 2–3 restarts. The perturbation scale (0.015–0.06 × diag) has to be small enough to mostly stay in good basins but big enough to occasionally escape.
 4. **RNG determinism**: the perturbation RNG is seeded from the graph's canonical (nodeIds,edgePairs) hash, so the same graph always gets the same perturbations.
  
-**Final cumulative improvement (v43, budget=28s): +0.127 over EdgeBalancer**, +0.153 over Hybrid.
+**Final cumulative improvement (v43, budget=28s): +0.127 over EdgeBalancer**, +0.153 over FABalancer.
  
 | metric | EB | agentic v43 | Δ |
 |---|---|---|---|
@@ -337,7 +337,7 @@ Net gain of Stages 20–28: +0.0003 (0.7488 → 0.7491).
  
 Analyzed the winning-label CSV to discover:
  
-1. **Candidate usage**: EdgeBalancer wins 68%, Hybrid 8%, AngleBalancer 9%, FaceBalancer 7%, ReweightTutte 4%, AreaGrad 3%. **Schnyder 0.2%, CEGBfs 0.4%, Tutte 0.6%** — nearly never. Dropped them.
+1. **Candidate usage**: EdgeBalancer wins 68%, FABalancer 8%, AngleBalancer 9%, FaceBalancer 7%, Reweight 4%, AreaGrad 3%. **Schnyder 0.2%, CEGBfs 0.4%, Tutte 0.6%** — nearly never. Dropped them.
 2. **Late-stage token frequency** in winning labels:
    - `+micro` 98% (critical)
    - `+cvxpol` 80%
@@ -374,7 +374,7 @@ After 18 versions, gains are down to +0.001 per stage. Remaining ideas:
  
 **Implementation** (`static/js/layout-agentic.js`):
  
-1. Run 4 candidate layouts in sequence: **EdgeBalancer**, **Hybrid**, **AngleBalancer**, **AreaGrad**.
+1. Run 4 candidate layouts in sequence: **EdgeBalancer**, **FABalancer**, **AngleBalancer**, **AreaGrad**.
 2. For each candidate's output, generate 3 variants:
    - `base` — raw candidate output
    - `rot` — rotate positions around centroid to maximize total score over 19 angles ∈ [0, π/2]
@@ -398,7 +398,7 @@ After 18 versions, gains are down to +0.001 per stage. Remaining ideas:
 | edgebalancer | 0.622 | 0.517 | 0.904 | 0.200 | **0.849** | **0.413** | 0.500 | 0.912 | 0.647 | 0.546 | 0.734 |
 | **agentic v1** | **0.655** | 0.556 | 0.962 | 0.286 | 0.831 | 0.347 | 0.547 | 0.927 | 0.684 | 0.668 | 0.739 |
  
-**Net +0.033** vs EdgeBalancer. Wins: alignment (+0.12), convexity (+0.09), aspectRatio (+0.06), orth (+0.05). Losses: edgeRatio (-0.07), edgeLengthDeviation (-0.02). The losses come from rotation+alignment stretching short edges and the Hybrid/AngleBalancer candidates often producing uneven edge lengths.
+**Net +0.033** vs EdgeBalancer. Wins: alignment (+0.12), convexity (+0.09), aspectRatio (+0.06), orth (+0.05). Losses: edgeRatio (-0.07), edgeLengthDeviation (-0.02). The losses come from rotation+alignment stretching short edges and the FABalancer/AngleBalancer candidates often producing uneven edge lengths.
  
 **Conclusion:** Stage 1 beats both baselines. Clear weak spots to target in Stage 2:
 - `convexity` = 0.286 (still lowest, biggest upside)

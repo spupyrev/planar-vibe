@@ -14,7 +14,7 @@ Raw data:
 - [airplus_idea_eval_results.json](./airplus_idea_eval_results.json)
 
 Experiment harness:
-- [scripts/evaluate-airplus-ideas.mjs](/home/spupyrev/research/planar_layouts/planar-vibe/scripts/evaluate-airplus-ideas.mjs)
+- [scripts/evaluate-airplus-ideas.mjs](../scripts/evaluate-airplus-ideas.mjs)
 
 Important note:
 - these were targeted prototypes, not polished production implementations

@@ -498,12 +498,20 @@
     });
   }
 
-  function computeFPPPositions(graph, options) {
-    return computeFPPPositionsFromPrepared(graph, prepareGraphData(graph, {
+  function createLayoutInput(graph, options) {
+    return prepareGraphData(graph, {
       failureLabel: 'FPP',
       currentPositions: options ? options.currentPositions : undefined,
       augmentationOptions: FPP_PREPARE_OPTIONS
-    }));
+    });
+  }
+
+  function computePositions(graph, layoutInput) {
+    return computeFPPPositionsFromPrepared(graph, layoutInput);
+  }
+
+  function computeFPPPositions(graph, options) {
+    return computePositions(graph, createLayoutInput(graph, options));
   }
 
   function applyFPPLayout(cy, options) {
@@ -540,8 +548,9 @@
     });
   }
 
-  global.PlanarVibeFPP = {
-    computeFPPPositions: computeFPPPositions,
-    applyFPPLayout: applyFPPLayout
-  };
+	  global.PlanarVibeFPP = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyFPPLayout
+	  };
 })(window);

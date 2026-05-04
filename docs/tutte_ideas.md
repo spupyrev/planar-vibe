@@ -673,12 +673,12 @@ For simplicity-first methods, prefer:
 Use these names consistently when comparing methods:
 - **Default Tutte**: one-shot weighted Tutte baseline
 - **TutteAdaptive**: a lightweight improved Tutte with a few adaptive reweighting rounds
-- **ReweightTutte**: the stronger but heavier iterative reweighting method
+- **Reweight**: the stronger but heavier iterative reweighting method
 
 Interpretation:
 - `TutteAdaptive` should target the middle ground:
-  better than default Tutte, much simpler than ReweightTutte
-- `ReweightTutte` remains the "quality-first" reference, not the simplicity reference
+  better than default Tutte, much simpler than Reweight
+- `Reweight` remains the "quality-first" reference, not the simplicity reference
 
 ### 10.3 Exploration order
 
@@ -893,7 +893,7 @@ For every candidate:
 4. compare against:
    - Default Tutte
    - TutteAdaptive
-   - ReweightTutte
+   - Reweight
 5. run the full 22-graph benchmark
 6. store a summary table with:
    - success count
@@ -905,7 +905,7 @@ Use these specific questions:
 - does it substantially improve `sample1`?
 - does it stay crossing-free on the benchmark?
 - does it beat Default Tutte by enough to matter?
-- does it approach ReweightTutte quality without ReweightTutte cost?
+- does it approach Reweight quality without Reweight cost?
 
 ### 10.6 Decision policy
 
@@ -913,7 +913,7 @@ Use the following policy when deciding what to keep.
 
 Keep a method if:
 - it is clearly better than Default Tutte
-- it is meaningfully simpler or more robust than ReweightTutte
+- it is meaningfully simpler or more robust than Reweight
 - its benchmark gains are repeatable
 
 Reject or pause a method if:

@@ -14,11 +14,31 @@
   var computePositionMoveStats = global.GraphUtils.computePositionMoveStats;
   var copyPositions = GeometryUtils.copyPositionMap;
   var createMovementConvergenceTracker = global.GraphUtils.createMovementConvergenceTracker;
-  var resolveFloatOption = global.GraphUtils.resolveFloatOption;
-  var resolveFunctionOption = global.GraphUtils.resolveFunctionOption;
-  var resolveIntOption = global.GraphUtils.resolveIntOption;
-  var resolveNonNegativeOption = global.GraphUtils.resolveNonNegativeOption;
   var segmentsIntersectOrTouch = GeometryUtils.segmentsIntersectOrTouch;
+  var FORCE_DIR_CONFIG = {
+    evalEvery: 10,
+    alpha: 1.2,
+    initialStepFactor: 0.02,
+    minStepFactor: 1e-5,
+    minItersBeforeStop: 30,
+    stableIterLimit: 8,
+    movementStopTolFactor: 1e-4,
+    avgMovementStopTolFactor: 2e-5,
+    epsilon: 1e-9,
+    repulsionEps: 1e-6,
+    repulsionPower: 2,
+    maxIters: 400,
+    beta: 0.45,
+    alphaGrowEvery: 120,
+    alphaGrowFactor: 1.15,
+    alphaCap: 4.0,
+    stepDecay: 0.5,
+    maxForce: 9.0,
+    eta: 1.2,
+    zeta: 3.2,
+    collisionBoost: 6.0,
+    kNearest: 4
+  };
 
   function wouldIntroduceCrossing(vertexId, newPos, positions, edgePairs, adjacency, eps) {
     var v = String(vertexId);
@@ -290,8 +310,8 @@
   }
 
   function runForceDirIterations(state, context, options) {
-    var evalEvery = resolveIntOption(options.evalEvery, 10, 1);
-    var onIteration = resolveFunctionOption(options.onIteration, null);
+    var evalEvery = FORCE_DIR_CONFIG.evalEvery;
+    var onIteration = options.onIteration;
     var movementTracker = options.movementTracker;
     var movable = state.movable;
 
@@ -363,7 +383,8 @@
   }
 
   function computeForceDirPositionsFromPrepared(context, options) {
-    var alpha0 = resolveFloatOption(options.alpha, 1.2, 0);
+    var runtime = options || {};
+    var alpha0 = FORCE_DIR_CONFIG.alpha;
     var graph = context.graph;
     var ids = graph.nodeIds.slice();
     var pairs = graph.edgePairs.slice();
@@ -389,31 +410,31 @@
     }
     var targetLength = median(lengths);
     var diameter = computeDrawingDiameter(ids, pos);
-    var h = resolveFloatOption(options.initialStep, 0.02 * diameter, 1e-8);
-    var hMin = resolveFloatOption(options.minStep, 1e-5 * diameter, 1e-10);
+    var h = Math.max(1e-8, FORCE_DIR_CONFIG.initialStepFactor * diameter);
+    var hMin = Math.max(1e-10, FORCE_DIR_CONFIG.minStepFactor * diameter);
     var movementTracker = createMovementConvergenceTracker({
-      minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, 30, 1),
-      stableIterLimit: resolveIntOption(options.stableIterLimit, 8, 1),
-      maxMoveTol: resolveNonNegativeOption(options.movementStopTol, 1e-4 * diameter),
-      avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 2e-5 * diameter)
+      minItersBeforeStop: FORCE_DIR_CONFIG.minItersBeforeStop,
+      stableIterLimit: FORCE_DIR_CONFIG.stableIterLimit,
+      maxMoveTol: FORCE_DIR_CONFIG.movementStopTolFactor * diameter,
+      avgMoveTol: FORCE_DIR_CONFIG.avgMovementStopTolFactor * diameter
     });
 
     var state = {
-      EPS: resolveFloatOption(options.epsilon, 1e-9, 1e-12),
-      repEps: resolveFloatOption(options.repulsionEps, 1e-6, 1e-12),
-      repPower: resolveFloatOption(options.repulsionPower, 2, 1),
-      maxIters: resolveIntOption(options.maxIters, 400, 1),
-      beta: resolveFloatOption(options.beta, 0.45, 0),
+      EPS: FORCE_DIR_CONFIG.epsilon,
+      repEps: FORCE_DIR_CONFIG.repulsionEps,
+      repPower: FORCE_DIR_CONFIG.repulsionPower,
+      maxIters: FORCE_DIR_CONFIG.maxIters,
+      beta: FORCE_DIR_CONFIG.beta,
       alpha: alpha0,
-      alphaGrowEvery: resolveIntOption(options.alphaGrowEvery, 120, 1),
-      alphaGrowFactor: resolveFloatOption(options.alphaGrowFactor, 1.15, 1),
-      alphaCap: resolveFloatOption(options.alphaCap, 4.0, alpha0),
-      gamma: resolveFloatOption(options.stepDecay, 0.5, 0.1, 0.95),
-      maxForce: resolveFloatOption(options.maxForce, 9.0, 1e-6),
-      eta: resolveFloatOption(options.eta, 1.2, 0),
-      zeta: resolveFloatOption(options.zeta, 3.2, 0),
-      collisionBoost: resolveFloatOption(options.collisionBoost, 6.0, 0),
-      kNearest: resolveIntOption(options.kNearest, 4, 1),
+      alphaGrowEvery: FORCE_DIR_CONFIG.alphaGrowEvery,
+      alphaGrowFactor: FORCE_DIR_CONFIG.alphaGrowFactor,
+      alphaCap: FORCE_DIR_CONFIG.alphaCap,
+      gamma: FORCE_DIR_CONFIG.stepDecay,
+      maxForce: FORCE_DIR_CONFIG.maxForce,
+      eta: FORCE_DIR_CONFIG.eta,
+      zeta: FORCE_DIR_CONFIG.zeta,
+      collisionBoost: FORCE_DIR_CONFIG.collisionBoost,
+      kNearest: FORCE_DIR_CONFIG.kNearest,
       graph: graph,
       nodeIds: ids,
       edgePairs: pairs,
@@ -433,18 +454,29 @@
     };
 
     return runForceDirIterations(state, context, {
-      evalEvery: resolveIntOption(options.evalEvery, 10, 1),
-      onIteration: resolveFunctionOption(options.onIteration, null),
+      onIteration: typeof runtime.onIteration === 'function' ? runtime.onIteration : null,
       movementTracker: movementTracker
     });
   }
 
-  function computeForceDirPositions(graph, options) {
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
+  function createLayoutInput(graph, options) {
+    var runtime = options || {};
+    return LayoutPreprocessing.createSeededLayoutInput(graph, {
       failureLabel: 'ForceDir',
-      augmentationMethod: options.augmentationMethod || null,
-      currentPositions: options.currentPositions
+      augmentationMethod: runtime.augmentationMethod || null,
+      currentPositions: runtime.currentPositions
     });
+  }
+
+  function computePositions(graph, layoutInput) {
+    if (!layoutInput.ok) {
+      return buildLayoutError(layoutInput);
+    }
+    return computeForceDirPositionsFromPrepared(layoutInput, null);
+  }
+
+  function computeForceDirPositions(graph, options) {
+    var context = createLayoutInput(graph, options);
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'ForceDir setup failed' });
     }
@@ -483,8 +515,9 @@
     });
   }
 
-  global.PlanarVibeForceDir = {
-    computeForceDirPositions: computeForceDirPositions,
-    applyForceDirLayout: applyForceDirLayout
-  };
+	  global.PlanarVibeForceDir = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyForceDirLayout
+	  };
 })(window);

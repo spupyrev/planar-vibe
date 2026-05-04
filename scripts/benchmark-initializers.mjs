@@ -257,6 +257,10 @@ function summarizeBy(rows, groupKeys) {
   return out;
 }
 
+function runStrictLayout(module, graph) {
+  return module.computePositions(graph, module.createLayoutInput(graph));
+}
+
 async function main() {
   const modules = loadBrowserModules();
   const GraphUtils = modules.GraphUtils;
@@ -266,7 +270,7 @@ async function main() {
   const AreaGrad = modules.PlanarVibeAreaGrad;
   const FaceBalancer = modules.PlanarVibeFaceBalancer;
   const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
-  const Reweight = modules.PlanarVibeReweightTutte;
+  const Reweight = modules.PlanarVibeReweight;
   const ForceDir = modules.PlanarVibeForceDir;
 
   const graphNames = ['sample1', 'grid4x20', 'randomplanar2', 'randomplanar4', 'planar3tree30'];
@@ -283,47 +287,32 @@ async function main() {
     tolerance: 1e-8
   };
 
-  const layoutBenchmarks = [
-    {
-      name: 'Air',
-      run: (graph) => Air.computeAirPositions(graph, {
-        maxSweeps: 80
-      })
-    },
-    {
-      name: 'AreaGrad',
-      run: (graph) => AreaGrad.computeAreaGradPositions(graph, {
-        maxIters: 120
-      })
-    },
-    {
-      name: 'FaceBalancer',
-      run: (graph) => FaceBalancer.computeFaceBalancerPositions(graph, {
-        maxIters: 30
-      })
-    },
-    {
-      name: 'EdgeBalancer',
-      run: (graph) => EdgeBalancer.computeEdgeBalancerPositions(graph, {
-        maxIters: 30
-      })
-    },
-    {
-      name: 'ReweightTutte',
-      run: (graph) => Reweight.computeReweightTuttePositions(graph, {
-        maxOuterIters: 6,
-        warmIters: 1200,
-        innerIters: 1600,
-        finalIters: 1600
-      })
-    },
-    {
-      name: 'ForceDir',
-      run: (graph) => ForceDir.computeForceDirPositions(graph, {
-        maxIters: 120
-      })
-    }
-  ];
+	  const layoutBenchmarks = [
+	    {
+	      name: 'Air',
+	      run: (graph) => runStrictLayout(Air, graph)
+	    },
+	    {
+	      name: 'AreaGrad',
+	      run: (graph) => runStrictLayout(AreaGrad, graph)
+	    },
+	    {
+	      name: 'FaceBalancer',
+	      run: (graph) => runStrictLayout(FaceBalancer, graph)
+	    },
+	    {
+	      name: 'EdgeBalancer',
+	      run: (graph) => runStrictLayout(EdgeBalancer, graph)
+	    },
+	    {
+	      name: 'Reweight',
+	      run: (graph) => runStrictLayout(Reweight, graph)
+	    },
+	    {
+	      name: 'ForceDir',
+	      run: (graph) => runStrictLayout(ForceDir, graph)
+	    }
+	  ];
 
   const seedRows = [];
   for (const graph of graphs) {

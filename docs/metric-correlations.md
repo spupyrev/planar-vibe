@@ -6,7 +6,7 @@ Rows: 79646
 Successful runs used: 79385
 Skipped rows: 261
 Datasets: gd_collection, north, rome, sample_graphs, wiki
-Algorithms: air, anglebalancer, ceg_bfs, ceg_xy, edgebalancer, facebalancer, forcedir, fpp, hybrid, impred, areagrad, reweight, schnyder, tutte
+Algorithms: air, anglebalancer, ceg_bfs, ceg_xy, edgebalancer, facebalancer, forcedir, fpp, fabalancer, impred, areagrad, reweight, schnyder, tutte
 
 Primary statistic: Spearman rank correlation. Pearson is included as a secondary linear-correlation check.
 

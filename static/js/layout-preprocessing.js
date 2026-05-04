@@ -381,6 +381,8 @@
 
   global.LayoutPreprocessing = {
     createAugmentationDebugState: createAugmentationDebugState,
+    createLayoutInput: prepareGraphData,
+    createSeededLayoutInput: prepareGraphAndLayoutData,
     computeInitialPositions: computeInitialPositions,
     verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
     prepareGraphData: prepareGraphData,

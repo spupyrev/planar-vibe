@@ -480,12 +480,16 @@
     });
   }
 
-  function computeSchnyderPositions(g, options) {
-    var prepared = prepareGraphData(g, {
+  function createLayoutInput(g, options) {
+    return prepareGraphData(g, {
       failureLabel: 'Schnyder',
       currentPositions: options ? options.currentPositions : undefined,
       augmentationOptions: SCHNYDER_PREPARE_OPTIONS
     });
+  }
+
+  function computePositions(g, layoutInput) {
+    var prepared = layoutInput;
     if (!prepared || !prepared.ok) {
       return buildLayoutError({
         message: (prepared && prepared.message) || 'Schnyder triangulation failed',
@@ -493,6 +497,10 @@
       });
     }
     return computeSchnyderPositionsFromPrepared(g, prepared);
+  }
+
+  function computeSchnyderPositions(g, options) {
+    return computePositions(g, createLayoutInput(g, options));
   }
 
   function applySchnyderLayout(cy, options) {
@@ -526,9 +534,9 @@
     });
   }
 
-  global.PlanarVibeSchnyder = {
-    computeSchnyderPositions: computeSchnyderPositions,
-    computeSchnyderPositionsFromPrepared: computeSchnyderPositionsFromPrepared,
-    applySchnyderLayout: applySchnyderLayout
-  };
+	  global.PlanarVibeSchnyder = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applySchnyderLayout
+	  };
 })(window);

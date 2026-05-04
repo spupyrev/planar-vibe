@@ -13,11 +13,6 @@
   var copyPositions = GeometryUtils.copyPositionMap;
   var filterPositions = GeometryUtils.filterPositionMap;
   var findOuterFaceIndex = global.PlanarGraphUtils.findOuterFaceIndex;
-  var resolveFloatOption = GraphUtils.resolveFloatOption;
-  var resolveFunctionOption = GraphUtils.resolveFunctionOption;
-  var resolveIntOption = GraphUtils.resolveIntOption;
-  var resolveOpenIntervalOption = GraphUtils.resolveOpenIntervalOption;
-  var resolvePositiveOption = GraphUtils.resolvePositiveOption;
   var orientFaceCCW = GeometryUtils.orientFaceCCW;
   var outerFaceDiameter = GeometryUtils.outerFaceDiameter;
   var polygonArea2 = GeometryUtils.polygonArea2;
@@ -26,7 +21,14 @@
   var AREAGRAD_INTERNAL = {
     tolGrad: 1e-8,
     acceptanceTol: 1e-12,
-    minTriangleAreaRel: 1e-10
+    minTriangleAreaRel: 1e-10,
+    maxIters: 200,
+    maxVertexMoveRel: 0.08,
+    localDamping: 1e-3,
+    stepShrink: 0.5,
+    minStepScale: Math.pow(2, -20),
+    tolAreaPositive: 1e-12,
+    tolAreaGlobal: 1e-3
   };
 
   function buildAreaGradData(augmentedEmbedding, outerFace, posById) {
@@ -242,20 +244,27 @@
     return worst;
   }
 
-  function fillAreaGradSettings(options) {
-    options.augmentationMethod = options.augmentationMethod || null;
-    options.maxIters = resolveIntOption(options.maxIters, 200, 1);
-    options.maxVertexMoveRel = resolvePositiveOption(options.maxVertexMoveRel, 0.08);
-    options.localDamping = resolvePositiveOption(options.localDamping, 1e-3);
-    options.stepShrink = resolveOpenIntervalOption(options.stepShrink, 0.5, 0, 1);
-    options.minStepScale = resolvePositiveOption(options.minStepScale, Math.pow(2, -20));
-    options.tolAreaPositive = resolveFloatOption(options.tolAreaPositive, 1e-12, 0);
-    options.tolAreaGlobal = resolveFloatOption(options.tolAreaGlobal, 1e-3, 0);
-    options.onIteration = resolveFunctionOption(options.onIteration, null);
+  function buildAreaGradSettings(options) {
+    var raw = options || {};
+    return {
+      augmentationMethod: raw.augmentationMethod || null,
+      augmentationOptions: typeof raw.augmentationOptions === 'object' && raw.augmentationOptions
+        ? Object.assign({}, raw.augmentationOptions)
+        : null,
+      currentPositions: raw.currentPositions,
+      onIteration: typeof raw.onIteration === 'function' ? raw.onIteration : null,
+      maxIters: AREAGRAD_INTERNAL.maxIters,
+      maxVertexMoveRel: AREAGRAD_INTERNAL.maxVertexMoveRel,
+      localDamping: AREAGRAD_INTERNAL.localDamping,
+      stepShrink: AREAGRAD_INTERNAL.stepShrink,
+      minStepScale: AREAGRAD_INTERNAL.minStepScale,
+      tolAreaPositive: AREAGRAD_INTERNAL.tolAreaPositive,
+      tolAreaGlobal: AREAGRAD_INTERNAL.tolAreaGlobal
+    };
   }
 
   function buildAreaGradStateFromPrepared(context, options) {
-    fillAreaGradSettings(options);
+    var settings = buildAreaGradSettings(options);
     if (!context || !context.ok) {
       return buildLayoutError(context || { message: 'AreaGrad setup failed' });
     }
@@ -271,7 +280,7 @@
 
     if (areaGradData.triangles.length === 0) {
       return buildLayoutResult({
-        opts: options,
+        opts: settings,
         graph: context.graph,
         baseEmbedding: context.baseEmbedding,
         outerFace: context.augmentedOuterFace,
@@ -282,7 +291,7 @@
       });
     }
 
-    var minTriangleArea = effectiveMinTriangleArea(areaGradData, options);
+    var minTriangleArea = effectiveMinTriangleArea(areaGradData, settings);
     for (var fi = 0; fi < areaGradData.triangles.length; fi += 1) {
       var tri = areaGradData.triangles[fi];
       var area = triangleArea2(context.posById[tri.vertices[0]], context.posById[tri.vertices[1]], context.posById[tri.vertices[2]]) / 2;
@@ -292,7 +301,7 @@
     }
 
     return buildLayoutResult({
-      opts: options,
+      opts: settings,
       graph: context.graph,
       baseEmbedding: context.baseEmbedding,
       outerFace: context.augmentedOuterFace,
@@ -304,13 +313,14 @@
   }
 
   function prepareAreaGradState(graph, options) {
-    fillAreaGradSettings(options);
+    var settings = buildAreaGradSettings(options);
     var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
       failureLabel: 'AreaGrad layout',
-      augmentationMethod: options.augmentationMethod,
-      currentPositions: options.currentPositions
+      augmentationMethod: settings.augmentationMethod,
+      augmentationOptions: settings.augmentationOptions,
+      currentPositions: settings.currentPositions
     });
-    return buildAreaGradStateFromPrepared(context, options);
+    return buildAreaGradStateFromPrepared(context, settings);
   }
 
   async function runAreaGradIterations(prepared, options) {
@@ -438,6 +448,20 @@
     };
   }
 
+  function createLayoutInput(graph, options) {
+    var settings = buildAreaGradSettings(options);
+    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+      failureLabel: 'AreaGrad layout',
+      augmentationMethod: settings.augmentationMethod,
+      augmentationOptions: settings.augmentationOptions,
+      currentPositions: settings.currentPositions
+    });
+  }
+
+  async function computePositions(graph, layoutInput) {
+    return computeAreaGradPositionsFromPrepared(graph, null, layoutInput);
+  }
+
   async function computeAreaGradPositions(graph, options) {
     var prepared = prepareAreaGradState(graph, options);
     if (!prepared || !prepared.ok) {
@@ -554,8 +578,9 @@
     });
   }
 
-  global.PlanarVibeAreaGrad = {
-    computeAreaGradPositions: computeAreaGradPositions,
-    applyAreaGradLayout: applyAreaGradLayout
-  };
+	  global.PlanarVibeAreaGrad = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyAreaGradLayout
+	  };
 })(window);

@@ -14,11 +14,12 @@
   var filterPositions = GeometryUtils.filterPositionMap;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var rotatePositionMap = GeometryUtils.rotatePositionMap;
-  var resolveFiniteOption = GraphUtils.resolveFiniteOption;
-  var resolveGreaterThanOption = GraphUtils.resolveGreaterThanOption;
-  var resolveIntOption = GraphUtils.resolveIntOption;
-  var resolvePositiveOption = GraphUtils.resolvePositiveOption;
   var prepareGraphAndLayoutData = LayoutPreprocessing.prepareGraphAndLayoutData;
+  var CEG_CONFIG = {
+    bfsBaseWeight: 1.0,
+    bfsDepthRatio: 1.35,
+    xyLambda: 0.5
+  };
 
   function buildUniformWeights(edgePairs, value) {
     var weights = {};
@@ -439,11 +440,15 @@
   }
 
   function prepareCEGState(graph, failureLabel, options) {
-    return buildCEGStateFromPrepared(prepareGraphAndLayoutData(graph, {
+    return buildCEGStateFromPrepared(createLayoutInput(graph, failureLabel, options), failureLabel);
+  }
+
+  function createLayoutInput(graph, failureLabel, options) {
+    return LayoutPreprocessing.createSeededLayoutInput(graph, {
       failureLabel: failureLabel,
       augmentationMethod: options && options.augmentationMethod ? options.augmentationMethod : null,
       currentPositions: options ? options.currentPositions : undefined
-    }), failureLabel);
+    });
   }
 
   function solveAugmentedWeightedLayout(state, weights, initOptions) {
@@ -502,8 +507,8 @@
       return state;
     }
 
-    var A = resolvePositiveOption(options.a, 1.0);
-    var R = resolveGreaterThanOption(options.r, 1.35, 1);
+    var A = CEG_CONFIG.bfsBaseWeight;
+    var R = CEG_CONFIG.bfsDepthRatio;
     var depthById = bfsDepthFromOuter(state.augmentedIds, state.adjacency, state.augmentedOuterFace);
     var weights = buildDepthWeights(state.augmentedPairs, depthById, A, R);
     var out = solveAugmentedWeightedLayout(state, weights);
@@ -533,7 +538,7 @@
       return state;
     }
 
-    var lambdaX = resolveFiniteOption(options.lambdaX, 0.5);
+    var lambdaX = CEG_CONFIG.xyLambda;
 
     var uniformWeights = buildUniformWeights(state.augmentedPairs, 1);
     var base = solveAugmentedWeightedLayout(state, uniformWeights);
@@ -616,11 +621,21 @@
   }
 
   global.PlanarVibeCEGBfs = {
-    computeCEGBfsPositions: computeCEGBfsPositions,
-    applyCEGBfsLayout: applyCEGBfsLayout
-  };
+    createLayoutInput: function (graph, options) {
+      return createLayoutInput(graph, 'CEG-bfs', options);
+    },
+	    computePositions: function (graph, layoutInput) {
+	      return computeCEGBfsPositions(graph, null, layoutInput);
+	    },
+	    applyLayout: applyCEGBfsLayout
+	  };
   global.PlanarVibeCEGXy = {
-    computeCEGXyPositions: computeCEGXyPositions,
-    applyCEGXyLayout: applyCEGXyLayout
-  };
+    createLayoutInput: function (graph, options) {
+      return createLayoutInput(graph, 'CEG-xy', options);
+    },
+	    computePositions: function (graph, layoutInput) {
+	      return computeCEGXyPositions(graph, null, layoutInput);
+	    },
+	    applyLayout: applyCEGXyLayout
+	  };
 })(window);

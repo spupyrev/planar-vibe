@@ -260,13 +260,22 @@
     });
   }
 
-  function computeTutteLayout(graph, options) {
-    return computeTutteLayoutWithPrepared(graph, LayoutPreprocessing.prepareGraphData(graph, {
+  function createLayoutInput(graph, options) {
+    var runtime = options || {};
+    return LayoutPreprocessing.createLayoutInput(graph, {
       failureLabel: 'Tutte layout',
-      augmentationMethod: options.augmentationMethod || null,
-      augmentationOptions: options.augmentationOptions || null,
-      currentPositions: options.currentPositions
-    }));
+      augmentationMethod: runtime.augmentationMethod || null,
+      augmentationOptions: runtime.augmentationOptions || null,
+      currentPositions: runtime.currentPositions
+    });
+  }
+
+  function computePositions(graph, layoutInput) {
+    return computeTutteLayoutWithPrepared(graph, layoutInput);
+  }
+
+  function computeTutteLayout(graph, options) {
+    return computePositions(graph, createLayoutInput(graph, options));
   }
 
   function buildTutteOuterPositions(prepared) {
@@ -315,12 +324,13 @@
   }
 
   global.PlanarVibeTutte = {
+    createLayoutInput: createLayoutInput,
+    computePositions: computePositions,
+    applyLayout: applyTutteLayout,
     buildTutteWeights: buildTutteWeights,
-    defaultOuterPlacementOptions: defaultOuterPlacementOptions,
-    placeOuterFaceVertices: placeOuterFaceVertices,
-    buildTutteOuterPositions: buildTutteOuterPositions,
-    computeBarycentricPositions: computeBarycentricPositions,
-    computeTutteLayout: computeTutteLayout,
-    applyTutteLayout: applyTutteLayout
-  };
+	    defaultOuterPlacementOptions: defaultOuterPlacementOptions,
+	    placeOuterFaceVertices: placeOuterFaceVertices,
+	    buildTutteOuterPositions: buildTutteOuterPositions,
+	    computeBarycentricPositions: computeBarycentricPositions
+	  };
 })(window);

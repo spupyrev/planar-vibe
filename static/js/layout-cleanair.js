@@ -124,10 +124,14 @@
   }
 
   function computeTutteSeedPositions(graph) {
-    if (!PlanarVibeTutte || typeof PlanarVibeTutte.computeTutteLayout !== 'function') {
+    if (
+      !PlanarVibeTutte ||
+      typeof PlanarVibeTutte.createLayoutInput !== 'function' ||
+      typeof PlanarVibeTutte.computePositions !== 'function'
+    ) {
       return buildLayoutError({ message: 'CleanAir initialization failed: Tutte layout is unavailable' });
     }
-    var result = PlanarVibeTutte.computeTutteLayout(graph, {});
+    var result = PlanarVibeTutte.computePositions(graph, PlanarVibeTutte.createLayoutInput(graph));
     if (!result || !result.ok || !result.positions) {
       return buildLayoutError({
         message: result && result.message
@@ -997,8 +1001,12 @@
     };
   }
 
-  async function computeCleanAirPositions(graph, options) {
-    var state = buildCleanAirState(graph, options || {});
+  function createLayoutInput(graph, options) {
+    return buildCleanAirState(graph, options || {});
+  }
+
+  async function computePositions(graph, layoutInput) {
+    var state = layoutInput;
     if (!state.ok) {
       return buildLayoutError(state);
     }
@@ -1011,10 +1019,10 @@
         boundedFaceCount: 0,
         faceAreaScore: null,
         maxRelError: 0
-      });
-    }
+	    });
+	  }
 
-    var solveResult = await runCleanAirIterations(state, state.opts);
+	    var solveResult = await runCleanAirIterations(state, state.opts);
     var continuationDiagnostics = null;
     if (solveResult.status !== 'realized' && CLEAN_AIR_CONFIG.continuationEnabled) {
       var directResult = solveResult;
@@ -1083,9 +1091,13 @@
       dummyCount: 0,
       iters: Number.isFinite(stats.sweeps) ? stats.sweeps : null
     });
-  }
+	  }
 
-  async function applyCleanAirLayout(cy, options) {
+	  async function computeCleanAirPositions(graph, options) {
+	    return computePositions(graph, createLayoutInput(graph, options));
+	  }
+
+	  async function applyCleanAirLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.currentPositions) ||
@@ -1112,8 +1124,9 @@
     });
   }
 
-  global.PlanarVibeCleanAir = {
-    computeCleanAirPositions: computeCleanAirPositions,
-    applyCleanAirLayout: applyCleanAirLayout
-  };
+	  global.PlanarVibeCleanAir = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyCleanAirLayout
+	  };
 })(window);

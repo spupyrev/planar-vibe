@@ -198,121 +198,8 @@ function loadEdgeBenchmarkModules() {
 function createVariantSpecs() {
   return [
     {
-      key: 'baseline_log_variance',
-      label: 'Baseline log-variance',
-      options: {}
-    },
-    {
-      key: 'normalized_length_l2',
-      label: 'Normalized-length L2',
-      options: {
-        edgeObjective: 'normalized-length-l2'
-      }
-    },
-    {
-      key: 'smooth_log_abs',
-      label: 'Smooth log-abs',
-      options: {
-        edgeObjective: 'smooth-log-abs'
-      }
-    },
-    {
-      key: 'soft_range',
-      label: 'Soft range',
-      options: {
-        edgeObjective: 'soft-range'
-      }
-    },
-    {
-      key: 'log_variance_plus_range',
-      label: 'Log-variance + range',
-      options: {
-        edgeObjective: 'log-variance',
-        rangeWeight: 0.25
-      }
-    },
-    {
-      key: 'log_variance_plus_range_w005',
-      label: 'Log-variance + range (w=0.05)',
-      options: {
-        edgeObjective: 'log-variance',
-        rangeWeight: 0.05
-      }
-    },
-    {
-      key: 'log_variance_plus_range_w010',
-      label: 'Log-variance + range (w=0.10)',
-      options: {
-        edgeObjective: 'log-variance',
-        rangeWeight: 0.10
-      }
-    },
-    {
-      key: 'log_variance_plus_range_w015',
-      label: 'Log-variance + range (w=0.15)',
-      options: {
-        edgeObjective: 'log-variance',
-        rangeWeight: 0.15
-      }
-    },
-    {
-      key: 'log_variance_plus_range_w020',
-      label: 'Log-variance + range (w=0.20)',
-      options: {
-        edgeObjective: 'log-variance',
-        rangeWeight: 0.20
-      }
-    },
-    {
-      key: 'log_variance_plus_log_abs',
-      label: 'Log-variance + log-abs',
-      options: {
-        edgeObjective: 'log-variance',
-        logAbsWeight: 0.5
-      }
-    },
-    {
-      key: 'log_variance_plus_log_abs_plus_range_w005',
-      label: 'Log-variance + log-abs + range (w=0.05)',
-      options: {
-        edgeObjective: 'log-variance',
-        logAbsWeight: 0.5,
-        rangeWeight: 0.05
-      }
-    },
-    {
-      key: 'log_variance_plus_log_abs_plus_range_w010',
-      label: 'Log-variance + log-abs + range (w=0.10)',
-      options: {
-        edgeObjective: 'log-variance',
-        logAbsWeight: 0.5,
-        rangeWeight: 0.10
-      }
-    },
-    {
-      key: 'normalized_length_l2_plus_range',
-      label: 'Normalized-length L2 + range',
-      options: {
-        edgeObjective: 'normalized-length-l2',
-        rangeWeight: 0.25
-      }
-    },
-    {
-      key: 'normalized_length_l2_plus_log_abs',
-      label: 'Normalized-length L2 + log-abs',
-      options: {
-        edgeObjective: 'normalized-length-l2',
-        logAbsWeight: 0.5
-      }
-    },
-    {
-      key: 'normalized_length_l2_plus_range_plus_log_abs',
-      label: 'Normalized-length L2 + range + log-abs',
-      options: {
-        edgeObjective: 'normalized-length-l2',
-        rangeWeight: 0.25,
-        logAbsWeight: 0.5
-      }
+      key: 'default',
+      label: 'Default'
     }
   ];
 }
@@ -336,11 +223,11 @@ async function runVariant(windowObj, graphName, variant) {
   const t0 = process.hrtime.bigint();
   let result;
   try {
-    result = await EdgeBalancer.computeEdgeBalancerPositions(graph, Object.assign({
+    const runtime = {
       augmentationMethod: 'outer-cycle',
-      currentPositions,
-      maxIters: 80
-    }, variant.options || {}));
+      currentPositions
+    };
+    result = await EdgeBalancer.computePositions(graph, EdgeBalancer.createLayoutInput(graph, runtime));
   } catch (err) {
     result = { ok: false, message: err && err.message ? err.message : String(err) };
   }
@@ -426,10 +313,10 @@ async function main() {
 
   const report = {
     benchmark,
-    variants: requested.map((variant) => ({ key: variant.key, label: variant.label, options: variant.options || {} })),
+    variants: requested.map((variant) => ({ key: variant.key, label: variant.label })),
     rows,
     summary: summarizeByVariant(rows),
-    versusBaseline: summarizeVsBaseline(rows, 'baseline_log_variance')
+    versusBaseline: summarizeVsBaseline(rows, 'default')
   };
 
   if (args.output) {

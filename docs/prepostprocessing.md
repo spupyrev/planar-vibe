@@ -237,7 +237,7 @@ The returned result includes:
 - the before/after axis-alignment score;
 - the tolerances used on each axis.
 
-The hybrid balancer layout runs this alignment pass automatically at the end,
+The FABalancer layout runs this alignment pass automatically at the end,
 for up to a small fixed number of passes. The UI also exposes it as a manual
 "Align to grid" operation for any current plane drawing.
 

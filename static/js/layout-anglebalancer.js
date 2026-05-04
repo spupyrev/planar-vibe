@@ -980,16 +980,25 @@
     return outerPos;
   }
 
-  async function computeAngleBalancerPositions(graph, options) {
+  function createLayoutInput(graph, options) {
     options = options || {};
-    return computeAngleBalancerPositionsFromPrepared(options, LayoutPreprocessing.prepareGraphData(graph, {
+    return LayoutPreprocessing.createLayoutInput(graph, {
       failureLabel: 'AngleBalancer layout',
       augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
       augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
         ? Object.assign({}, options.augmentationOptions)
         : null,
       currentPositions: options.currentPositions
-    }));
+    });
+  }
+
+  async function computePositions(graph, layoutInput) {
+    return computeAngleBalancerPositionsFromPrepared(null, layoutInput);
+  }
+
+  async function computeAngleBalancerPositions(graph, options) {
+    options = options || {};
+    return computeAngleBalancerPositionsFromPrepared(options, createLayoutInput(graph, options));
   }
 
   async function applyAngleBalancerLayout(cy, options) {
@@ -1029,8 +1038,9 @@
     });
   }
 
-  global.PlanarVibeAngleBalancer = {
-    computeAngleBalancerPositions: computeAngleBalancerPositions,
-    applyAngleBalancerLayout: applyAngleBalancerLayout
-  };
+	  global.PlanarVibeAngleBalancer = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyAngleBalancerLayout
+	  };
 })(window);

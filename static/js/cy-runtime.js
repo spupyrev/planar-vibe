@@ -335,7 +335,7 @@
       livePositions = event.positions || livePositions;
       rendererState.livePositions = livePositions;
       if (typeof opts.onIteration === 'function') {
-        opts.onIteration(event);
+        await opts.onIteration(event);
       }
       await renderer.onProgress(event, { forceYield: !!opts.onIteration });
     }

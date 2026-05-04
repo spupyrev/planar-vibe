@@ -20,10 +20,19 @@
   var filterPositions = GeometryUtils.filterPositionMap;
   var findOuterFaceIndex = global.PlanarGraphUtils.findOuterFaceIndex;
   var polygonAreaAbs = GeometryUtils.polygonAreaAbs;
-  var resolveFloatOption = GraphUtils.resolveFloatOption;
-  var resolveFunctionOption = GraphUtils.resolveFunctionOption;
-  var resolveIntOption = GraphUtils.resolveIntOption;
-  var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
+  var REWEIGHT_CONFIG = {
+    maxOuterIters: 8,
+    pressureStep: 0.16,
+    pressureClamp: 1.20,
+    pressureBeta: 0.18,
+    pressureDeltaClamp: 0.75,
+    scaleMin: 0.25,
+    scaleMax: 10.0,
+    pressureScaleMin: 1.0,
+    pressureScaleMax: 1.25,
+    minItersBeforeStop: 8,
+    stableIterLimit: 4
+  };
 
   function solveWeighted(prepared, weights) {
     return Tutte.computeBarycentricPositions(prepared.augmentedGraph, prepared.outerFace, {
@@ -199,31 +208,31 @@
     };
   }
 
-  function fillReweightSettings(options) {
-    var scaleMin = resolveFloatOption(options.scaleMin, 0.25, 0.01);
-    var pressureScaleMin = resolveFloatOption(options.pressureScaleMin, 1.0, 0.01);
-    options.augmentationMethod = options.augmentationMethod || null;
-    options.maxOuterIters = resolveIntOption(options.maxOuterIters, 8, 1);
-    options.pressureStep = resolveFloatOption(options.pressureStep, 0.16, 0);
-    options.pressureClamp = resolveFloatOption(options.pressureClamp, 1.20, 0.05);
-    options.pressureBeta = resolveFloatOption(options.pressureBeta, 0.18, 0);
-    options.pressureDeltaClamp = resolveFloatOption(options.pressureDeltaClamp, 0.75, 0.05);
-    options.scaleMin = scaleMin;
-    options.scaleMax = resolveFloatOption(options.scaleMax, 10.0, scaleMin);
-    options.pressureScaleMin = pressureScaleMin;
-    options.pressureScaleMax = resolveFloatOption(options.pressureScaleMax, 1.25, pressureScaleMin);
-    options.minItersBeforeStop = resolveIntOption(options.minItersBeforeStop, 8, 1);
-    options.stableIterLimit = resolveIntOption(options.stableIterLimit, 4, 1);
-    options.movementStopTol = resolveNonNegativeOption(options.movementStopTol, null);
-    options.avgMovementStopTol = resolveNonNegativeOption(options.avgMovementStopTol, null);
-    options.onIteration = resolveFunctionOption(options.onIteration, null);
+  function buildReweightSettings(options) {
+    var raw = options || {};
+    return {
+      augmentationMethod: raw.augmentationMethod || null,
+      currentPositions: raw.currentPositions,
+      onIteration: typeof raw.onIteration === 'function' ? raw.onIteration : null,
+      maxOuterIters: REWEIGHT_CONFIG.maxOuterIters,
+      pressureStep: REWEIGHT_CONFIG.pressureStep,
+      pressureClamp: REWEIGHT_CONFIG.pressureClamp,
+      pressureBeta: REWEIGHT_CONFIG.pressureBeta,
+      pressureDeltaClamp: REWEIGHT_CONFIG.pressureDeltaClamp,
+      scaleMin: REWEIGHT_CONFIG.scaleMin,
+      scaleMax: REWEIGHT_CONFIG.scaleMax,
+      pressureScaleMin: REWEIGHT_CONFIG.pressureScaleMin,
+      pressureScaleMax: REWEIGHT_CONFIG.pressureScaleMax,
+      minItersBeforeStop: REWEIGHT_CONFIG.minItersBeforeStop,
+      stableIterLimit: REWEIGHT_CONFIG.stableIterLimit
+    };
   }
 
   function buildReweightStateFromPrepared(context, options) {
-    fillReweightSettings(options);
+    var settings = buildReweightSettings(options);
     if (!context || !context.ok) {
       return buildLayoutError(context || {
-        message: 'ReweightTutte setup failed',
+        message: 'Reweight setup failed',
         graph: context && context.graph ? context.graph : null
       });
     }
@@ -268,15 +277,15 @@
     var movableVertices = collectMovableVertices(augmented.graph.nodeIds, outer);
     var movementScale = computeDrawingDiameter(augmented.graph.nodeIds, currentPos);
     var movementTracker = createMovementConvergenceTracker({
-      minItersBeforeStop: options.minItersBeforeStop,
-      stableIterLimit: options.stableIterLimit,
-      maxMoveTol: options.movementStopTol !== null ? options.movementStopTol : 1e-4 * movementScale,
-      avgMoveTol: options.avgMovementStopTol !== null ? options.avgMovementStopTol : 2e-5 * movementScale
+      minItersBeforeStop: settings.minItersBeforeStop,
+      stableIterLimit: settings.stableIterLimit,
+      maxMoveTol: 1e-4 * movementScale,
+      avgMoveTol: 2e-5 * movementScale
     });
 
     return {
       ok: true,
-      opts: options,
+      opts: settings,
       graph: g,
       outerFace: outer,
       augmented: augmented,
@@ -380,41 +389,51 @@
     });
   }
 
-  async function computeReweightTuttePositions(graph, options) {
-    var prepared = buildReweightStateFromPrepared(LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'ReweightTutte',
-      augmentationMethod: options.augmentationMethod,
-      currentPositions: options.currentPositions
-    }), options);
+  function createLayoutInput(graph, options) {
+    var settings = buildReweightSettings(options);
+    return LayoutPreprocessing.createSeededLayoutInput(graph, {
+      failureLabel: 'Reweight',
+      augmentationMethod: settings.augmentationMethod,
+      currentPositions: settings.currentPositions
+    });
+  }
+
+  async function computePositions(graph, layoutInput) {
+    return computeReweightPositionsFromPrepared(graph, null, layoutInput);
+  }
+
+  async function computeReweightPositions(graph, options) {
+    var settings = buildReweightSettings(options);
+    var prepared = buildReweightStateFromPrepared(createLayoutInput(graph, settings), settings);
     if (!prepared || !prepared.ok) {
-      return buildLayoutError(prepared || { message: 'ReweightTutte setup failed' });
+      return buildLayoutError(prepared || { message: 'Reweight setup failed' });
     }
     return runReweightIterations(prepared, prepared.opts);
   }
 
-  async function computeReweightTuttePositionsFromPrepared(_graph, options, prepared) {
+  async function computeReweightPositionsFromPrepared(_graph, options, prepared) {
     var opts = options || {};
     var state = buildReweightStateFromPrepared(prepared, opts);
     if (!state || !state.ok) {
-      return buildLayoutError(state || { message: 'ReweightTutte setup failed' });
+      return buildLayoutError(state || { message: 'Reweight setup failed' });
     }
     return runReweightIterations(state, state.opts);
   }
 
-  async function applyReweightTutteLayout(cy, options) {
+  async function applyReweightLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
-      prepareFailureLabel: 'ReweightTutte layout',
+      prepareFailureLabel: 'Reweight layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
-      computePositions: computeReweightTuttePositionsFromPrepared,
+      computePositions: computeReweightPositionsFromPrepared,
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
           ok: true,
           stopReason: result.stopReason,
-          message: buildLayoutStatusMessage('ReweightTutte', {
+          message: buildLayoutStatusMessage('Reweight', {
             outerFaceVertexCount: result.outerFace.length,
             dummyCount: result.augmented.dummyCount,
             iters: result.iters,
@@ -432,12 +451,13 @@
           )
         };
       },
-      failureMessage: 'ReweightTutte failed'
+      failureMessage: 'Reweight failed'
     });
   }
 
-  global.PlanarVibeReweightTutte = {
-    computeReweightTuttePositions: computeReweightTuttePositions,
-    applyReweightTutteLayout: applyReweightTutteLayout
-  };
+	  global.PlanarVibeReweight = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyReweightLayout
+	  };
 })(window);

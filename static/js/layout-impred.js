@@ -13,12 +13,26 @@
   var createMovementConvergenceTracker = GraphUtils.createMovementConvergenceTracker;
   var copyPositions = GeometryUtils.copyPositionMap;
   var pointOnSegmentInterior = GeometryUtils.pointOnSegmentInterior;
-  var resolveFiniteOption = GraphUtils.resolveFiniteOption;
-  var resolveFloatOption = GraphUtils.resolveFloatOption;
-  var resolveIntOption = GraphUtils.resolveIntOption;
-  var resolveNonNegativeOption = GraphUtils.resolveNonNegativeOption;
-  var resolvePositiveOption = GraphUtils.resolvePositiveOption;
   var segmentsIntersectOrTouch = GeometryUtils.segmentsIntersectOrTouch;
+  var IMPRED_CONFIG = {
+    maxIters: 600,
+    maxMoveFactor: 3,
+    minMaxMoveFactor: 0.05,
+    sectorCount: 8,
+    forceScale: 0.04,
+    nodeRepulsion: 1.0,
+    edgeAttraction: 1.0,
+    nodeEdgeRepulsion: 0.75,
+    nearbyFactor: 6.0,
+    momentumBeta: 0.78,
+    rejectedVelocityDamp: 0.25,
+    rollbackVelocityDamp: 0.0,
+    fullRollbackVelocityDamp: 0.5,
+    minItersBeforeStop: 60,
+    stableIterLimit: 16,
+    movementStopTolFactor: 0.008,
+    avgMovementStopTolFactor: 0.0015
+  };
 
   function estimateDelta(edgePairs, posById) {
     var sum = 0;
@@ -384,48 +398,59 @@
     return runImPrEdIterations(g, options, seed);
   }
 
+  function createLayoutInput(g, options) {
+    var runtime = options || {};
+    return LayoutPreprocessing.createLayoutInput(g, {
+      failureLabel: 'ImPrEd layout',
+      augmentationMethod: runtime.augmentationMethod || null,
+      currentPositions: runtime.currentPositions || null
+    });
+  }
+
+  async function computePositions(g, layoutInput) {
+    return computeImPrEdPositionsFromPrepared(g, null, layoutInput);
+  }
+
   async function computeImPrEdPositions(g, options) {
+    var runtime = options || {};
     if (!g.nodeIds || g.nodeIds.length < 3) {
       return buildLayoutError({ message: 'ImPrEd requires at least 3 vertices', graph: g });
     }
 
-    var prepared = LayoutPreprocessing.prepareGraphData(g, {
-      failureLabel: 'ImPrEd layout',
-      augmentationMethod: options.augmentationMethod || null,
-      currentPositions: options.currentPositions || null
-    });
+    var prepared = createLayoutInput(g, runtime);
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'ImPrEd initialization failed', graph: g });
     }
 
-    return computeImPrEdPositionsFromPrepared(g, options, prepared);
+    return computeImPrEdPositionsFromPrepared(g, runtime, prepared);
   }
 
   async function runImPrEdIterations(g, options, seed) {
+    var runtime = options || {};
     var posById = copyPositions(seed.posById || {});
     var fixedOuter = new Set(seed.outerFace.map(String));
-    var delta = resolvePositiveOption(options.delta, estimateDelta(g.edgePairs, posById));
-    var maxIters = resolveIntOption(options.maxIters, 600, 1);
-    var startMaxMove = resolvePositiveOption(options.maxMove, 3 * delta);
-    var minMaxMove = resolveNonNegativeOption(options.minMaxMove, 0.05 * delta);
-    var sectorCount = 8;
-    var forceScale = resolvePositiveOption(options.forceScale, 0.04);
-    var cNodeRep = resolveFiniteOption(options.cNodeRep, 1.0);
-    var cEdgeAttr = resolveFiniteOption(options.cEdgeAttr, 1.0);
-    var cNodeEdgeRep = resolveFiniteOption(options.cNodeEdgeRep, 0.75);
-    var nearbyFactor = resolvePositiveOption(options.nearbyFactor, 6.0);
-    var momentumBeta = resolveFloatOption(options.momentumBeta, 0.78, 0, 0.98);
-    var rejectedVelocityDamp = resolveFloatOption(options.rejectedVelocityDamp, 0.25, 0, 1);
-    var rollbackVelocityDamp = resolveFloatOption(options.rollbackVelocityDamp, 0.0, 0, 1);
-    var fullRollbackVelocityDamp = resolveFloatOption(options.fullRollbackVelocityDamp, 0.5, 0, 1);
+    var delta = estimateDelta(g.edgePairs, posById);
+    var maxIters = IMPRED_CONFIG.maxIters;
+    var startMaxMove = IMPRED_CONFIG.maxMoveFactor * delta;
+    var minMaxMove = IMPRED_CONFIG.minMaxMoveFactor * delta;
+    var sectorCount = IMPRED_CONFIG.sectorCount;
+    var forceScale = IMPRED_CONFIG.forceScale;
+    var cNodeRep = IMPRED_CONFIG.nodeRepulsion;
+    var cEdgeAttr = IMPRED_CONFIG.edgeAttraction;
+    var cNodeEdgeRep = IMPRED_CONFIG.nodeEdgeRepulsion;
+    var nearbyFactor = IMPRED_CONFIG.nearbyFactor;
+    var momentumBeta = IMPRED_CONFIG.momentumBeta;
+    var rejectedVelocityDamp = IMPRED_CONFIG.rejectedVelocityDamp;
+    var rollbackVelocityDamp = IMPRED_CONFIG.rollbackVelocityDamp;
+    var fullRollbackVelocityDamp = IMPRED_CONFIG.fullRollbackVelocityDamp;
     var iter;
     var stopReason = 'max-iters';
     var lastStats = { movedVertices: 0, totalMove: 0, avgMove: 0, maxMove: 0 };
     var movementTracker = createMovementConvergenceTracker({
-      minItersBeforeStop: resolveIntOption(options.minItersBeforeStop, 60, 1),
-      stableIterLimit: resolveIntOption(options.stableIterLimit, 16, 1),
-      maxMoveTol: resolveNonNegativeOption(options.movementStopTol, 0.008 * delta),
-      avgMoveTol: resolveNonNegativeOption(options.avgMovementStopTol, 0.0015 * delta)
+      minItersBeforeStop: IMPRED_CONFIG.minItersBeforeStop,
+      stableIterLimit: IMPRED_CONFIG.stableIterLimit,
+      maxMoveTol: IMPRED_CONFIG.movementStopTolFactor * delta,
+      avgMoveTol: IMPRED_CONFIG.avgMovementStopTolFactor * delta
     });
     var velocityById = {};
     for (iter = 0; iter < g.nodeIds.length; iter += 1) {
@@ -539,8 +564,8 @@
         avgMove: lastStats.avgMove
       }, iter + 1);
 
-      if (typeof options.onIteration === 'function') {
-        await options.onIteration({
+      if (typeof runtime.onIteration === 'function') {
+        await runtime.onIteration({
           iter: iter + 1,
           maxIters: maxIters,
           positions: posById,
@@ -612,9 +637,9 @@
   }
 
   global.PlanarVibeImPrEd = {
-    buildImPrEdSeedFromPrepared: buildImPrEdSeedFromPrepared,
-    computeImPrEdPositions: computeImPrEdPositions,
-    computeImPrEdPositionsFromPrepared: computeImPrEdPositionsFromPrepared,
-    applyImPrEdLayout: applyImPrEdLayout
-  };
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyImPrEdLayout,
+	    buildImPrEdSeedFromPrepared: buildImPrEdSeedFromPrepared
+	  };
 })(window);

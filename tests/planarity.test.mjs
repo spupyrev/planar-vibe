@@ -98,7 +98,7 @@ function loadBrowserModules() {
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
-    'static/js/layout-hybridbalancer.js',
+    'static/js/layout-fabalancer.js',
     'static/js/layout-ceg.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -132,12 +132,12 @@ const AreaGrad = modules.PlanarVibeAreaGrad;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
 const AngleBalancer = modules.PlanarVibeAngleBalancer;
-const Hybrid = modules.PlanarVibeHybrid;
+const FABalancer = modules.PlanarVibeFABalancer;
 const ImPrEd = modules.PlanarVibeImPrEd;
 const FPP = modules.PlanarVibeFPP;
 const Schnyder = modules.PlanarVibeSchnyder;
 const P3T = modules.PlanarVibeP3T;
-const Reweight = modules.PlanarVibeReweightTutte;
+const Reweight = modules.PlanarVibeReweight;
 const ForceDir = modules.PlanarVibeForceDir;
 const CEGBfs = modules.PlanarVibeCEGBfs;
 const Random = modules.PlanarVibeRandom;
@@ -235,6 +235,11 @@ function buildMockCy(nodeIds, edgePairs) {
       return 620;
     }
   };
+}
+
+function runStrictCompute(module, graph, runtime) {
+  const layoutInput = module.createLayoutInput(graph, runtime);
+  return module.computePositions(graph, layoutInput);
 }
 
 function orientation(a, b, c) {
@@ -501,7 +506,7 @@ test('wheel graph W7 is planar and not planar 3-tree', () => {
 test('planar augmentation triangulates non-triangular planar faces', () => {
   const text = Generator.cycleGraph(8);
   const graph = parseEdgeListText(text);
-  const result = FPP.computeFPPPositions(graph);
+  const result = runStrictCompute(FPP, graph);
   const prepared = result.prepared;
 
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed');
@@ -918,7 +923,7 @@ test('AngleBalancer uses graph preparation in the runtime', async () => {
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await AngleBalancer.applyAngleBalancerLayout(cy, {});
+    const result = await AngleBalancer.applyLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected AngleBalancer to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph');
@@ -928,7 +933,7 @@ test('AngleBalancer uses graph preparation in the runtime', async () => {
   }
 });
 
-test('Hybrid uses graph preparation in the runtime', async () => {
+test('FABalancer uses graph preparation in the runtime', async () => {
   const originalRunLayout = CyRuntime.runLayout;
   const cy = buildMockCy(['a', 'b', 'c'], [['a', 'b'], ['b', 'c'], ['c', 'a']]);
   let capturedSpec = null;
@@ -937,11 +942,11 @@ test('Hybrid uses graph preparation in the runtime', async () => {
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await Hybrid.applyHybridLayout(cy, {});
+    const result = await FABalancer.applyLayout(cy, {});
     assert.equal(result && result.ok, true);
-    assert.ok(capturedSpec, 'expected Hybrid to call CyRuntime.runLayout');
+    assert.ok(capturedSpec, 'expected FABalancer to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph');
-    assert.equal(capturedSpec.prepareFailureLabel, 'Hybrid layout');
+    assert.equal(capturedSpec.prepareFailureLabel, 'FABalancer layout');
   } finally {
     CyRuntime.runLayout = originalRunLayout;
   }
@@ -992,7 +997,7 @@ test('Random emits one explicit 1/1 progress step', async () => {
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
   const events = [];
 
-  const result = await Random.applyRandomLayout(cy, {
+  const result = await Random.applyLayout(cy, {
     onIteration: function (progress) {
       events.push(progress);
     }
@@ -1079,7 +1084,7 @@ test('canonical ordering works on 10 random planar 3-trees (100 vertices)', () =
   for (let seed = 1; seed <= 10; seed += 1) {
     const text = Generator.maximalPlanar3Tree(100 + seed);
     const graph = parseEdgeListText(text);
-    const result = FPP.computeFPPPositions(graph);
+    const result = runStrictCompute(FPP, graph);
     const prepared = result.prepared;
     const canonical = result.canonical;
     assert.equal(result.ok, true, `FPP compute failed for seed=${seed}: ${result.message || result.reason || ''}`);
@@ -1097,7 +1102,7 @@ test('canonical ordering works on 10 random planar 3-trees (100 vertices)', () =
 test('canonical ordering works on sample planar3tree10', () => {
   const text = Generator.getSample('planar3tree10');
   const graph = parseEdgeListText(text);
-  const result = FPP.computeFPPPositions(graph);
+  const result = runStrictCompute(FPP, graph);
   const prepared = result.prepared;
   const canonical = result.canonical;
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on planar3tree10');
@@ -1111,7 +1116,7 @@ test('canonical ordering works on 10 random small planar 3-trees', () => {
   for (let seed = 1; seed <= 10; seed += 1) {
     const text = Generator.maximalPlanar3Tree(10 + seed);
     const graph = parseEdgeListText(text);
-    const result = FPP.computeFPPPositions(graph);
+    const result = runStrictCompute(FPP, graph);
     const prepared = result.prepared;
     const canonical = result.canonical;
     assert.equal(result.ok, true, `FPP compute failed for small seed=${seed}: ${result.message || result.reason || ''}`);
@@ -1133,7 +1138,7 @@ test('canonical ordering works on small triangulated planar non-3-tree (octahedr
   const graph = parseEdgeListText(text);
   assert.equal(Planarity.isPlanar3Tree(graph), false);
 
-  const result = FPP.computeFPPPositions(graph);
+  const result = runStrictCompute(FPP, graph);
   const prepared = result.prepared;
   const canonical = result.canonical;
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on octahedron');
@@ -1167,7 +1172,7 @@ test('triangulateByFaceStellation triangulates embeddings with non-simple faces'
 test('canonical ordering works on random planar non-3-tree graph', () => {
   const text = Generator.planarStellationGraph(80, 10, 42);
   const graph = parseEdgeListText(text);
-  const result = FPP.computeFPPPositions(graph);
+  const result = runStrictCompute(FPP, graph);
   const prepared = result.prepared;
   const canonical = result.canonical;
   assert.equal(result.ok, true, result.message || result.reason || 'FPP compute failed on random non-3-tree');
@@ -1177,17 +1182,18 @@ test('canonical ordering works on random planar non-3-tree graph', () => {
   assert.equal(new Set(canonical.order).size, canonical.order.length);
 });
 
-test('ReweightTutte keeps augmented outer-face coordinates fixed across iterations', async () => {
+test('Reweight keeps augmented outer-face coordinates fixed across iterations', async () => {
   const text = Generator.planarStellationGraph(40, 8, 7);
   const graph = parseEdgeListText(text);
   const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-    failureLabel: 'ReweightTutte'
+    failureLabel: 'Reweight'
   });
-  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'ReweightTutte setup failed');
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'Reweight setup failed');
 
   const outer = prepared.augmentedOuterFace.slice();
   const snapshots = [];
-  const result = await Reweight.computeReweightTuttePositions(graph, {
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const result = await Reweight.applyLayout(cy, {
     onIteration(step) {
       assert.deepEqual(step.debug.outerFace, outer);
       const snap = {};
@@ -1200,7 +1206,6 @@ test('ReweightTutte keeps augmented outer-face coordinates fixed across iteratio
   });
 
   assert.equal(result.ok, true, result.message || 'Reweight failed');
-  assert.deepEqual(result.outerFace, outer);
   assert.ok(snapshots.length >= 2, 'expected multiple iterations');
 
   const first = snapshots[0];
@@ -1214,19 +1219,19 @@ test('ReweightTutte keeps augmented outer-face coordinates fixed across iteratio
   }
 });
 
-test('ReweightTutte preserves the shared augmented outer-face seed coordinates', async () => {
+test('Reweight preserves the shared augmented outer-face seed coordinates', async () => {
   const text = Generator.planarStellationGraph(40, 8, 7);
   const graph = parseEdgeListText(text);
   const prepared = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-    failureLabel: 'ReweightTutte'
+    failureLabel: 'Reweight'
   });
-  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'ReweightTutte setup failed');
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'Reweight setup failed');
 
   const outer = prepared.augmentedOuterFace.slice();
-  const reweight = await Reweight.computeReweightTuttePositions(graph, {});
+  const reweight = await runStrictCompute(Reweight, graph);
   assert.equal(reweight.ok, true, reweight.message || 'Reweight failed');
   assert.deepEqual(reweight.outerFace, outer);
-  assert.ok(reweight.debugPositions, 'expected ReweightTutte to expose augmented coordinates via debugPositions');
+  assert.ok(reweight.debugPositions, 'expected Reweight to expose augmented coordinates via debugPositions');
 
   for (const v of outer) {
     const seedPos = prepared.posById[v];
@@ -1245,8 +1250,8 @@ test('FaceBalancer awaits async iteration callbacks sequentially', async () => {
   let maxActiveCallbacks = 0;
   let callbackCount = 0;
 
-  const result = await FaceBalancer.computeFaceBalancerPositions(graph, {
-    maxIters: 5,
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const result = await FaceBalancer.applyLayout(cy, {
     onIteration: async function () {
       activeCallbacks += 1;
       callbackCount += 1;
@@ -1277,9 +1282,7 @@ test('AngleBalancer keeps augmented barrier coordinates available on sample1', a
   for (const id of graph.nodeIds) {
     seedPositions[String(id)] = prepared.posById[String(id)];
   }
-  const result = await AngleBalancer.computeAngleBalancerPositions(graph, {
-    currentPositions
-  });
+  const result = await runStrictCompute(AngleBalancer, graph, { currentPositions });
   const finalScore = Metrics.computeAngularResolutionScore(graph, result.positions);
 
   assert.equal(result && result.ok, true, result && (result.message || result.reason || 'AngleBalancer failed on sample1'));
@@ -1298,8 +1301,8 @@ test('EdgeBalancer awaits async iteration callbacks sequentially', async () => {
   let maxActiveCallbacks = 0;
   let callbackCount = 0;
 
-  const result = await EdgeBalancer.computeEdgeBalancerPositions(graph, {
-    maxIters: 5,
+  const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
+  const result = await EdgeBalancer.applyLayout(cy, {
     onIteration: async function () {
       activeCallbacks += 1;
       callbackCount += 1;
@@ -1322,7 +1325,7 @@ test('Tutte rejects graphs with fewer than 3 vertices', async () => {
     edgePairs: [['a', 'b']]
   };
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
-  const result = await Tutte.applyTutteLayout(cy, {});
+  const result = await Tutte.applyLayout(cy, {});
   assert.equal(result.ok, false);
   assert.match(String(result.message || ''), /at least 3 vertices/i);
 });
@@ -1336,7 +1339,7 @@ test('Tutte uses graph preparation in the runtime', async () => {
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await Tutte.applyTutteLayout(cy, {});
+    const result = await Tutte.applyLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected Tutte to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph');
@@ -1355,7 +1358,7 @@ test('CEG-bfs uses graph+layout preparation in the runtime', async () => {
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await CEGBfs.applyCEGBfsLayout(cy, {});
+    const result = await CEGBfs.applyLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected CEG-bfs to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph+layout');
@@ -1374,7 +1377,7 @@ test('Schnyder uses graph preparation in the runtime', async () => {
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await Schnyder.applySchnyderLayout(cy, {});
+    const result = await Schnyder.applyLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected Schnyder to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph');
@@ -1393,7 +1396,7 @@ test('ImPrEd uses graph preparation in the runtime', async () => {
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await ImPrEd.applyImPrEdLayout(cy, {});
+    const result = await ImPrEd.applyLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected ImPrEd to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph');
@@ -1412,7 +1415,7 @@ test('FPP uses graph preparation with outer-face triangulation in the runtime', 
     return Promise.resolve({ ok: true, message: 'ok' });
   };
   try {
-    const result = await FPP.applyFPPLayout(cy, {});
+    const result = await FPP.applyLayout(cy, {});
     assert.equal(result && result.ok, true);
     assert.ok(capturedSpec, 'expected FPP to call CyRuntime.runLayout');
     assert.equal(capturedSpec.prepareMode, 'graph');
@@ -1451,6 +1454,6 @@ test('Tutte uses the common outer face and succeeds on grid2x10 after augmentati
 
   const cy = buildMockCy(graph.nodeIds, graph.edgePairs);
 
-  const result = await Tutte.applyTutteLayout(cy, {});
+  const result = await Tutte.applyLayout(cy, {});
   assert.equal(result.ok, true, result.message || 'Tutte should succeed on grid2x10 after augmentation');
 });

@@ -175,7 +175,6 @@
 
     function sharedLayoutMethodOptions(layoutName, overrides) {
       var key = String(layoutName || '').toLowerCase();
-      if (key === 'reweight') key = 'reweighttutte';
       if (key === 'ceg_bfs') key = 'ceg-bfs';
       if (key === 'ceg_xy') key = 'ceg-xy';
       var base = {};
@@ -185,11 +184,12 @@
           key === 'facebalancer' ||
           key === 'edgebalancer' ||
           key === 'anglebalancer' ||
-          key === 'hybrid' ||
           key === 'fabalancer' ||
-          key === 'reweighttutte' ||
+          key === 'reweight' ||
           key === 'forcedir' ||
-          key === 'impred') {
+          key === 'impred' ||
+          key === 'gpt' ||
+          key === 'claude') {
         base = {};
       }
       var mergedOverrides = Object.assign(
@@ -910,6 +910,7 @@
       clearFaceAreaPlot(text);
       clearAngleResolutionPlot(text);
       clearEdgeMetrics();
+      global.$('#stats-overall-score').text('--');
       global.$('#stats-spacing-uniformity').text('--');
       global.$('#stats-axis-alignment').text('--');
       setAlignEnabled(false);
@@ -1081,10 +1082,80 @@
       renderAngleResolutionPlot(result.values);
     }
 
+    function numericMetricValue(result, key) {
+      if (!result || !result.ok) {
+        return null;
+      }
+      if (key === 'edgeRatio') {
+        return Number.isFinite(result.ratio) ? result.ratio : null;
+      }
+      if (key === 'face') {
+        return Number.isFinite(result.quality) ? result.quality : null;
+      }
+      return Number.isFinite(result.score) ? result.score : null;
+    }
+
+    function setOverallScoreFromValues(values) {
+      if (!Array.isArray(values) || values.length !== 10) {
+        global.$('#stats-overall-score').text('--');
+        return;
+      }
+      var total = 0;
+      for (var i = 0; i < values.length; i += 1) {
+        if (!Number.isFinite(values[i])) {
+          global.$('#stats-overall-score').text('--');
+          return;
+        }
+        total += values[i];
+      }
+      global.$('#stats-overall-score').text((total / values.length).toFixed(3));
+    }
+
+    function updateOverallScore(graph, nodeIds, edgePairs, posById) {
+      var metrics = global.PlanarVibeMetrics;
+      if (!metrics ||
+          !global.GeometryUtils ||
+          !global.PlanarGraphUtils ||
+          typeof global.GeometryUtils.hasPositionCrossings !== 'function' ||
+          typeof global.PlanarGraphUtils.extractEmbeddingFromPositions !== 'function' ||
+          typeof metrics.computeAngularResolutionScore !== 'function' ||
+          typeof metrics.computeAspectRatioScore !== 'function' ||
+          typeof metrics.computeConvexityScore !== 'function' ||
+          typeof metrics.computeEdgeLengthDeviationScore !== 'function' ||
+          typeof metrics.computeEdgeLengthRatio !== 'function' ||
+          typeof metrics.computeEdgeOrthogonalityScore !== 'function' ||
+          typeof metrics.computeUniformFaceAreaScore !== 'function' ||
+          typeof metrics.computeNodeUniformityScore !== 'function' ||
+          typeof metrics.computeAxisAlignmentScore !== 'function' ||
+          typeof metrics.computeSpacingUniformityScore !== 'function') {
+        global.$('#stats-overall-score').text('--');
+        return;
+      }
+      if (global.GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
+        global.$('#stats-overall-score').text('--');
+        return;
+      }
+      var embedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
+      var values = [
+        numericMetricValue(metrics.computeAngularResolutionScore(graph, posById), 'angularResolution'),
+        numericMetricValue(metrics.computeAspectRatioScore(nodeIds, posById), 'aspectRatio'),
+        numericMetricValue(metrics.computeConvexityScore(nodeIds, edgePairs, posById, embedding), 'convexity'),
+        numericMetricValue(metrics.computeEdgeLengthDeviationScore(edgePairs, posById), 'edgeLengthDeviation'),
+        numericMetricValue(metrics.computeEdgeLengthRatio(edgePairs, posById), 'edgeRatio'),
+        numericMetricValue(metrics.computeEdgeOrthogonalityScore(edgePairs, posById), 'edgeOrthogonality'),
+        numericMetricValue(metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding), 'face'),
+        numericMetricValue(metrics.computeNodeUniformityScore(nodeIds, posById), 'nodeUniformity'),
+        numericMetricValue(metrics.computeAxisAlignmentScore(nodeIds, posById), 'axisAlignment'),
+        numericMetricValue(metrics.computeSpacingUniformityScore(nodeIds, posById), 'spacingUniformity')
+      ];
+      setOverallScoreFromValues(values);
+    }
+
     function updateFaceAreaPlot() {
       if (!currentParsed || !currentParsed.elements) {
         clearFaceAreaPlot('No graph');
         clearAngleResolutionPlot('No graph');
+        global.$('#stats-overall-score').text('--');
         setAlignEnabled(false);
         return;
       }
@@ -1094,6 +1165,7 @@
       if (!nodeIds.length) {
         clearFaceAreaPlot('No graph');
         clearAngleResolutionPlot('No graph');
+        global.$('#stats-overall-score').text('--');
         setAlignEnabled(false);
         return;
       }
@@ -1102,6 +1174,7 @@
         clearFaceAreaPlot('Metrics unavailable');
         clearAngleResolutionPlot('Metrics unavailable');
         setPlaneStat(null);
+        global.$('#stats-overall-score').text('--');
         setAlignEnabled(false);
         return;
       }
@@ -1113,11 +1186,13 @@
       if (hasCrossings) {
         clearFaceAreaPlot('Drawing is not plane');
         setPlaneStat(false);
+        global.$('#stats-overall-score').text('--');
         return;
       }
 
       if (!global.PlanarVibeMetrics) {
         clearFaceAreaPlot('Metrics unavailable');
+        global.$('#stats-overall-score').text('--');
         setAlignEnabled(false);
         return;
       }
@@ -1131,6 +1206,7 @@
       }
       if (!result) {
         clearFaceAreaPlot('Metrics unavailable');
+        global.$('#stats-overall-score').text('--');
         setAlignEnabled(false);
         return;
       }
@@ -1139,6 +1215,7 @@
       }
       if (!result.ok) {
         clearFaceAreaPlot(result.reason || 'No data');
+        global.$('#stats-overall-score').text('--');
         return;
       }
       renderFaceAreaPlot(result.values, result.idealValues || result.ideal, !hasCrossings);
@@ -1153,6 +1230,7 @@
     function updateEdgeLengthPlot() {
       if (!currentParsed || !currentParsed.elements) {
         clearEdgeMetrics();
+        global.$('#stats-overall-score').text('--');
         global.$('#stats-spacing-uniformity').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
@@ -1163,11 +1241,13 @@
       var posById = getCurrentPositions();
       if (!nodeIds.length) {
         clearEdgeMetrics();
+        global.$('#stats-overall-score').text('--');
         global.$('#stats-spacing-uniformity').text('--');
         global.$('#stats-axis-alignment').text('--');
         setAlignEnabled(false);
         return;
       }
+      var graph = global.GraphUtils.createGraph(nodeIds, edgePairs);
       updateEdgeLengthRatio(edgePairs, posById);
       updateEdgeLengthDeviation(edgePairs, posById);
       updateEdgeOrthogonality(edgePairs, posById);
@@ -1175,6 +1255,7 @@
       updateNodeUniformity(nodeIds, posById);
       updateSpacingUniformity(nodeIds, posById);
       updateAxisAlignment(nodeIds, posById);
+      updateOverallScore(graph, nodeIds, edgePairs, posById);
     }
 
     function updateEdgeLengthRatio(edgePairs, posById) {
@@ -1671,8 +1752,8 @@
       if (currentParsed && currentParsed.elements) {
         cy.add(currentParsed.elements);
         if (!global.CyRuntime.restorePositionsToCy(cy, currentPositionsCache)) {
-          if (global.PlanarVibeRandom && typeof global.PlanarVibeRandom.applyRandomLayout === 'function') {
-            global.PlanarVibeRandom.applyRandomLayout(cy, {});
+          if (global.PlanarVibeRandom && typeof global.PlanarVibeRandom.applyLayout === 'function') {
+            global.PlanarVibeRandom.applyLayout(cy, {});
           }
           saveViewportState(global.CyRuntime.captureViewportFromCy(cy));
         } else if (!global.CyRuntime.applyViewportToCy(cy, savedViewport)) {
@@ -1697,28 +1778,35 @@
       global.$('#stat-is-planar-3-tree').prop('checked', !!s.isPlanar3Tree).prop('disabled', true);
     }
 
-    function setLayoutEnabled(layoutName, isEnabled) {
-      var $btn = global.$('.layout-btn[data-layout="' + layoutName + '"]');
-      var isAvailable = unavailableLayoutMessages[layoutName] === undefined;
-      $btn.prop('disabled', !isEnabled || !isAvailable);
-      if (!isEnabled || !isAvailable) {
-        $btn.removeClass('is-active');
-      }
-    }
+	    function setLayoutEnabled(layoutName, isEnabled) {
+	      var $btn = global.$('.layout-btn[data-layout="' + layoutName + '"]');
+	      var isAvailable = unavailableLayoutMessages[layoutName] === undefined;
+	      setLayoutButtonDisabled($btn, !isEnabled || !isAvailable);
+	      if (!isEnabled || !isAvailable) {
+	        $btn.removeClass('is-active');
+	      }
+	    }
 
-    function syncUnavailableLayoutButtons() {
-      global.$('.layout-btn').each(function () {
-        var $btn = global.$(this);
-        var layoutName = String($btn.data('layout') || '');
+	    function setLayoutButtonDisabled($btn, isDisabled) {
+	      $btn
+	        .prop('disabled', !!isDisabled)
+	        .toggleClass('disabled', !!isDisabled)
+	        .attr('aria-disabled', isDisabled ? 'true' : 'false');
+	    }
+
+	    function syncUnavailableLayoutButtons() {
+	      global.$('.layout-btn').each(function () {
+	        var $btn = global.$(this);
+	        var layoutName = String($btn.data('layout') || '');
         if (!layoutName) {
           return;
-        }
-        if (unavailableLayoutMessages[layoutName] !== undefined) {
-          $btn.prop('disabled', true);
-          $btn.removeClass('is-active');
-        }
-      });
-    }
+	        }
+	        if (unavailableLayoutMessages[layoutName] !== undefined) {
+	          setLayoutButtonDisabled($btn, true);
+	          $btn.removeClass('is-active');
+	        }
+	      });
+	    }
 
     function setAlignEnabled(isEnabled) {
       global.$('#align-axis-btn').prop('disabled', !isEnabled);
@@ -1732,14 +1820,14 @@
       setLayoutEnabled('facebalancer', false);
       setLayoutEnabled('edgebalancer', false);
       setLayoutEnabled('anglebalancer', false);
-      setLayoutEnabled('hybrid', false);
+      setLayoutEnabled('fabalancer', false);
       setLayoutEnabled('impred', false);
       setLayoutEnabled('ceg-bfs', false);
       setLayoutEnabled('ceg-xy', false);
       setLayoutEnabled('p3t', false);
       setLayoutEnabled('fpp', false);
       setLayoutEnabled('schnyder', false);
-      setLayoutEnabled('reweighttutte', false);
+      setLayoutEnabled('reweight', false);
       setLayoutEnabled('forcedir', false);
       setAlignEnabled(false);
     }
@@ -1788,14 +1876,14 @@
       setLayoutEnabled('facebalancer', isPlanar);
       setLayoutEnabled('edgebalancer', isPlanar);
       setLayoutEnabled('anglebalancer', isPlanar);
-      setLayoutEnabled('hybrid', isPlanar);
+      setLayoutEnabled('fabalancer', isPlanar);
       setLayoutEnabled('impred', isPlanar);
       setLayoutEnabled('ceg-bfs', isPlanar);
       setLayoutEnabled('ceg-xy', isPlanar);
       setLayoutEnabled('p3t', isPlanar3Tree);
       setLayoutEnabled('fpp', isPlanar);
       setLayoutEnabled('schnyder', isPlanar);
-      setLayoutEnabled('reweighttutte', isPlanar);
+      setLayoutEnabled('reweight', isPlanar);
       setLayoutEnabled('forcedir', isPlanar);
       setAlignEnabled(false);
     }
@@ -1991,7 +2079,7 @@
           layoutName: 'random',
           disabledMessage: 'Random layout is currently unavailable',
           module: global.PlanarVibeRandom,
-          methodName: 'applyRandomLayout'
+          methodName: 'applyLayout'
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2005,7 +2093,7 @@
           layoutName: 'impred',
           disabledMessage: 'ImPrEd layout is currently unavailable',
           module: global.PlanarVibeImPrEd,
-          methodName: 'applyImPrEdLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('impred', {
               onIteration: function (progress) {
@@ -2032,7 +2120,7 @@
           layoutName: 'tutte',
           disabledMessage: 'Tutte layout requires a planar graph',
           module: global.PlanarVibeTutte,
-          methodName: 'applyTutteLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('tutte');
           }
@@ -2050,7 +2138,7 @@
           layoutName: 'air',
           disabledMessage: 'Air layout requires a planar graph',
           module: global.PlanarVibeAir,
-          methodName: 'applyAirLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('air', {
               onIteration: function (progress) {
@@ -2095,7 +2183,7 @@
           layoutName: 'cleanair',
           disabledMessage: 'CleanAir layout requires a planar graph',
           module: global.PlanarVibeCleanAir,
-          methodName: 'applyCleanAirLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('cleanair', {
               onIteration: function (progress) {
@@ -2139,7 +2227,7 @@
           layoutName: 'areagrad',
           disabledMessage: 'AreaGrad layout requires a planar graph',
           module: global.PlanarVibeAreaGrad,
-          methodName: 'applyAreaGradLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('areagrad', {
               onIteration: function (progress) {
@@ -2182,7 +2270,7 @@
           layoutName: 'facebalancer',
           disabledMessage: 'FaceBalancer layout requires a planar graph',
           module: global.PlanarVibeFaceBalancer,
-          methodName: 'applyFaceBalancerLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('facebalancer', {
               onIteration: function (progress) {
@@ -2216,7 +2304,7 @@
           layoutName: 'edgebalancer',
           disabledMessage: 'EdgeBalancer layout requires a planar graph',
           module: global.PlanarVibeEdgeBalancer,
-          methodName: 'applyEdgeBalancerLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('edgebalancer', {
               onIteration: function (progress) {
@@ -2256,7 +2344,7 @@
           layoutName: 'anglebalancer',
           disabledMessage: 'AngleBalancer layout requires a planar graph',
           module: global.PlanarVibeAngleBalancer,
-          methodName: 'applyAngleBalancerLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('anglebalancer', {
               onIteration: function (progress) {
@@ -2293,20 +2381,20 @@
         return;
       }
 
-      if (layoutName === 'hybrid' || layoutName === 'fabalancer') {
+      if (layoutName === 'fabalancer') {
         runManagedLayout({
-          layoutName: 'hybrid',
-          disabledMessage: 'Hybrid layout requires a planar graph',
-          module: global.PlanarVibeHybrid,
-          methodName: 'applyHybridLayout',
+          layoutName: 'fabalancer',
+          disabledMessage: 'FABalancer layout requires a planar graph',
+          module: global.PlanarVibeFABalancer,
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('hybrid', {
+            return sharedLayoutMethodOptions('fabalancer', {
               onIteration: function (progress) {
                 if (!progress) return;
                 var debug = progressDebug(progress);
                 var parts = [];
                 var stageLabel = progress.stageLabel || progress.stage || 'joint';
-                var stageText = 'Hybrid ' + stageLabel;
+                var stageText = 'FABalancer ' + stageLabel;
                 if (Number.isFinite(progress.stageIndex) && Number.isFinite(progress.stageCount)) {
                   stageText += ' ' + progress.stageIndex + '/' + progress.stageCount;
                 }
@@ -2345,7 +2433,7 @@
           layoutName: 'ceg-bfs',
           disabledMessage: 'CEG-bfs layout requires a planar graph',
           module: global.PlanarVibeCEGBfs,
-          methodName: 'applyCEGBfsLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('ceg-bfs');
           }
@@ -2362,7 +2450,7 @@
           layoutName: 'ceg-xy',
           disabledMessage: 'CEG-xy layout requires a planar graph',
           module: global.PlanarVibeCEGXy,
-          methodName: 'applyCEGXyLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('ceg-xy');
           }
@@ -2379,7 +2467,7 @@
           layoutName: 'p3t',
           disabledMessage: 'P3T layout requires a planar 3-tree',
           module: global.PlanarVibeP3T,
-          methodName: 'applyP3TLayout'
+          methodName: 'applyLayout'
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2393,7 +2481,7 @@
           layoutName: 'fpp',
           disabledMessage: 'FPP layout requires a planar graph',
           module: global.PlanarVibeFPP,
-          methodName: 'applyFPPLayout'
+          methodName: 'applyLayout'
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2407,7 +2495,7 @@
           layoutName: 'schnyder',
           disabledMessage: 'Schnyder layout requires a planar graph',
           module: global.PlanarVibeSchnyder,
-          methodName: 'applySchnyderLayout'
+          methodName: 'applyLayout'
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2416,14 +2504,14 @@
         return;
       }
 
-      if (layoutName === 'reweighttutte') {
+      if (layoutName === 'reweight') {
         runManagedLayout({
-          layoutName: 'reweighttutte',
-          disabledMessage: 'ReweightTutte layout requires a planar graph',
-          module: global.PlanarVibeReweightTutte,
-          methodName: 'applyReweightTutteLayout',
+          layoutName: 'reweight',
+          disabledMessage: 'Reweight layout requires a planar graph',
+          module: global.PlanarVibeReweight,
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('reweighttutte', {
+            return sharedLayoutMethodOptions('reweight', {
               onIteration: function (progress) {
                 if (!progress) {
                   return;
@@ -2457,7 +2545,7 @@
           layoutName: 'forcedir',
           disabledMessage: 'ForceDir layout requires a planar graph',
           module: global.PlanarVibeForceDir,
-          methodName: 'applyForceDirLayout',
+          methodName: 'applyLayout',
           buildMethodOptions: function () {
             return sharedLayoutMethodOptions('forcedir', {
               onIteration: function (progress) {
@@ -2474,6 +2562,40 @@
               }
             });
           },
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'gpt') {
+        runManagedLayout({
+          layoutName: 'gpt',
+          disabledMessage: 'GPT layout is currently unavailable',
+          module: global.PlanarVibeGPT,
+          methodName: 'applyLayout',
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('gpt');
+          }
+        }, function () {
+          if (temporaryStaticRun) {
+            setInteractiveMode(false, false, true);
+          }
+        });
+        return;
+      }
+
+      if (layoutName === 'claude') {
+        runManagedLayout({
+          layoutName: 'claude',
+          disabledMessage: 'Claude layout is currently unavailable',
+          module: global.PlanarVibeClaude,
+          methodName: 'applyLayout',
+          buildMethodOptions: function () {
+            return sharedLayoutMethodOptions('claude');
+          }
         }, function () {
           if (temporaryStaticRun) {
             setInteractiveMode(false, false, true);
@@ -2526,6 +2648,14 @@
         planarity: {
           moduleLike: global.PlanarVibePlanarityTest,
           message: 'Planarity utilities are missing'
+        },
+        metrics: {
+          moduleLike: global.PlanarVibeMetrics,
+          message: 'Metric utilities are missing'
+        },
+        alignment: {
+          moduleLike: global.PlanarVibeAlignment,
+          message: 'Alignment utilities are missing'
         },
         planar3tree: {
           moduleLike: global.PlanarVibePlanarityTest,
@@ -2588,7 +2718,7 @@
         {
           layoutName: 'random',
           module: global.PlanarVibeRandom,
-          methodName: 'applyRandomLayout',
+          methodName: 'applyLayout',
           missingMessage: 'Random layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2598,7 +2728,7 @@
         {
           layoutName: 'impred',
           module: global.PlanarVibeImPrEd,
-          methodName: 'applyImPrEdLayout',
+          methodName: 'applyLayout',
           missingMessage: 'ImPrEd layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2612,7 +2742,7 @@
         {
           layoutName: 'tutte',
           module: global.PlanarVibeTutte,
-          methodName: 'applyTutteLayout',
+          methodName: 'applyLayout',
           missingMessage: 'Tutte layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2627,7 +2757,7 @@
         {
           layoutName: 'air',
           module: global.PlanarVibeAir,
-          methodName: 'applyAirLayout',
+          methodName: 'applyLayout',
           missingMessage: 'Air layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2641,7 +2771,7 @@
         {
           layoutName: 'cleanair',
           module: global.PlanarVibeCleanAir,
-          methodName: 'applyCleanAirLayout',
+          methodName: 'applyLayout',
           missingMessage: 'CleanAir layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2655,7 +2785,7 @@
         {
           layoutName: 'areagrad',
           module: global.PlanarVibeAreaGrad,
-          methodName: 'applyAreaGradLayout',
+          methodName: 'applyLayout',
           missingMessage: 'AreaGrad layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2669,7 +2799,7 @@
         {
           layoutName: 'facebalancer',
           module: global.PlanarVibeFaceBalancer,
-          methodName: 'applyFaceBalancerLayout',
+          methodName: 'applyLayout',
           missingMessage: 'FaceBalancer layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2684,7 +2814,7 @@
         {
           layoutName: 'edgebalancer',
           module: global.PlanarVibeEdgeBalancer,
-          methodName: 'applyEdgeBalancerLayout',
+          methodName: 'applyLayout',
           missingMessage: 'EdgeBalancer layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2699,7 +2829,7 @@
         {
           layoutName: 'anglebalancer',
           module: global.PlanarVibeAngleBalancer,
-          methodName: 'applyAngleBalancerLayout',
+          methodName: 'applyLayout',
           missingMessage: 'AngleBalancer layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2710,10 +2840,10 @@
           }
         },
         {
-          layoutName: 'hybrid',
-          module: global.PlanarVibeHybrid,
-          methodName: 'applyHybridLayout',
-          missingMessage: 'Hybrid layout module is missing',
+          layoutName: 'fabalancer',
+          module: global.PlanarVibeFABalancer,
+          methodName: 'applyLayout',
+          missingMessage: 'FABalancer layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
@@ -2727,7 +2857,7 @@
         {
           layoutName: 'ceg-bfs',
           module: global.PlanarVibeCEGBfs,
-          methodName: 'applyCEGBfsLayout',
+          methodName: 'applyLayout',
           missingMessage: 'CEG-bfs layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2742,7 +2872,7 @@
         {
           layoutName: 'ceg-xy',
           module: global.PlanarVibeCEGXy,
-          methodName: 'applyCEGXyLayout',
+          methodName: 'applyLayout',
           missingMessage: 'CEG-xy layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2757,7 +2887,7 @@
         {
           layoutName: 'p3t',
           module: global.PlanarVibeP3T,
-          methodName: 'applyP3TLayout',
+          methodName: 'applyLayout',
           missingMessage: 'P3T layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2767,7 +2897,7 @@
         {
           layoutName: 'fpp',
           module: global.PlanarVibeFPP,
-          methodName: 'applyFPPLayout',
+          methodName: 'applyLayout',
           missingMessage: 'FPP layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2779,7 +2909,7 @@
         {
           layoutName: 'schnyder',
           module: global.PlanarVibeSchnyder,
-          methodName: 'applySchnyderLayout',
+          methodName: 'applyLayout',
           missingMessage: 'Schnyder layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2789,10 +2919,10 @@
           }
         },
         {
-          layoutName: 'reweighttutte',
-          module: global.PlanarVibeReweightTutte,
-          methodName: 'applyReweightTutteLayout',
-          missingMessage: 'ReweightTutte layout module is missing',
+          layoutName: 'reweight',
+          module: global.PlanarVibeReweight,
+          methodName: 'applyLayout',
+          missingMessage: 'Reweight layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
@@ -2806,7 +2936,7 @@
         {
           layoutName: 'forcedir',
           module: global.PlanarVibeForceDir,
-          methodName: 'applyForceDirLayout',
+          methodName: 'applyLayout',
           missingMessage: 'ForceDir layout module is missing',
           requires: {
             cyRuntime: ['runLayout'],
@@ -2815,6 +2945,55 @@
             graph: ['computePositionMoveStats', 'createMovementConvergenceTracker', 'analyzeInternallyThreeConnected', 'collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
+          }
+        },
+        {
+          layoutName: 'gpt',
+          module: global.PlanarVibeGPT,
+          methodName: 'applyLayout',
+          missingMessage: 'GPT layout module is missing',
+          requires: {
+            cyRuntime: ['applyPositionsToCy', 'currentPositionsFromCy'],
+            geometry: ['hasPositionCrossings'],
+            graph: ['createGraph', 'edgeKey'],
+            planarGraph: ['extractEmbeddingFromPositions'],
+            planarity: ['analyzePlanar3Tree', 'computePlanarEmbedding'],
+            metrics: [
+              'computeAngularResolutionScore',
+              'computeAspectRatioScore',
+              'computeAxisAlignmentScore',
+              'computeConvexityScore',
+              'computeEdgeLengthDeviationScore',
+              'computeEdgeLengthRatio',
+              'computeEdgeOrthogonalityScore',
+              'computeNodeUniformityScore',
+              'computeSpacingUniformityScore',
+              'computeUniformFaceAreaScore'
+            ]
+          }
+        },
+        {
+          layoutName: 'claude',
+          module: global.PlanarVibeClaude,
+          methodName: 'applyLayout',
+          missingMessage: 'Claude layout module is missing',
+          requires: {
+            geometry: ['hasPositionCrossings', 'segmentsIntersectStrict'],
+            graph: ['createGraph'],
+            planarGraph: ['extractEmbeddingFromPositions', 'findOuterFaceIndex'],
+            metrics: [
+              'computeAngularResolutionScore',
+              'computeAspectRatioScore',
+              'computeAxisAlignmentScore',
+              'computeConvexityScore',
+              'computeEdgeLengthDeviationScore',
+              'computeEdgeLengthRatio',
+              'computeEdgeOrthogonalityScore',
+              'computeNodeUniformityScore',
+              'computeSpacingUniformityScore',
+              'computeUniformFaceAreaScore'
+            ],
+            alignment: ['alignToAxisGreedy']
           }
         }
       ];
@@ -2835,71 +3014,106 @@
       syncUnavailableLayoutButtons();
     }
 
-    function runManagedLayout(config, onDone) {
-      var name = config.layoutName;
-      if (global.$('.layout-btn[data-layout="' + name + '"]').prop('disabled')) {
-        setStatus(config.disabledMessage, true);
-        if (typeof onDone === 'function') onDone();
-        return;
-      }
-      enterLayoutBusy(name);
-      var methodOptions = null;
-      if (typeof config.buildMethodOptions === 'function') {
-        methodOptions = config.buildMethodOptions();
-      }
-      if (!methodOptions) {
-        methodOptions = {};
-      }
+	    function runAfterBusyPaint(fn) {
+	      var schedule = typeof global.setTimeout === 'function'
+	        ? global.setTimeout.bind(global)
+	        : (typeof setTimeout === 'function' ? setTimeout : null);
+	      var raf = typeof global.requestAnimationFrame === 'function'
+	        ? global.requestAnimationFrame.bind(global)
+	        : (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : null);
+	      if (raf && schedule) {
+	        raf(function () {
+	          schedule(fn, 0);
+	        });
+	        return;
+	      }
+	      if (schedule) {
+	        schedule(fn, 0);
+	        return;
+	      }
+	      fn();
+	    }
 
-      var result = config.module[config.methodName](cy, methodOptions);
-      if (result && typeof result.then === 'function') {
-        result.then(function (resolved) {
-          setCurrentDebugState(resolved && resolved.ok && resolved.debugState ? resolved.debugState : null);
-          setLayoutStatus(resolved && resolved.message ? resolved.message : ('Applied ' + name + ' layout'), !(resolved && resolved.ok));
-          restoreLayoutBusy();
-          if (typeof onDone === 'function') onDone();
-        }).catch(function (err) {
-          setLayoutStatus((err && err.message) ? err.message : ('Failed ' + name + ' layout'), true);
-          restoreLayoutBusy();
-          if (typeof onDone === 'function') onDone();
-        });
-        return;
-      }
-      setCurrentDebugState(result && result.ok && result.debugState ? result.debugState : null);
-      setLayoutStatus(result && result.message ? result.message : ('Applied ' + name + ' layout'), !(result && result.ok));
-      restoreLayoutBusy();
-      if (typeof onDone === 'function') onDone();
-    }
+	    function runManagedLayout(config, onDone) {
+	      var name = config.layoutName;
+	      if (global.$('.layout-btn[data-layout="' + name + '"]').prop('disabled')) {
+	        setStatus(config.disabledMessage, true);
+	        if (typeof onDone === 'function') onDone();
+	        return;
+	      }
+	      if (layoutBusyState) {
+	        setStatus('Wait for the current layout to finish first', true);
+	        if (typeof onDone === 'function') onDone();
+	        return;
+	      }
+	      enterLayoutBusy(name);
+	      var methodOptions = null;
+	      if (typeof config.buildMethodOptions === 'function') {
+	        methodOptions = config.buildMethodOptions();
+	      }
+	      if (!methodOptions) {
+	        methodOptions = {};
+	      }
+
+	      runAfterBusyPaint(function () {
+	        var result;
+	        try {
+	          result = config.module[config.methodName](cy, methodOptions);
+	        } catch (err) {
+	          setLayoutStatus((err && err.message) ? err.message : ('Failed ' + name + ' layout'), true);
+	          restoreLayoutBusy();
+	          if (typeof onDone === 'function') onDone();
+	          return;
+	        }
+	        if (result && typeof result.then === 'function') {
+	          result.then(function (resolved) {
+	            setCurrentDebugState(resolved && resolved.ok && resolved.debugState ? resolved.debugState : null);
+	            setLayoutStatus(resolved && resolved.message ? resolved.message : ('Applied ' + name + ' layout'), !(resolved && resolved.ok));
+	            restoreLayoutBusy();
+	            if (typeof onDone === 'function') onDone();
+	          }).catch(function (err) {
+	            setLayoutStatus((err && err.message) ? err.message : ('Failed ' + name + ' layout'), true);
+	            restoreLayoutBusy();
+	            if (typeof onDone === 'function') onDone();
+	          });
+	          return;
+	        }
+	        setCurrentDebugState(result && result.ok && result.debugState ? result.debugState : null);
+	        setLayoutStatus(result && result.message ? result.message : ('Applied ' + name + ' layout'), !(result && result.ok));
+	        restoreLayoutBusy();
+	        if (typeof onDone === 'function') onDone();
+	      });
+	    }
 
     function setSelectedLayoutButton(layoutName) {
       global.$('.layout-btn').removeClass('is-active');
       global.$('.layout-btn[data-layout="' + layoutName + '"]').addClass('is-active');
     }
 
-    function enterLayoutBusy(activeLayoutName) {
-      var snapshot = [];
-      global.$('.layout-btn').each(function () {
-        var $btn = global.$(this);
-        var name = String($btn.data('layout') || '');
-        snapshot.push({ name: name, disabled: !!$btn.prop('disabled') });
-        if (name !== activeLayoutName) {
-          $btn.prop('disabled', true);
-        }
-      });
-      layoutBusyState = snapshot;
-    }
+	    function enterLayoutBusy(activeLayoutName) {
+	      var snapshot = [];
+	      global.$('.layout-btn').each(function () {
+	        var $btn = global.$(this);
+	        var name = String($btn.data('layout') || '');
+	        snapshot.push({ name: name, disabled: !!$btn.prop('disabled') });
+	        if (name !== activeLayoutName) {
+	          setLayoutButtonDisabled($btn, true);
+	        }
+	      });
+	      layoutBusyState = snapshot;
+	    }
 
-    function restoreLayoutBusy() {
-      if (!layoutBusyState) {
-        return;
-      }
-      for (var i = 0; i < layoutBusyState.length; i += 1) {
-        var item = layoutBusyState[i];
-        var shouldDisable = !!item.disabled || unavailableLayoutMessages[item.name] !== undefined;
-        global.$('.layout-btn[data-layout="' + item.name + '"]').prop('disabled', shouldDisable);
-      }
-      layoutBusyState = null;
-    }
+	    function restoreLayoutBusy() {
+	      if (!layoutBusyState) {
+	        return;
+	      }
+	      for (var i = 0; i < layoutBusyState.length; i += 1) {
+	        var item = layoutBusyState[i];
+	        var shouldDisable = !!item.disabled || unavailableLayoutMessages[item.name] !== undefined;
+	        setLayoutButtonDisabled(global.$('.layout-btn[data-layout="' + item.name + '"]'), shouldDisable);
+	      }
+	      layoutBusyState = null;
+	    }
 
     function resetZoom() {
       if (!cy) {

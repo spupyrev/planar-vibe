@@ -115,7 +115,7 @@ solve weighted Tutte again and project to original vertices
 Complexity: LOC 712. Each solve is `O(k^3)` in the current dense code; the extra BFS/orientation/tree work is `O(n log n + m)` at most, so the overall cost is dominated by two or three dense solves.
 References: [Chiu, Eppstein, Goodrich 2023](https://arxiv.org/abs/2307.10527). In this repository, `CEG-bfs` is the closer match, while `CEG-xy` is a heuristic adaptation of the spread/morph idea.
 
-## ReweightTutte (`layout-reweight.js`, 490 LOC)
+## Reweight (`layout-reweight.js`, 490 LOC)
 This method iteratively modifies the edge weights of a Tutte embedding to make bounded face areas more uniform.
 Starting from the shared barycentric seed, it measures every bounded face area relative to the outer face.
 Faces that are too small accumulate positive "pressure" and faces that are too large accumulate negative pressure.
@@ -210,14 +210,14 @@ Complexity: LOC 686. Time is roughly `O(T * n^2)` on planar graphs because each 
 References: the direct reference for this implementation is [Simonetto, Archambault, Auber, Bourqui 2011, "ImPrEd: An Improved Force-Directed Algorithm that Prevents Nodes from Crossing Edges"](https://doi.org/10.1111/j.1467-8659.2011.01956.x). For historical context, ImPrEd is introduced there as an improved version of PrEd, the earlier plane-preserving force-directed method of [Bertault 2000](https://doi.org/10.1016/S0020-0190(00)00042-9).
 
 ## Common Framework for the Balancers
-FaceBalancer, AngleBalancer, EdgeBalancer, and HybridBalancer all share the same optimization backbone.
+FaceBalancer, AngleBalancer, EdgeBalancer, and FABalancer all share the same optimization backbone.
 They start from an augmented triangulated plane graph with the outer face fixed on a convex polygon.
 For every interior augmented vertex, the variables are logits attached to the cyclically ordered neighbors in the embedding.
 A row-wise softmax turns those logits into positive barycentric coefficients, so each interior vertex remains a convex combination of its neighbors.
 Given one choice of logits, the algorithm realizes coordinates by solving a weighted Tutte-style linear system.
 The objective is then evaluated on the realized drawing, not directly on the logits.
 Gradients are obtained by differentiating through the linear solve with an adjoint system, and the logits are updated by L-BFGS with backtracking line search and geometric feasibility checks.
-As a result, all four methods preserve the same "soft Tutte" realization model; what changes from one variant to another is only the objective being optimized and, in the hybrid case, the schedule in which objectives are applied.
+As a result, all four methods preserve the same "soft Tutte" realization model; what changes from one variant to another is only the objective being optimized and, in the FABalancer case, the schedule in which objectives are applied.
 Pseudocode:
 ```text
 initialize logits from Tutte-style edge weights
@@ -272,8 +272,8 @@ add face-area barriers to stop flips and collapses
 ```
 Complexity: LOC 1118. Time `O(T * k^3)` because each iteration performs dense primal and adjoint solves; the edge statistics themselves are linear in the number of original edges.
 
-## HybridBalancer (`layout-hybridbalancer.js`, 1809 LOC)
-HybridBalancer is the staged version of the same common framework.
+## FABalancer (`layout-fabalancer.js`, 1809 LOC)
+FABalancer is the staged version of the same common framework.
 Instead of fixing one objective for the whole run, it changes the objective over time.
 It first runs a short face-oriented warm stage to keep bounded regions healthy, then switches to an angle-oriented stage that also penalizes vertical deviation so that many edges become nearly horizontal, and finally applies a greedy axis-alignment pass.
 The key design choice is therefore not a new realization model but a staged schedule of objectives.

@@ -5,12 +5,12 @@
 Goal: build a deterministic, robust baseline that does not modify existing algorithms. The layout will run a small portfolio of exported public layout compute methods, evaluate each valid plane drawing with the same ten metrics used by the benchmark, and apply the highest-scoring candidate.
 
 Initial plan:
-- Start with EdgeBalancer and Hybrid, because they are the strongest current baselines and optimize complementary metrics.
+- Start with EdgeBalancer and FABalancer, because they are the strongest current baselines and optimize complementary metrics.
 - Score candidates by the raw mean of the ten metric values for the current graph, with non-plane or incomplete drawings rejected.
 - Keep timing conservative for unseen graphs by running only a small portfolio at first.
 - Use train data only for sanity checks, not graph-specific memorization.
 
-Pre-implementation estimate from existing train CSV: selecting between EdgeBalancer and Hybrid by per-graph mean metric score would score about `0.632994` on `planar_train.dot`, compared with EdgeBalancer `0.622226` and Hybrid `0.596484`.
+Pre-implementation estimate from existing train CSV: selecting between EdgeBalancer and FABalancer by per-graph mean metric score would score about `0.632994` on `planar_train.dot`, compared with EdgeBalancer `0.622226` and FABalancer `0.596484`.
 
 Result: implemented `layout-gpt.js` as a public-candidate selector with rotation scoring. Full train command completed with 499/499 ok and total score `0.652673`.
 
@@ -26,19 +26,19 @@ Metric p50s:
 - alignment `0.641204`
 - spacing `0.738579`
 
-Candidate choices: EdgeBalancer 422, Hybrid 67, Tutte 10. The rotation sweep was a clear win over the initial estimate, mainly improving orientation-sensitive metrics while preserving planarity.
+Candidate choices: EdgeBalancer 422, FABalancer 67, Tutte 10. The rotation sweep was a clear win over the initial estimate, mainly improving orientation-sensitive metrics while preserving planarity.
 
 ## Stage 2: Add Angular Candidate
 
-Goal: test whether AngleBalancer adds useful candidates without making the default portfolio too slow. Existing broader benchmark data suggests a small gain when selecting among EdgeBalancer, Hybrid, and AngleBalancer, so prototype it behind the same node-count guard as Hybrid and keep it only if the full train score improves.
+Goal: test whether AngleBalancer adds useful candidates without making the default portfolio too slow. Existing broader benchmark data suggests a small gain when selecting among EdgeBalancer, FABalancer, and AngleBalancer, so prototype it behind the same node-count guard as FABalancer and keep it only if the full train score improves.
 
-Result: discarded. Full train score was `0.652234` with 499/499 ok, below Stage 1's `0.652673`. Candidate choices were EdgeBalancer 395, Hybrid 48, AngleBalancer 49, Tutte 7. It improved angular resolution, aspect ratio, face, and alignment p50s, but the loss in edge-length metrics, node uniformity, and spacing outweighed those gains.
+Result: discarded. Full train score was `0.652234` with 499/499 ok, below Stage 1's `0.652673`. Candidate choices were EdgeBalancer 395, FABalancer 48, AngleBalancer 49, Tutte 7. It improved angular resolution, aspect ratio, face, and alignment p50s, but the loss in edge-length metrics, node uniformity, and spacing outweighed those gains.
 
 ## Stage 3: Rotation Resolution
 
 Goal: test whether a denser rotation sweep improves orientation-sensitive metrics. This is low algorithmic risk because rotation preserves planarity and all distance/area/angle ratios except viewport-axis metrics.
 
-Result: kept. Changed rotation samples from 24 to 48 and skipped repeated crossing checks for rotated copies after validating the source candidate. Full train score improved to `0.655581` with 499/499 ok. Candidate choices: EdgeBalancer 423, Hybrid 65, Tutte 11.
+Result: kept. Changed rotation samples from 24 to 48 and skipped repeated crossing checks for rotated copies after validating the source candidate. Full train score improved to `0.655581` with 499/499 ok. Candidate choices: EdgeBalancer 423, FABalancer 65, Tutte 11.
 
 Metric movement versus Stage 1:
 - improved angular `0.541964 -> 0.545510`
@@ -52,9 +52,9 @@ Metric movement versus Stage 1:
 - alignment up `0.641204 -> 0.657457`
 - spacing up `0.738579 -> 0.739010`
 
-## Stage 4: Add ReweightTutte Candidate
+## Stage 4: Add Reweight Candidate
 
-Goal: test whether ReweightTutte adds useful face/spacing alternatives at acceptable cost. Existing broader benchmark data suggests a small selector gain when ReweightTutte is available with EdgeBalancer and Hybrid, but this must be checked on the actual p50 objective.
+Goal: test whether Reweight adds useful face/spacing alternatives at acceptable cost. Existing broader benchmark data suggests a small selector gain when Reweight is available with EdgeBalancer and FABalancer, but this must be checked on the actual p50 objective.
 
 Result: discarded. Full train score was `0.654451`, below Stage 3's `0.655581`. Reweight improved angular, face, alignment, and spacing p50s slightly, but lowered edge deviation and edge ratio enough to lose overall.
 
@@ -62,7 +62,7 @@ Result: discarded. Full train score was `0.654451`, below Stage 3's `0.655581`. 
 
 Goal: extend the rotation-only post-processing into a mild affine sweep. Any invertible affine transform preserves straight-line planarity, face-area ratios, and convexity, while changing aspect ratio, edge-length distribution, orthogonality, alignment, node uniformity, and spacing. Prototype determinant-one stretches around each candidate and keep the transform with the best ten-metric mean.
 
-Result: kept. Full train score improved to `0.656319` with 499/499 ok. Candidate choices: EdgeBalancer 422, Hybrid 66, Tutte 11. Runtime stayed below the per-graph timeout on train (`p50 1335ms`, `p90 3268ms`, `p99 7815ms`, max `13758ms`). The affine sweep improved aspect ratio, orthogonality, node uniformity, alignment, and spacing, but reduced angular resolution and edge-length metrics.
+Result: kept. Full train score improved to `0.656319` with 499/499 ok. Candidate choices: EdgeBalancer 422, FABalancer 66, Tutte 11. Runtime stayed below the per-graph timeout on train (`p50 1335ms`, `p90 3268ms`, `p99 7815ms`, max `13758ms`). The affine sweep improved aspect ratio, orthogonality, node uniformity, alignment, and spacing, but reduced angular resolution and edge-length metrics.
 
 Metric movement versus Stage 3:
 - angular down `0.545510 -> 0.541660`
@@ -86,7 +86,7 @@ Result: discarded. Full train score fell to `0.651191` with 499/499 ok. Edge dev
 
 Goal: keep the affine sweep, but reduce the maximum stretch from `1.32` to `1.20` with smaller intermediate steps. This should preserve some aspect/alignment/orthogonality gains while reducing the edge-length penalty observed in Stage 5.
 
-Result: kept. Changed stretch factors to `[1, 1.04, 1.10, 1.20]`. Full train score improved to `0.657389` with 499/499 ok. Candidate choices: EdgeBalancer 426, Hybrid 62, Tutte 11. Runtime remained below timeout on train (`p50 1651ms`, `p90 3858ms`, `p99 9986ms`, max `17674ms`).
+Result: kept. Changed stretch factors to `[1, 1.04, 1.10, 1.20]`. Full train score improved to `0.657389` with 499/499 ok. Candidate choices: EdgeBalancer 426, FABalancer 62, Tutte 11. Runtime remained below timeout on train (`p50 1651ms`, `p90 3858ms`, `p99 9986ms`, max `17674ms`).
 
 Metric movement versus Stage 5:
 - angular down `0.541660 -> 0.540030`
@@ -108,7 +108,7 @@ Result: discarded. Full train score was `0.657346`, slightly below Stage 7's `0.
 
 ## Stage 9: Add FaceBalancer Candidate
 
-Goal: test whether FaceBalancer provides useful extra candidates once the affine sweep is active. Earlier aggregate evidence was mixed, but FaceBalancer is comparatively cheap and may improve face/shape cases not covered by EdgeBalancer and Hybrid.
+Goal: test whether FaceBalancer provides useful extra candidates once the affine sweep is active. Earlier aggregate evidence was mixed, but FaceBalancer is comparatively cheap and may improve face/shape cases not covered by EdgeBalancer and FABalancer.
 
 Result: discarded. Full train score was `0.657351`, slightly below Stage 7's `0.657389`, with 499/499 ok. FaceBalancer was selected 33 times and improved angular resolution, aspect ratio, orthogonality, face, and spacing p50s, but it lowered edge-length deviation, edge ratio, and alignment enough to lose overall. It also raised runtime (`p50 2012ms`, `p90 4809ms`, `p99 13462ms`), so the extra candidate was removed.
 
@@ -140,61 +140,61 @@ Result: discarded. Full train score fell to `0.657098` with 499/499 ok. ForceDir
 
 Goal: test whether increasing the post-processing rotation sweep from 48 to 64 samples improves orientation-sensitive metrics enough to offset the extra runtime. This is a low-risk geometric change because rotations preserve planarity, lengths, areas, and angles except for axis-dependent scores.
 
-Result: kept. Full train score improved to `0.658235` with 499/499 ok, above Stage 12's `0.657575`. Candidate choices were EdgeBalancer 412, Hybrid 57, Air 24, Tutte 6. The main gain was alignment (`0.659690 -> 0.667075`), with smaller gains in aspect ratio, edge-length deviation, face, and spacing. Angular resolution and edge ratio dropped. Runtime increased but stayed under timeout (`p50 1990ms`, `p90 5277ms`, `p99 15271ms`, max `26063ms`).
+Result: kept. Full train score improved to `0.658235` with 499/499 ok, above Stage 12's `0.657575`. Candidate choices were EdgeBalancer 412, FABalancer 57, Air 24, Tutte 6. The main gain was alignment (`0.659690 -> 0.667075`), with smaller gains in aspect ratio, edge-length deviation, face, and spacing. Angular resolution and edge ratio dropped. Runtime increased but stayed under timeout (`p50 1990ms`, `p90 5277ms`, `p99 15271ms`, max `26063ms`).
 
 ## Stage 15: Intermediate 72-Sample Rotation Sweep
 
 Goal: test whether a smaller increase beyond Stage 14 gives additional orientation gains without pushing tail runtime too close to the 30s timeout. Prototype `rotationSamples: 72` and keep only if it beats Stage 14 with acceptable runtime.
 
-Result: score improved, but runtime is too close to the limit without another guard. Full train score was `0.658423` with 499/499 ok, above Stage 14's `0.658235`. Candidate choices were EdgeBalancer 413, Hybrid 53, Air 25, Tutte 8. The gains came from angular resolution, aspect ratio, edge-length metrics, and alignment, but node uniformity and spacing dropped. Runtime tail became risky (`p50 2544ms`, `p90 5996ms`, `p99 13134ms`, max `29332ms`), so the next stage should keep the 72-sample sweep only with an internal budget cutoff.
+Result: score improved, but runtime is too close to the limit without another guard. Full train score was `0.658423` with 499/499 ok, above Stage 14's `0.658235`. Candidate choices were EdgeBalancer 413, FABalancer 53, Air 25, Tutte 8. The gains came from angular resolution, aspect ratio, edge-length metrics, and alignment, but node uniformity and spacing dropped. Runtime tail became risky (`p50 2544ms`, `p90 5996ms`, `p99 13134ms`, max `29332ms`), so the next stage should keep the 72-sample sweep only with an internal budget cutoff.
 
 ## Stage 16: Budget-Aware Transform Cutoff
 
 Goal: keep Stage 15's higher-scoring 72-sample sweep while reducing timeout risk. Add a deadline check inside the rotation/affine transform loop so a candidate can return the best transform found so far instead of continuing past the layout budget.
 
-Result: kept. Full train score stayed at Stage 15's `0.658423` with 499/499 ok, but runtime became much safer (`p50 2025ms`, `p90 4789ms`, `p99 14089ms`, max `20885ms`). Candidate choices were unchanged: EdgeBalancer 413, Hybrid 53, Air 25, Tutte 8. The cutoff is retained because it preserves quality while reducing timeout risk.
+Result: kept. Full train score stayed at Stage 15's `0.658423` with 499/499 ok, but runtime became much safer (`p50 2025ms`, `p90 4789ms`, `p99 14089ms`, max `20885ms`). Candidate choices were unchanged: EdgeBalancer 413, FABalancer 53, Air 25, Tutte 8. The cutoff is retained because it preserves quality while reducing timeout risk.
 
 ## Stage 17: 80-Sample Rotation Sweep With Cutoff
 
 Goal: with the Stage 16 cutoff in place, test whether increasing `rotationSamples` from 72 to 80 gives another orientation-score gain without exceeding the budget. Keep only if the score improves and runtime remains comfortably under 30 seconds.
 
-Result: kept. Full train score improved to `0.659115` with 499/499 ok, above Stage 16's `0.658423`. Candidate choices were EdgeBalancer 412, Hybrid 57, Air 24, Tutte 6. The main gains were node uniformity (`0.705882 -> 0.714286`), edge orthogonality, and spacing, while angular resolution and edge-length metrics dropped. Runtime remained acceptable with the cutoff (`p50 1960ms`, `p90 4860ms`, `p99 14740ms`, max `21586ms`).
+Result: kept. Full train score improved to `0.659115` with 499/499 ok, above Stage 16's `0.658423`. Candidate choices were EdgeBalancer 412, FABalancer 57, Air 24, Tutte 6. The main gains were node uniformity (`0.705882 -> 0.714286`), edge orthogonality, and spacing, while angular resolution and edge-length metrics dropped. Runtime remained acceptable with the cutoff (`p50 1960ms`, `p90 4860ms`, `p99 14740ms`, max `21586ms`).
 
 ## Stage 18: 96-Sample Rotation Sweep With Cutoff
 
 Goal: test whether the rotation sweep still has headroom beyond 80 samples. With the budget cutoff in place, prototype `rotationSamples: 96` and keep it only if it improves Stage 17 without creating timeout pressure.
 
-Result: kept. Full train score improved to `0.659595` with 499/499 ok, above Stage 17's `0.659115`. Candidate choices were EdgeBalancer 415, Hybrid 51, Air 25, Tutte 8. The largest gain was alignment (`0.667218 -> 0.675899`), with smaller gains in aspect ratio, edge-length deviation, and edge ratio. Angular resolution, edge orthogonality, face, node uniformity, and spacing slipped slightly. Runtime remained under the 30s timeout with the cutoff (`p50 2305ms`, `p90 6011ms`, `p99 16278ms`, max `26691ms`), so the extra samples are retained.
+Result: kept. Full train score improved to `0.659595` with 499/499 ok, above Stage 17's `0.659115`. Candidate choices were EdgeBalancer 415, FABalancer 51, Air 25, Tutte 8. The largest gain was alignment (`0.667218 -> 0.675899`), with smaller gains in aspect ratio, edge-length deviation, and edge ratio. Angular resolution, edge orthogonality, face, node uniformity, and spacing slipped slightly. Runtime remained under the 30s timeout with the cutoff (`p50 2305ms`, `p90 6011ms`, `p99 16278ms`, max `26691ms`), so the extra samples are retained.
 
 ## Stage 19: Conservative Class-Specific Candidates
 
 Goal: test whether targeted, structurally safe candidates help graph families that generic force/Tutte-style layouts do not specialize for. Add a GPT-only tree/path candidate for connected `m = n - 1` graphs and an exact rectangular-grid candidate for graphs that satisfy the `P_r x P_c` edge-count and degree signature. Both candidates are still validated and scored by the existing selector, so they should be kept only if they improve quality without harming the 30s budget.
 
-Result: kept. Full train score improved to `0.660761` with 499/499 ok, above Stage 18's `0.659595`. The new candidates were selected on 11 graphs: tree 10 times and grid once (`grid4x20`). Candidate choices were EdgeBalancer 406, Hybrid 50, Air 25, Tree 10, Tutte 7, Grid 1. The largest aggregate gains were node uniformity (`0.708333 -> 0.714286`), edge ratio (`0.381601 -> 0.385115`), alignment, and edge orthogonality; edge-length deviation slipped slightly. Runtime stayed below timeout (`p50 2223ms`, `p90 5549ms`, `p99 15806ms`, max `28003ms`).
+Result: kept. Full train score improved to `0.660761` with 499/499 ok, above Stage 18's `0.659595`. The new candidates were selected on 11 graphs: tree 10 times and grid once (`grid4x20`). Candidate choices were EdgeBalancer 406, FABalancer 50, Air 25, Tree 10, Tutte 7, Grid 1. The largest aggregate gains were node uniformity (`0.708333 -> 0.714286`), edge ratio (`0.381601 -> 0.385115`), alignment, and edge orthogonality; edge-length deviation slipped slightly. Runtime stayed below timeout (`p50 2223ms`, `p90 5549ms`, `p99 15806ms`, max `28003ms`).
 
 ## Stage 20: Planar 3-Tree Candidate
 
 Goal: test a very narrow class-specific candidate for planar 3-trees using the existing exported P3T implementation. The train set only contains one detected planar 3-tree, so this is mainly a hidden-benchmark generalization check; keep it only if it causes no aggregate or runtime regression and the selector uses it when helpful.
 
-Result: kept as a neutral hidden-benchmark guard. Full train score was unchanged from Stage 19 at `0.660761` with 499/499 ok. P3T was not selected on the single train planar 3-tree; candidate choices remained EdgeBalancer 406, Hybrid 50, Air 25, Tree 10, Tutte 7, Grid 1. Runtime remained below timeout (`p50 2201ms`, `p90 5636ms`, `p99 14889ms`, max `27158ms`). Since the analyzer is strict, cheap, and caused no regression, the hook stays available for unseen planar 3-tree instances.
+Result: kept as a neutral hidden-benchmark guard. Full train score was unchanged from Stage 19 at `0.660761` with 499/499 ok. P3T was not selected on the single train planar 3-tree; candidate choices remained EdgeBalancer 406, FABalancer 50, Air 25, Tree 10, Tutte 7, Grid 1. Runtime remained below timeout (`p50 2201ms`, `p90 5636ms`, `p99 14889ms`, max `27158ms`). Since the analyzer is strict, cheap, and caused no regression, the hook stays available for unseen planar 3-tree instances.
 
 ## Stage 21: Two-Row Grid Recovery
 
 Goal: extend the exact rectangular-grid candidate to handle `2 x k` ladder grids. These have all vertices on the boundary, so the Stage 19 boundary-cycle recovery can be ambiguous even though the grid signature is clear. Add a separate rung-by-rung coordinate recovery for the two-row case and keep it only if it preserves Stage 20 quality and timing.
 
-Result: kept. Full train score was unchanged from Stage 20 at `0.660761` with 499/499 ok, and a synthetic `2 x 10` ladder selected the grid candidate as intended. Candidate choices on train remained EdgeBalancer 406, Hybrid 50, Air 25, Tree 10, Tutte 7, Grid 1. Runtime stayed below timeout (`p50 2153ms`, `p90 5692ms`, `p99 15278ms`, max `27653ms`). The branch is retained for unseen two-row grid instances.
+Result: kept. Full train score was unchanged from Stage 20 at `0.660761` with 499/499 ok, and a synthetic `2 x 10` ladder selected the grid candidate as intended. Candidate choices on train remained EdgeBalancer 406, FABalancer 50, Air 25, Tree 10, Tutte 7, Grid 1. Runtime stayed below timeout (`p50 2153ms`, `p90 5692ms`, `p99 15278ms`, max `27653ms`). The branch is retained for unseen two-row grid instances.
 
 ## Stage 22: Tighter Internal Budget
 
 Goal: the canonical Stage 21 run reached a max runtime close to the 30s timeout, despite the stage run being safer. Test reducing the internal layout budget from 28s to 26s so slow instances return the best transform found earlier. Keep only if the p50 score remains at Stage 21 quality while improving timeout margin.
 
-Result: kept. Full train score stayed at `0.660761` with 499/499 ok, matching Stage 21. Candidate choices were unchanged: EdgeBalancer 406, Hybrid 50, Air 25, Tree 10, Tutte 7, Grid 1. The stage run reduced the tail relative to the close canonical Stage 21 pass (`p50 2167ms`, `p90 5642ms`, `p99 15332ms`, max `27506ms`), so the 26s internal budget is retained.
+Result: kept. Full train score stayed at `0.660761` with 499/499 ok, matching Stage 21. Candidate choices were unchanged: EdgeBalancer 406, FABalancer 50, Air 25, Tree 10, Tutte 7, Grid 1. The stage run reduced the tail relative to the close canonical Stage 21 pass (`p50 2167ms`, `p90 5642ms`, `p99 15332ms`, max `27506ms`), so the 26s internal budget is retained.
 
 ## Stage 23: Radial Tree Candidate
 
 Goal: trees are already handled better by the Stage 19 layered/path candidate, but hidden benchmarks may include stars or high-branching trees where a radial sector drawing gives more uniform edge lengths and angular resolution. Add a second tree-only candidate rooted at the tree center with child sectors sized by leaf count. Keep it only if the selector uses it without hurting aggregate quality or timeout margin.
 
-Result: kept. Full train score improved to `0.660950` with 499/499 ok, above Stage 22's `0.660761`. RadialTree was selected 14 times, mostly replacing generic candidates or the layered tree on branching trees. Candidate choices were EdgeBalancer 399, Hybrid 50, Air 23, RadialTree 14, Tree 6, Tutte 6, Grid 1. The gain came from angular resolution (`0.541891 -> 0.544619`), aspect ratio, and spacing, while edge-length deviation slipped. Runtime stayed below timeout (`p50 2466ms`, `p90 5674ms`, `p99 18069ms`, max `26025ms`).
+Result: kept. Full train score improved to `0.660950` with 499/499 ok, above Stage 22's `0.660761`. RadialTree was selected 14 times, mostly replacing generic candidates or the layered tree on branching trees. Candidate choices were EdgeBalancer 399, FABalancer 50, Air 23, RadialTree 14, Tree 6, Tutte 6, Grid 1. The gain came from angular resolution (`0.541891 -> 0.544619`), aspect ratio, and spacing, while edge-length deviation slipped. Runtime stayed below timeout (`p50 2466ms`, `p90 5674ms`, `p99 18069ms`, max `26025ms`).
 
 ## Stage 24: Unicyclic Cycle-Core Candidate
 
@@ -206,7 +206,7 @@ Result: promising but unsafe. Full train score rose sharply to `0.671556`, with 
 
 Goal: keep the Stage 24 graph-class gains while restoring timeout margin. Lower the internal layout budget from `26000ms` to `22000ms` so the GPT selector leaves more room for worker-side benchmark metrics inside the 30s evaluator timeout. Keep only if the unicyclic/radial-tree gains survive and the full train run has 499/499 ok.
 
-Result: kept. Full train score improved to `0.671752` with 499/499 ok, above Stage 23's safe `0.660950` and Stage 24's timeout-affected `0.671556`. Candidate choices were EdgeBalancer 361, Hybrid 50, Unicyclic 44, Air 20, RadialTree 14, Tree 6, Tutte 3, Grid 1. Runtime margin was restored (`p50 2848ms`, `p90 7275ms`, `p99 21213ms`, max `22690ms`). The main gains versus Stage 23 were convexity (`0.25 -> 0.333333`), edge ratio (`0.385115 -> 0.407053`), spacing, angular resolution, and edge-length deviation; node uniformity and edge orthogonality slipped slightly.
+Result: kept. Full train score improved to `0.671752` with 499/499 ok, above Stage 23's safe `0.660950` and Stage 24's timeout-affected `0.671556`. Candidate choices were EdgeBalancer 361, FABalancer 50, Unicyclic 44, Air 20, RadialTree 14, Tree 6, Tutte 3, Grid 1. Runtime margin was restored (`p50 2848ms`, `p90 7275ms`, `p99 21213ms`, max `22690ms`). The main gains versus Stage 23 were convexity (`0.25 -> 0.333333`), edge ratio (`0.385115 -> 0.407053`), spacing, angular resolution, and edge-length deviation; node uniformity and edge orthogonality slipped slightly.
 
 ## Stage 26: Sparse Leaf-Spread Candidate
 
@@ -276,17 +276,17 @@ Result: discarded before full evaluation. A focused comparison against Stage 35 
 
 ## Stage 37: Extra Public Candidate Seeds
 
-Goal: now that the polish pass can clean up many seed drawings, retest whether public algorithms that previously lost as raw candidates become useful as alternate seeds. Add explicit candidate-name support for FaceBalancer, AngleBalancer, and ReweightTutte, then prototype them in a focused selector portfolio before deciding whether to include any by default.
+Goal: now that the polish pass can clean up many seed drawings, retest whether public algorithms that previously lost as raw candidates become useful as alternate seeds. Add explicit candidate-name support for FaceBalancer, AngleBalancer, and Reweight, then prototype them in a focused selector portfolio before deciding whether to include any by default.
 
-Initial focused result: mixed if the selector still polishes only one seed. On 40 low-score and median-metric cases, adding FaceBalancer/AngleBalancer/ReweightTutte as raw seeds gave 3 wins and 3 losses (`avg +0.000625`). The losses happened because a slightly better raw extra candidate could steal the single polish pass from the default seed that would have polished better. Next prototype: keep the extra candidate-name support, but test polishing the top two raw seeds before selecting the final layout.
+Initial focused result: mixed if the selector still polishes only one seed. On 40 low-score and median-metric cases, adding FaceBalancer/AngleBalancer/Reweight as raw seeds gave 3 wins and 3 losses (`avg +0.000625`). The losses happened because a slightly better raw extra candidate could steal the single polish pass from the default seed that would have polished better. Next prototype: keep the extra candidate-name support, but test polishing the top two raw seeds before selecting the final layout.
 
-Second focused result: promising. With top-two polishing and the same extra seed portfolio, the 40-case focused set produced 13 wins, no losses, and average row gain `+0.003522`. The useful extra seeds were FaceBalancer and AngleBalancer; ReweightTutte did not win in the focused set. Promote a guarded default version: add FaceBalancer and AngleBalancer only for graphs up to 60 nodes, polish the top two raw seeds only up to 60 nodes, and keep larger graphs on the old one-seed path.
+Second focused result: promising. With top-two polishing and the same extra seed portfolio, the 40-case focused set produced 13 wins, no losses, and average row gain `+0.003522`. The useful extra seeds were FaceBalancer and AngleBalancer; Reweight did not win in the focused set. Promote a guarded default version: add FaceBalancer and AngleBalancer only for graphs up to 60 nodes, polish the top two raw seeds only up to 60 nodes, and keep larger graphs on the old one-seed path.
 
 Full-result note: the unguarded default improved train score to `0.729373` with 499/499 ok, but the p50 edge-ratio metric dropped sharply (`0.456904 -> 0.428166`). Row-level analysis showed the extra seeds were often real winners, while a subset bought those wins by stretching edge lengths. Continue with a runtime guard instead of accepting the unguarded version.
 
 ## Stage 38: Extra-Seed Edge-Ratio Guard
 
-Goal: keep the Stage 37 alternate-seed gains while avoiding layouts that improve the ten-metric average mostly by giving up edge-length balance. Add a runtime selector guard for FaceBalancer/AngleBalancer/ReweightTutte seeds: compare an extra-seed candidate against the best non-extra alternative available in the same run and reject it if its edge-ratio drops by more than `0.20`. Process non-extra polished seeds before extra polished seeds among the selected top-two seeds so the guard can compare against a polished baseline when one is available.
+Goal: keep the Stage 37 alternate-seed gains while avoiding layouts that improve the ten-metric average mostly by giving up edge-length balance. Add a runtime selector guard for FaceBalancer/AngleBalancer/Reweight seeds: compare an extra-seed candidate against the best non-extra alternative available in the same run and reject it if its edge-ratio drops by more than `0.20`. Process non-extra polished seeds before extra polished seeds among the selected top-two seeds so the guard can compare against a polished baseline when one is available.
 
 Result so far: kept as the new working baseline. The focused guard pass exposed one fallback issue, so the selector now polishes up to three seeds on small graphs and remembers the strongest non-extra edge-ratio reference. Full train score improved to `0.729572` with 499/499 ok, no breakages/TLE, and runtime still below timeout (`p50 4881ms`, `p90 12611ms`, `p99 22014ms`, max `22763ms`). This beats Stage 35's `0.727949` and unguarded Stage 37's `0.729373`; edge-ratio p50 recovered partway from Stage 37 (`0.428166 -> 0.438260`) while preserving most extra-seed gains.
 
@@ -338,6 +338,6 @@ Full train run (`evaluation_data/gpt-simplified-train-results.csv`) completed wi
 
 ## Final Selected Version
 
-Kept Stage 45. The implementation is a deterministic GPT selector over Tutte, EdgeBalancer, Hybrid, guarded Air, exact tree/path and radial-tree layouts, connected unicyclic layouts, exact rectangular grids including `2 x k` ladders, planar 3-trees, outerplanar circular-order drawings, sparse leaf-spread postprocessing, core-tree drawings, and a bounded metric-polish cleanup pass. Every candidate is validated for planarity, scored with the ten benchmark metrics, and passed through the 96-sample rotation plus determinant-one affine stretch sweep `[1, 1.04, 1.10, 1.20]` for graphs up to 160 nodes. The transform loop keeps the internal 22s budget cutoff to leave headroom for evaluator metrics. The polish pass is capped by graph size, seed score, evaluation count, and deadline, and runs once from the selected candidate.
+Kept Stage 45. The implementation is a deterministic GPT selector over Tutte, EdgeBalancer, FABalancer, guarded Air, exact tree/path and radial-tree layouts, connected unicyclic layouts, exact rectangular grids including `2 x k` ladders, planar 3-trees, outerplanar circular-order drawings, sparse leaf-spread postprocessing, core-tree drawings, and a bounded metric-polish cleanup pass. Every candidate is validated for planarity, scored with the ten benchmark metrics, and passed through the 96-sample rotation plus determinant-one affine stretch sweep `[1, 1.04, 1.10, 1.20]` for graphs up to 160 nodes. The transform loop keeps the internal 22s budget cutoff to leave headroom for evaluator metrics. The polish pass is capped by graph size, seed score, evaluation count, and deadline, and runs once from the selected candidate.
 
-Canonical full train run (`evaluation_data/gpt-train-results.csv`): `0.727890` with 499/499 ok and no breakages/TLE. Metric p50s were angular resolution `0.582134`, aspect ratio `0.993807`, convexity `0.500000`, edge-length deviation `0.847692`, edge ratio `0.456904`, edge orthogonality `0.592523`, face `0.951662`, node uniformity `0.736842`, alignment `0.785712`, and spacing `0.831622`. Internal choices from the run were Polish-EdgeBalancer 260, Polish-CoreTree 112, Polish-Hybrid 41, Polish-OuterCircle 20, Polish-LeafSpread-EdgeBalancer 18, Polish-Air 14, Polish-RadialTree 12, Polish-Unicyclic 7, Polish-Tree 6, Unicyclic 2, OuterCircle 2, EdgeBalancer 1, RadialTree 1, Grid 1, Polish-LeafSpread-Hybrid 1, and Polish-Tutte 1. Runtime stayed under the 30s timeout (`p50 3449ms`, `p90 8495ms`, `p99 22017ms`, max `26519ms`).
+Canonical full train run (`evaluation_data/gpt-train-results.csv`): `0.727890` with 499/499 ok and no breakages/TLE. Metric p50s were angular resolution `0.582134`, aspect ratio `0.993807`, convexity `0.500000`, edge-length deviation `0.847692`, edge ratio `0.456904`, edge orthogonality `0.592523`, face `0.951662`, node uniformity `0.736842`, alignment `0.785712`, and spacing `0.831622`. Internal choices from the run were Polish-EdgeBalancer 260, Polish-CoreTree 112, Polish-FABalancer 41, Polish-OuterCircle 20, Polish-LeafSpread-EdgeBalancer 18, Polish-Air 14, Polish-RadialTree 12, Polish-Unicyclic 7, Polish-Tree 6, Unicyclic 2, OuterCircle 2, EdgeBalancer 1, RadialTree 1, Grid 1, Polish-LeafSpread-FABalancer 1, and Polish-Tutte 1. Runtime stayed under the 30s timeout (`p50 3449ms`, `p90 8495ms`, `p99 22017ms`, max `26519ms`).

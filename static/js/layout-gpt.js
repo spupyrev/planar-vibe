@@ -24,7 +24,7 @@
   var DEFAULT_OPTIONS = {
     budgetMs: 22000,
     edgeBalancerMaxNodes: 220,
-    hybridMaxNodes: 120,
+    fabalancerMaxNodes: 120,
     airMaxNodes: 96,
     airMinEdgeRatio: 0.01,
     treeMaxNodes: 220,
@@ -1269,22 +1269,23 @@
     return total;
   }
 
-  async function computeCoreTreePositions(graph, options) {
-    if (!global.PlanarVibeEdgeBalancer ||
-        typeof global.PlanarVibeEdgeBalancer.computeEdgeBalancerPositions !== 'function') {
-      return { ok: false, message: 'CoreTree requires EdgeBalancer' };
-    }
+	  async function computeCoreTreePositions(graph, options) {
+	    if (!global.PlanarVibeEdgeBalancer ||
+	        typeof global.PlanarVibeEdgeBalancer.createLayoutInput !== 'function' ||
+	        typeof global.PlanarVibeEdgeBalancer.computePositions !== 'function') {
+	      return { ok: false, message: 'CoreTree requires EdgeBalancer' };
+	    }
 
     var coreInfo = computeTwoCoreInfo(graph, options);
     if (!coreInfo) {
       return { ok: false, message: 'Not an eligible core-tree graph' };
     }
 
-    var coreOptions = Object.assign({}, options || {});
-    delete coreOptions.currentPositions;
-    var coreResult = await Promise.resolve(
-      global.PlanarVibeEdgeBalancer.computeEdgeBalancerPositions(coreInfo.coreGraph, coreOptions)
-    );
+	    var coreOptions = Object.assign({}, options || {});
+	    delete coreOptions.currentPositions;
+	    var coreResult = await Promise.resolve(
+	      computeWithLayoutModule(global.PlanarVibeEdgeBalancer, coreInfo.coreGraph, coreOptions)
+	    );
     if (!coreResult || !coreResult.ok || !coreResult.positions) {
       return { ok: false, message: 'CoreTree core layout failed' };
     }
@@ -1421,7 +1422,7 @@
   }
 
   function isLeafSpreadSource(name) {
-    return name === 'edgebalancer' || name === 'hybrid' || name === 'air';
+    return name === 'edgebalancer' || name === 'fabalancer' || name === 'air';
   }
 
   function shouldTryLeafSpreadGraph(graph, options) {
@@ -1796,13 +1797,13 @@
     return best;
   }
 
-  function buildComputeOptions(baseOptions, currentPositions) {
+	  function buildComputeOptions(baseOptions, currentPositions) {
     var opts = Object.assign({}, baseOptions || {});
     opts.currentPositions = currentPositions;
     delete opts.candidates;
     delete opts.budgetMs;
     delete opts.edgeBalancerMaxNodes;
-    delete opts.hybridMaxNodes;
+    delete opts.fabalancerMaxNodes;
     delete opts.airMaxNodes;
     delete opts.airMinEdgeRatio;
     delete opts.treeMaxNodes;
@@ -1826,8 +1827,19 @@
     delete opts.rotationSamples;
     delete opts.affineMaxNodes;
     delete opts.affineStretchFactors;
-    return opts;
-  }
+	    return opts;
+	  }
+
+	  function hasComputeInterface(module) {
+	    return !!module &&
+	      typeof module.createLayoutInput === 'function' &&
+	      typeof module.computePositions === 'function';
+	  }
+
+	  function computeWithLayoutModule(module, graph, runtime) {
+	    var layoutInput = module.createLayoutInput(graph, runtime || {});
+	    return module.computePositions(graph, layoutInput);
+	  }
 
   function buildCandidateSpecs(graph, options) {
     var opts = options || {};
@@ -1840,9 +1852,9 @@
     var edgeMax = Number.isFinite(opts.edgeBalancerMaxNodes)
       ? opts.edgeBalancerMaxNodes
       : DEFAULT_OPTIONS.edgeBalancerMaxNodes;
-    var hybridMax = Number.isFinite(opts.hybridMaxNodes)
-      ? opts.hybridMaxNodes
-      : DEFAULT_OPTIONS.hybridMaxNodes;
+    var fabalancerMax = Number.isFinite(opts.fabalancerMaxNodes)
+      ? opts.fabalancerMaxNodes
+      : DEFAULT_OPTIONS.fabalancerMaxNodes;
     var airMax = Number.isFinite(opts.airMaxNodes)
       ? opts.airMaxNodes
       : DEFAULT_OPTIONS.airMaxNodes;
@@ -1887,47 +1899,39 @@
     if (tryCoreTree) {
       specs.push('coretree');
     }
-    if (global.PlanarVibeP3T &&
-        typeof global.PlanarVibeP3T.computeP3TPositions === 'function' &&
-        n <= p3tMax &&
-        isPlanar3TreeGraph(graph)) {
-      specs.push('p3t');
-    }
-
-    if (global.PlanarVibeEdgeBalancer &&
-        typeof global.PlanarVibeEdgeBalancer.computeEdgeBalancerPositions === 'function' &&
-        n <= edgeMax) {
-      specs.push('edgebalancer');
-    }
-    if (global.PlanarVibeHybrid &&
-        typeof global.PlanarVibeHybrid.computeHybridPositions === 'function' &&
-        n <= hybridMax) {
-      specs.push('hybrid');
-    }
-    if (global.PlanarVibeAir &&
-        typeof global.PlanarVibeAir.computeAirPositions === 'function' &&
-        n <= airMax) {
-      specs.push('air');
-    }
+	    if (hasComputeInterface(global.PlanarVibeP3T) &&
+	        n <= p3tMax &&
+	        isPlanar3TreeGraph(graph)) {
+	      specs.push('p3t');
+	    }
+	
+	    if (hasComputeInterface(global.PlanarVibeEdgeBalancer) &&
+	        n <= edgeMax) {
+	      specs.push('edgebalancer');
+	    }
+	    if (hasComputeInterface(global.PlanarVibeFABalancer) &&
+	        n <= fabalancerMax) {
+	      specs.push('fabalancer');
+	    }
+	    if (hasComputeInterface(global.PlanarVibeAir) &&
+	        n <= airMax) {
+	      specs.push('air');
+	    }
     return specs;
   }
 
   async function runCandidate(name, graph, computeOptions) {
-    if (name === 'tutte' && global.PlanarVibeTutte &&
-        typeof global.PlanarVibeTutte.computeTutteLayout === 'function') {
-      return global.PlanarVibeTutte.computeTutteLayout(graph, computeOptions);
-    }
-    if (name === 'edgebalancer' && global.PlanarVibeEdgeBalancer &&
-        typeof global.PlanarVibeEdgeBalancer.computeEdgeBalancerPositions === 'function') {
-      return global.PlanarVibeEdgeBalancer.computeEdgeBalancerPositions(graph, computeOptions);
-    }
-    if (name === 'hybrid' && global.PlanarVibeHybrid &&
-        typeof global.PlanarVibeHybrid.computeHybridPositions === 'function') {
-      return global.PlanarVibeHybrid.computeHybridPositions(graph, computeOptions);
-    }
-    if (name === 'air' && global.PlanarVibeAir &&
-        typeof global.PlanarVibeAir.computeAirPositions === 'function') {
-      return global.PlanarVibeAir.computeAirPositions(graph, computeOptions);
+	    if (name === 'tutte' && hasComputeInterface(global.PlanarVibeTutte)) {
+	      return computeWithLayoutModule(global.PlanarVibeTutte, graph, computeOptions);
+	    }
+	    if (name === 'edgebalancer' && hasComputeInterface(global.PlanarVibeEdgeBalancer)) {
+	      return computeWithLayoutModule(global.PlanarVibeEdgeBalancer, graph, computeOptions);
+	    }
+	    if (name === 'fabalancer' && hasComputeInterface(global.PlanarVibeFABalancer)) {
+	      return computeWithLayoutModule(global.PlanarVibeFABalancer, graph, computeOptions);
+	    }
+	    if (name === 'air' && hasComputeInterface(global.PlanarVibeAir)) {
+	      return computeWithLayoutModule(global.PlanarVibeAir, graph, computeOptions);
     }
     if (name === 'tree') {
       return computeTreePositions(graph);
@@ -1947,9 +1951,8 @@
     if (name === 'coretree') {
       return computeCoreTreePositions(graph, computeOptions);
     }
-    if (name === 'p3t' && global.PlanarVibeP3T &&
-        typeof global.PlanarVibeP3T.computeP3TPositions === 'function') {
-      return global.PlanarVibeP3T.computeP3TPositions(graph);
+	    if (name === 'p3t' && hasComputeInterface(global.PlanarVibeP3T)) {
+	      return computeWithLayoutModule(global.PlanarVibeP3T, graph, computeOptions);
     }
     return {
       ok: false,
@@ -1957,7 +1960,7 @@
     };
   }
 
-  async function applyGPTLayout(cy, options) {
+	  async function applyLayout(cy, options) {
     var opts = Object.assign({}, DEFAULT_OPTIONS, options || {});
     var graph = graphFromCy(cy);
     var currentPositions = currentPositionsFromCy(cy);
@@ -2081,7 +2084,7 @@
     };
   }
 
-  global.PlanarVibeGPT = {
-    applyGPTLayout: applyGPTLayout
-  };
+	  global.PlanarVibeGPT = {
+	    applyLayout: applyLayout
+	  };
 })(window);

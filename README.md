@@ -2,7 +2,7 @@
 
 PlanarVibe is a browser app for experimenting with planar graph drawings.
 
-Live app: https://spupyrev.github.io/planar-vibe/
+Live app: open `index.html` locally or deploy with GitHub Pages.
 
 ## Features
 

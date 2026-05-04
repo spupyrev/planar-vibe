@@ -35,7 +35,7 @@ function loadBrowserModules() {
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
-    'static/js/layout-hybridbalancer.js',
+    'static/js/layout-fabalancer.js',
     'static/js/layout-ceg.js',
     'static/js/layout-impred.js',
     'static/js/layout-reweight.js',
@@ -67,11 +67,11 @@ const AreaGrad = modules.PlanarVibeAreaGrad;
 const FaceBalancer = modules.PlanarVibeFaceBalancer;
 const EdgeBalancer = modules.PlanarVibeEdgeBalancer;
 const AngleBalancer = modules.PlanarVibeAngleBalancer;
-const Hybrid = modules.PlanarVibeHybrid;
+const FABalancer = modules.PlanarVibeFABalancer;
 const CEG = modules.PlanarVibeCEGBfs;
 const CEGXY = modules.PlanarVibeCEGXy;
 const ImPrEd = modules.PlanarVibeImPrEd;
-const Reweight = modules.PlanarVibeReweightTutte;
+const Reweight = modules.PlanarVibeReweight;
 const ForceDir = modules.PlanarVibeForceDir;
 const P3T = modules.PlanarVibeP3T;
 const FPP = modules.PlanarVibeFPP;
@@ -167,6 +167,11 @@ function assertNormalizedFailureResult(result, label) {
   assert.equal(result.posById, null, `${label}: expected posById to be null`);
 }
 
+function runStrictCompute(module, graph, runtime) {
+  const layoutInput = module.createLayoutInput(graph, runtime);
+  return module.computePositions(graph, layoutInput);
+}
+
 test('GraphUtils.createGraph requires canonical string ids and edge pairs', () => {
   assert.throws(() => GraphUtils.createGraph(
     [1, '2', 3],
@@ -240,130 +245,112 @@ const layoutSpecs = [
       );
     }
   },
-  {
-    name: 'Tutte compute',
-    graph: CUBE,
-    run(graph) {
-      return Tutte.computeTutteLayout(graph, {});
-    }
-  },
-  {
-    name: 'Air compute',
-    graph: CUBE,
-    run(graph) {
-      return Air.computeAirPositions(graph, {});
-    }
-  },
-  {
-    name: 'AreaGrad compute',
-    graph: CUBE,
-    run(graph) {
-      return AreaGrad.computeAreaGradPositions(graph, {
-        maxIters: 120
-      });
-    }
-  },
-  {
-    name: 'FaceBalancer compute',
-    graph: CUBE,
-    run(graph) {
-      return FaceBalancer.computeFaceBalancerPositions(graph, {
-        maxIters: 20
-      });
-    }
-  },
-  {
-    name: 'EdgeBalancer compute',
-    graph: CUBE,
-    run(graph) {
-      return EdgeBalancer.computeEdgeBalancerPositions(graph, {
-        maxIters: 20
-      });
-    }
-  },
-  {
-    name: 'AngleBalancer compute',
-    graph: CUBE,
-    run(graph) {
-      return AngleBalancer.computeAngleBalancerPositions(graph, {});
-    }
-  },
-  {
-    name: 'Hybrid compute',
-    graph: CUBE,
-    run(graph) {
-      return Hybrid.computeHybridPositions(graph, {});
-    }
-  },
-  {
-    name: 'CEG-bfs compute',
-    graph: CUBE,
-    run(graph) {
-      return CEG.computeCEGBfsPositions(graph, {
-        maxIters: 1200
-      });
-    }
-  },
-  {
-    name: 'CEG-xy compute',
-    graph: CUBE,
-    run(graph) {
-      return CEGXY.computeCEGXyPositions(graph, {
-        maxIters: 1200
-      });
-    }
-  },
-  {
-    name: 'ImPrEd compute',
-    graph: CUBE,
-    run(graph) {
-      return ImPrEd.computeImPrEdPositions(graph, {
-        maxIters: 40
-      });
-    }
-  },
-  {
-    name: 'ReweightTutte compute',
-    graph: CUBE,
-    run(graph) {
-      return Reweight.computeReweightTuttePositions(graph, {
-        maxOuterIters: 6,
-        innerIters: 300,
-        finalIters: 400
-      });
-    }
-  },
-  {
-    name: 'ForceDir compute',
-    graph: CUBE,
-    run(graph) {
-      return ForceDir.computeForceDirPositions(graph, {
-        maxIters: 120
-      });
-    }
-  },
-  {
-    name: 'FPP compute',
-    graph: OCTAHEDRON,
-    run(graph) {
-      return FPP.computeFPPPositions(graph);
-    }
-  },
-  {
-    name: 'Schnyder compute',
-    graph: OCTAHEDRON,
-    run(graph) {
-      return Schnyder.computeSchnyderPositions(graph);
-    }
-  },
-  {
-    name: 'P3T compute',
-    graph: K4,
-    run(graph) {
-      return P3T.computeP3TPositions(graph);
-    }
-  }
-];
+	  {
+	    name: 'Tutte compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(Tutte, graph);
+	    }
+	  },
+	  {
+	    name: 'Air compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(Air, graph);
+	    }
+	  },
+	  {
+	    name: 'AreaGrad compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(AreaGrad, graph);
+	    }
+	  },
+	  {
+	    name: 'FaceBalancer compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(FaceBalancer, graph);
+	    }
+	  },
+	  {
+	    name: 'EdgeBalancer compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(EdgeBalancer, graph);
+	    }
+	  },
+	  {
+	    name: 'AngleBalancer compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(AngleBalancer, graph);
+	    }
+	  },
+	  {
+	    name: 'FABalancer compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(FABalancer, graph);
+	    }
+	  },
+	  {
+	    name: 'CEG-bfs compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(CEG, graph);
+	    }
+	  },
+	  {
+	    name: 'CEG-xy compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(CEGXY, graph);
+	    }
+	  },
+	  {
+	    name: 'ImPrEd compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(ImPrEd, graph);
+	    }
+	  },
+	  {
+	    name: 'Reweight compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(Reweight, graph);
+	    }
+	  },
+	  {
+	    name: 'ForceDir compute',
+	    graph: CUBE,
+	    run(graph) {
+	      return runStrictCompute(ForceDir, graph);
+	    }
+	  },
+	  {
+	    name: 'FPP compute',
+	    graph: OCTAHEDRON,
+	    run(graph) {
+	      return runStrictCompute(FPP, graph);
+	    }
+	  },
+	  {
+	    name: 'Schnyder compute',
+	    graph: OCTAHEDRON,
+	    run(graph) {
+	      return runStrictCompute(Schnyder, graph);
+	    }
+	  },
+	  {
+	    name: 'P3T compute',
+	    graph: K4,
+	    run(graph) {
+	      return runStrictCompute(P3T, graph);
+	    }
+	  }
+	];
 
 for (const spec of layoutSpecs) {
   test(`${spec.name} returns a finite non-crossing drawing on ${spec.graph.name}`, async () => {
@@ -371,8 +358,8 @@ for (const spec of layoutSpecs) {
   });
 }
 
-test('CEG-xy avoids spread-denominator skew on GD15_212_217_3', () => {
-  const result = CEGXY.computeCEGXyPositions(GD15_212_217_3, {});
+test('CEG-xy avoids spread-denominator skew on GD15_212_217_3', async () => {
+  const result = await runStrictCompute(CEGXY, GD15_212_217_3);
   assert.equal(result && result.ok, true, result && (result.message || result.reason || 'CEG-xy failed on GD15_212_217_3'));
   const posById = projectOriginalPositions(GD15_212_217_3, result);
   assertFiniteOriginalPositions(GD15_212_217_3, posById, 'CEG-xy on GD15_212_217_3');
@@ -403,38 +390,38 @@ test('normalized failure shape is preserved for exported compute functions', asy
         weights: TutteAlgorithm.buildTutteWeights(emptyGraph, emptyGraph)
       })
     },
-    {
-      name: 'Tutte compute',
-      run: () => Tutte.computeTutteLayout(singleEdgeGraph, {})
-    },
-    {
-      name: 'CEG-bfs compute',
-      run: () => CEG.computeCEGBfsPositions(singleEdgeGraph, {})
-    },
-    {
-      name: 'CEG-xy compute',
-      run: () => CEGXY.computeCEGXyPositions(singleEdgeGraph, {})
-    },
-    {
-      name: 'ReweightTutte compute',
-      run: () => Reweight.computeReweightTuttePositions(singleEdgeGraph, {})
-    },
-    {
-      name: 'ForceDir compute',
-      run: () => ForceDir.computeForceDirPositions(singleEdgeGraph, {})
-    },
-    {
-      name: 'FPP compute',
-      run: () => FPP.computeFPPPositions(nonPlanarK5)
-    },
-    {
-      name: 'Schnyder compute',
-      run: () => Schnyder.computeSchnyderPositions(nonPlanarK5)
-    },
-    {
-      name: 'P3T compute',
-      run: () => P3T.computeP3TPositions(CUBE)
-    }
+	    {
+	      name: 'Tutte compute',
+	      run: () => runStrictCompute(Tutte, singleEdgeGraph)
+	    },
+	    {
+	      name: 'CEG-bfs compute',
+	      run: () => runStrictCompute(CEG, singleEdgeGraph)
+	    },
+	    {
+	      name: 'CEG-xy compute',
+	      run: () => runStrictCompute(CEGXY, singleEdgeGraph)
+	    },
+	    {
+	      name: 'Reweight compute',
+	      run: () => runStrictCompute(Reweight, singleEdgeGraph)
+	    },
+	    {
+	      name: 'ForceDir compute',
+	      run: () => runStrictCompute(ForceDir, singleEdgeGraph)
+	    },
+	    {
+	      name: 'FPP compute',
+	      run: () => runStrictCompute(FPP, nonPlanarK5)
+	    },
+	    {
+	      name: 'Schnyder compute',
+	      run: () => runStrictCompute(Schnyder, nonPlanarK5)
+	    },
+	    {
+	      name: 'P3T compute',
+	      run: () => runStrictCompute(P3T, CUBE)
+	    }
   ];
 
   for (const failureCase of failureCases) {

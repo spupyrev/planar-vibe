@@ -29,7 +29,6 @@ export const metricHeaders = [
 
 function sharedLayoutMethodOptions(layoutName, overrides) {
   let key = String(layoutName || '').toLowerCase();
-  if (key === 'reweight') key = 'reweighttutte';
   if (key === 'ceg_bfs') key = 'ceg-bfs';
   if (key === 'ceg_xy') key = 'ceg-xy';
   let base = {};
@@ -39,9 +38,8 @@ function sharedLayoutMethodOptions(layoutName, overrides) {
       key === 'facebalancer' ||
       key === 'edgebalancer' ||
       key === 'anglebalancer' ||
-      key === 'hybrid' ||
       key === 'fabalancer' ||
-      key === 'reweighttutte' ||
+      key === 'reweight' ||
       key === 'forcedir' ||
       key === 'impred') {
     base = {
@@ -59,82 +57,82 @@ export function createAlgorithmSpecs(windowObj) {
     {
       key: 'tutte',
       label: 'Tutte',
-      run: (cy) => windowObj.PlanarVibeTutte.applyTutteLayout(cy)
+      run: (cy) => windowObj.PlanarVibeTutte.applyLayout(cy)
     },
     {
       key: 'air',
       label: 'Air',
-      run: (cy) => windowObj.PlanarVibeAir.applyAirLayout(cy, sharedLayoutMethodOptions('air'))
+      run: (cy) => windowObj.PlanarVibeAir.applyLayout(cy, sharedLayoutMethodOptions('air'))
     },
     {
       key: 'cleanair',
       label: 'CleanAir',
-      run: (cy) => windowObj.PlanarVibeCleanAir.applyCleanAirLayout(cy, sharedLayoutMethodOptions('cleanair'))
+      run: (cy) => windowObj.PlanarVibeCleanAir.applyLayout(cy, sharedLayoutMethodOptions('cleanair'))
     },
     {
       key: 'areagrad',
       label: 'AreaGrad',
-      run: (cy) => windowObj.PlanarVibeAreaGrad.applyAreaGradLayout(cy, sharedLayoutMethodOptions('areagrad'))
+      run: (cy) => windowObj.PlanarVibeAreaGrad.applyLayout(cy, sharedLayoutMethodOptions('areagrad'))
     },
     {
       key: 'facebalancer',
       label: 'FaceBalancer',
-      run: (cy) => windowObj.PlanarVibeFaceBalancer.applyFaceBalancerLayout(cy, sharedLayoutMethodOptions('facebalancer'))
+      run: (cy) => windowObj.PlanarVibeFaceBalancer.applyLayout(cy, sharedLayoutMethodOptions('facebalancer'))
     },
     {
       key: 'edgebalancer',
       label: 'EdgeBalancer',
-      run: (cy) => windowObj.PlanarVibeEdgeBalancer.applyEdgeBalancerLayout(cy, sharedLayoutMethodOptions('edgebalancer'))
+      run: (cy) => windowObj.PlanarVibeEdgeBalancer.applyLayout(cy, sharedLayoutMethodOptions('edgebalancer'))
     },
     {
       key: 'anglebalancer',
       label: 'AngleBalancer',
-      run: (cy) => windowObj.PlanarVibeAngleBalancer.applyAngleBalancerLayout(cy, sharedLayoutMethodOptions('anglebalancer'))
+      run: (cy) => windowObj.PlanarVibeAngleBalancer.applyLayout(cy, sharedLayoutMethodOptions('anglebalancer'))
     },
     {
-      key: 'hybrid',
-      label: 'Hybrid',
-      run: (cy) => windowObj.PlanarVibeHybrid.applyHybridLayout(cy, sharedLayoutMethodOptions('hybrid'))
+      key: 'fabalancer',
+      label: 'FABalancer',
+      run: (cy) => windowObj.PlanarVibeFABalancer.applyLayout(cy, sharedLayoutMethodOptions('fabalancer'))
     },
     {
       key: 'gpt',
       label: 'GPT',
-      run: (cy) => windowObj.PlanarVibeGPT.applyGPTLayout(cy, sharedLayoutMethodOptions('gpt'))
+      run: (cy) => windowObj.PlanarVibeGPT.applyLayout(cy, sharedLayoutMethodOptions('gpt'))
     },
     {
       key: 'reweight',
       label: 'Reweight',
-      run: (cy) => windowObj.PlanarVibeReweightTutte.applyReweightTutteLayout(cy, sharedLayoutMethodOptions('reweight'))
+      run: (cy) => windowObj.PlanarVibeReweight.applyLayout(cy, sharedLayoutMethodOptions('reweight'))
     },
     {
       key: 'forcedir',
       label: 'ForceDir',
-      run: (cy) => windowObj.PlanarVibeForceDir.applyForceDirLayout(cy, sharedLayoutMethodOptions('forcedir'))
+      run: (cy) => windowObj.PlanarVibeForceDir.applyLayout(cy, sharedLayoutMethodOptions('forcedir'))
     },
     {
       key: 'impred',
       label: 'ImPrEd',
-      run: (cy) => windowObj.PlanarVibeImPrEd.applyImPrEdLayout(cy, sharedLayoutMethodOptions('impred'))
+      run: (cy) => windowObj.PlanarVibeImPrEd.applyLayout(cy, sharedLayoutMethodOptions('impred'))
     },
     {
       key: 'fpp',
       label: 'FPP',
-      run: (cy) => windowObj.PlanarVibeFPP.applyFPPLayout(cy)
+      run: (cy) => windowObj.PlanarVibeFPP.applyLayout(cy)
     },
     {
       key: 'schnyder',
       label: 'Schnyder',
-      run: (cy) => windowObj.PlanarVibeSchnyder.applySchnyderLayout(cy)
+      run: (cy) => windowObj.PlanarVibeSchnyder.applyLayout(cy)
     },
     {
       key: 'ceg_bfs',
       label: 'CEG-bfs',
-      run: (cy) => windowObj.PlanarVibeCEGBfs.applyCEGBfsLayout(cy)
+      run: (cy) => windowObj.PlanarVibeCEGBfs.applyLayout(cy)
     },
     {
       key: 'ceg_xy',
       label: 'CEG-xy',
-      run: (cy) => windowObj.PlanarVibeCEGXy.applyCEGXyLayout(cy)
+      run: (cy) => windowObj.PlanarVibeCEGXy.applyLayout(cy)
     }
   ];
 }
@@ -359,7 +357,7 @@ export function loadBrowserModules() {
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
     'static/js/layout-anglebalancer.js',
-    'static/js/layout-hybridbalancer.js',
+    'static/js/layout-fabalancer.js',
     'static/js/layout-gpt.js',
     'static/js/layout-reweight.js',
     'static/js/layout-forcedir.js',

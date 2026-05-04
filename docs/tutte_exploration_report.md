@@ -66,9 +66,9 @@ Dataset:
 Baselines compared:
 - `Tutte`
 - `TutteAdaptive`
-- `ReweightTutte`
+- `Reweight`
 
-New follow-up hybrid:
+New follow-up FABalancer:
 - `TutteAdaptiveFaceExpand`
 
 Metrics recorded:
@@ -86,10 +86,10 @@ Success rule:
 - all five metrics were available
 
 Known family failure:
-- all Tutte-style variants except `ReweightTutte` fail on `randomplanar4` for the same existing augmentation reason:
+- all Tutte-style variants except `Reweight` fail on `randomplanar4` for the same existing augmentation reason:
   `triangulateByFaceStellation requires simple face boundaries`
 
-Additional existing `ReweightTutte` failure:
+Additional existing `Reweight` failure:
 - `grid2x20` crosses
 
 ---
@@ -101,7 +101,7 @@ Additional existing `ReweightTutte` failure:
 | `Tutte` | `21/22` | `29.09` | `0.6096` | `0.8512` | `0.4297` | `0.1002` | `0.4462` |
 | `TutteAdaptive` | `21/22` | `37.94` | `0.7731` | `0.8926` | `0.5200` | `0.1128` | `0.5906` |
 | `TutteAdaptiveFaceExpand` | `21/22` | `154.21` | `0.7794` | `0.8932` | `0.5166` | `0.1126` | `0.5908` |
-| `ReweightTutte` | `20/22` | `423.98` | `0.8089` | `0.9039` | `0.5083` | `0.1219` | `0.6054` |
+| `Reweight` | `20/22` | `423.98` | `0.8089` | `0.9039` | `0.5083` | `0.1219` | `0.6054` |
 | `DistanceReweightedTutte` | `21/22` | `240.55` | `0.6358` | `0.8734` | `0.4375` | `0.1049` | `0.4848` |
 | `TutteAntiSmooth` | `21/22` | `281.84` | `0.6094` | `0.8506` | `0.4290` | `0.0982` | `0.4395` |
 | `TutteFaceExpand` | `21/22` | `296.97` | `0.6201` | `0.8558` | `0.4323` | `0.1015` | `0.4713` |
@@ -118,7 +118,7 @@ Additional existing `ReweightTutte` failure:
 | `Tutte` | `0.7060` | `0.8698` | `0.4941` | `0.0085` | `0.4728` |
 | `TutteAdaptive` | `0.8442` | `0.9232` | `0.4419` | `0.0629` | `0.5130` |
 | `TutteAdaptiveFaceExpand` | `0.8475` | `0.9237` | `0.4379` | `0.0576` | `0.5127` |
-| `ReweightTutte` | `0.8601` | `0.9310` | `0.4380` | `0.1002` | `0.5157` |
+| `Reweight` | `0.8601` | `0.9310` | `0.4380` | `0.1002` | `0.5157` |
 | `DistanceReweightedTutte` | `0.7707` | `0.9064` | `0.4542` | `0.0248` | `0.4790` |
 | `TutteAntiSmooth` | `0.7028` | `0.8686` | `0.5240` | `0.0009` | `0.4735` |
 | `TutteFaceExpand` | `0.7092` | `0.8765` | `0.4364` | `0.0002` | `0.4810` |
@@ -131,7 +131,7 @@ Additional existing `ReweightTutte` failure:
 | `Tutte` | `0.7620` | `0.9232` | `0.3398` | `0.0035` | `0.4263` |
 | `TutteAdaptive` | `0.8711` | `0.9273` | `0.4224` | `0.0136` | `0.6052` |
 | `TutteAdaptiveFaceExpand` | `0.8770` | `0.9270` | `0.4298` | `0.0130` | `0.6043` |
-| `ReweightTutte` | `0.8651` | `0.9326` | `0.3891` | `0.0117` | `0.5722` |
+| `Reweight` | `0.8651` | `0.9326` | `0.3891` | `0.0117` | `0.5722` |
 | `DistanceReweightedTutte` | `0.7467` | `0.9326` | `0.2987` | `0.0003` | `0.3797` |
 | `TutteAntiSmooth` | `0.7825` | `0.9131` | `0.3794` | `0.0035` | `0.4491` |
 | `TutteFaceExpand` | `0.8021` | `0.9156` | `0.4102` | `0.0032` | `0.4824` |
@@ -257,7 +257,7 @@ Among the simple follow-ups:
 - none of the other simple variants beat `TutteAdaptive` on face score on any of the 21 successful benchmark graphs
 
 So the current ranking stays:
-1. `ReweightTutte` for raw quality, with higher cost and one extra failure
+1. `Reweight` for raw quality, with higher cost and one extra failure
 2. `TutteAdaptive` for the best fast baseline
 3. `TutteAdaptiveFaceExpand` for a modest but real quality bump when extra runtime is acceptable
 4. best non-adaptive new simple experiment: `DistanceReweightedTuttePlus` or `DistanceReweightedTutte`
@@ -270,7 +270,7 @@ So the current ranking stays:
 
 - keep `TutteAdaptive` as the main improved Tutte variant
 - keep `TutteAdaptiveFaceExpand` as the best lightweight follow-up on top of it
-- keep `ReweightTutte` as the stronger but heavier option
+- keep `Reweight` as the stronger but heavier option
 
 ### Experimental ideas worth keeping around
 

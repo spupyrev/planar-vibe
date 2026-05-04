@@ -27,7 +27,7 @@
   var vecSub = GeometryUtils.vecSub;
 
   var TWO_PI = 2 * Math.PI;
-  var HYBRID_CONFIG = {
+  var FABALANCER_CONFIG = {
     areaTol: 1e-15,
     angleTol: 1e-8,
     gradTol: 1e-5,
@@ -98,7 +98,7 @@
     return delta;
   }
 
-  function buildHybridData(input) {
+  function buildFABalancerData(input) {
     var augmentedEdgePairs = input.augmentedEdgePairs;
     var augmentedEmbedding = input.augmentedEmbedding;
     var outerFace = input.outerFace;
@@ -142,10 +142,10 @@
         : [];
       if (faceKey(rawFace) === outerKey) continue;
       if (!rawFace || rawFace.length < 3) {
-        return buildLayoutError({ reason: 'Hybrid requires a valid triangulated augmentation' });
+        return buildLayoutError({ reason: 'FABalancer requires a valid triangulated augmentation' });
       }
       if (rawFace.length !== 3) {
-        return buildLayoutError({ reason: 'Hybrid requires all non-outer augmented faces to be triangles' });
+        return buildLayoutError({ reason: 'FABalancer requires all non-outer augmented faces to be triangles' });
       }
       boundedFaces.push(rawFace.map(function (id) { return augIndexById[String(id)]; }));
     }
@@ -280,7 +280,7 @@
         var rowWeight = weights[edgeKey(vertexId, neighborId)];
         if (!Number.isFinite(rowWeight) || !(rowWeight > 0)) {
           return buildLayoutError({
-            reason: 'Hybrid initialization requires positive Tutte weights',
+            reason: 'FABalancer initialization requires positive Tutte weights',
             vertexId: vertexId,
             neighborId: neighborId
           });
@@ -290,7 +290,7 @@
       }
       if (!(rowWeightSum > 0)) {
         return buildLayoutError({
-          reason: 'Hybrid initialization requires positive Tutte row weight sum',
+          reason: 'FABalancer initialization requires positive Tutte row weight sum',
           vertexId: vertexId
         });
       }
@@ -325,7 +325,7 @@
         var vy = y[neighborAugIdx] - y[augIdx];
         var len = Math.hypot(vx, vy);
         if (!(len > 1e-12)) {
-          return buildLayoutError({ reason: 'Hybrid warm start requires positive edge lengths' });
+          return buildLayoutError({ reason: 'FABalancer warm start requires positive edge lengths' });
         }
         vectors[k] = { vx: vx, vy: vy, len: len };
       }
@@ -336,7 +336,7 @@
         var theta = Math.atan2(cross, dot);
         if (!(theta > 0)) theta += TWO_PI;
         if (!(theta > 1e-8)) {
-          return buildLayoutError({ reason: 'Hybrid warm start requires strictly positive neighbor wedges' });
+          return buildLayoutError({ reason: 'FABalancer warm start requires strictly positive neighbor wedges' });
         }
         angles[k] = theta;
       }
@@ -347,18 +347,18 @@
         var prev = (k + ordered.length - 1) % ordered.length;
         var weight = (Math.tan(angles[prev] / 2) + Math.tan(angles[k] / 2)) / vectors[k].len;
         if (!(weight > 0) || !Number.isFinite(weight)) {
-          return buildLayoutError({ reason: 'Hybrid warm start requires positive mean-value weights' });
+          return buildLayoutError({ reason: 'FABalancer warm start requires positive mean-value weights' });
         }
         weightByNeighbor[ordered[k]] = weight;
         rowWeightSum += weight;
       }
       if (!(rowWeightSum > 0)) {
-        return buildLayoutError({ reason: 'Hybrid warm start requires positive row weight sum' });
+        return buildLayoutError({ reason: 'FABalancer warm start requires positive row weight sum' });
       }
       for (k = 0; k < neighbors.length; k += 1) {
         var neighborWeight = weightByNeighbor[neighbors[k]];
         if (!(neighborWeight > 0)) {
-          return buildLayoutError({ reason: 'Hybrid warm start could not map neighbor weights' });
+          return buildLayoutError({ reason: 'FABalancer warm start could not map neighbor weights' });
         }
         q0[rowOffset + k] = Math.log(neighborWeight / rowWeightSum);
       }
@@ -390,7 +390,7 @@
     };
   }
 
-  function computeHybridTradeoffScore(faceAreaScore, angleResolutionScore) {
+  function computeFABalancerTradeoffScore(faceAreaScore, angleResolutionScore) {
     if (!(Number.isFinite(faceAreaScore) && faceAreaScore >= 0 &&
           Number.isFinite(angleResolutionScore) && angleResolutionScore >= 0)) {
       return -Infinity;
@@ -398,7 +398,7 @@
     return Math.sqrt(faceAreaScore * angleResolutionScore);
   }
 
-  function computeHybridStageMetrics(graph, embedding, posById) {
+  function computeFABalancerStageMetrics(graph, embedding, posById) {
     var positions = GeometryUtils.filterPositionMap(posById || {}, graph.nodeIds);
     var angleStats = computeAngleStats(graph, positions);
     var faceStats = computeFaceStats(graph, embedding, positions);
@@ -407,11 +407,11 @@
       angleResolutionScore: angleStats.angleResolutionScore,
       angleCount: angleStats.angleCount,
       faceAreaScore: faceStats.faceAreaScore,
-      tradeoffScore: computeHybridTradeoffScore(faceStats.faceAreaScore, angleStats.angleResolutionScore)
+      tradeoffScore: computeFABalancerTradeoffScore(faceStats.faceAreaScore, angleStats.angleResolutionScore)
     };
   }
 
-  function applyHybridAxisAlignment(graph, posById, maxPasses) {
+  function applyFABalancerAxisAlignment(graph, posById, maxPasses) {
     if (!Alignment || typeof Alignment.alignToAxisGreedy !== 'function') {
       return buildLayoutResult({
         changed: false,
@@ -428,7 +428,7 @@
       var result = Alignment.alignToAxisGreedy(graph.nodeIds, graph.edgePairs, working);
       if (!result || !result.ok) {
         return buildLayoutError({
-          reason: result && result.reason ? result.reason : 'Hybrid axis-align failed'
+          reason: result && result.reason ? result.reason : 'FABalancer axis-align failed'
         });
       }
       results.push(result);
@@ -457,7 +457,7 @@
     return sum;
   }
 
-  function realizeHybridState(q, data, failureReason) {
+  function realizeFABalancerState(q, data, failureReason) {
     var nI = data.interiorAugIndices.length;
     var lambda = createZeroVector(data.qSize);
     var L = new Array(nI);
@@ -484,9 +484,9 @@
     }
 
     var factor = luFactorize(L);
-    if (!factor) return buildLayoutError({ reason: failureReason || 'Hybrid linear solve failed' });
+    if (!factor) return buildLayoutError({ reason: failureReason || 'FABalancer linear solve failed' });
     var primal = solveLUWithTwoRhs(factor, bx, by);
-    if (!primal) return buildLayoutError({ reason: failureReason || 'Hybrid linear solve failed' });
+    if (!primal) return buildLayoutError({ reason: failureReason || 'FABalancer linear solve failed' });
 
     var x = data.x0.slice();
     var y = data.y0.slice();
@@ -503,10 +503,10 @@
     });
   }
 
-  function initializeHybridBaseline(data, q0) {
-    var realized = realizeHybridState(q0, data, 'Hybrid initialization failed');
+  function initializeFABalancerBaseline(data, q0) {
+    var realized = realizeFABalancerState(q0, data, 'FABalancer initialization failed');
     if (!realized || !realized.ok) {
-      return realized || buildLayoutError({ reason: 'Hybrid initialization failed' });
+      return realized || buildLayoutError({ reason: 'FABalancer initialization failed' });
     }
 
     var x = realized.x;
@@ -623,7 +623,7 @@
   function evaluateAngleObjectiveTerms(data, x, y, zX, zY) {
     var wedgeCount = data.wedges.length;
     if (!(wedgeCount > 0)) {
-      return buildLayoutError({ reason: 'Hybrid requires at least one valid objective angle' });
+      return buildLayoutError({ reason: 'FABalancer requires at least one valid objective angle' });
     }
 
     var angleObjectiveTerm = 0;
@@ -763,11 +763,11 @@
     });
   }
 
-  function evaluateHybridAngleStageObjectiveAndGradient(q, data) {
+  function evaluateFABalancerAngleStageObjectiveAndGradient(q, data) {
     var triangleSlack = Math.max(data.areaTol, 1e-12);
     var nI = data.interiorAugIndices.length;
-    var realized = realizeHybridState(q, data, 'Hybrid angle stage linear solve failed');
-    if (!realized || !realized.ok) return realized || buildLayoutError({ reason: 'Hybrid angle stage linear solve failed' });
+    var realized = realizeFABalancerState(q, data, 'FABalancer angle stage linear solve failed');
+    if (!realized || !realized.ok) return realized || buildLayoutError({ reason: 'FABalancer angle stage linear solve failed' });
     var lambda = realized.lambda;
     var factor = realized.factor;
     var x = realized.x;
@@ -843,7 +843,7 @@
     }
 
     var adjoint = solveTransposeLUWithTwoRhs(factor, zX, zY);
-    if (!adjoint) return buildLayoutError({ reason: 'Hybrid angle stage adjoint solve failed' });
+    if (!adjoint) return buildLayoutError({ reason: 'FABalancer angle stage adjoint solve failed' });
 
     var gradVec = projectAdjointToWeightGradient(data, lambda, x, y, adjoint);
 
@@ -859,11 +859,11 @@
     });
   }
 
-  function evaluateHybridObjectiveAndGradient(q, data) {
+  function evaluateFABalancerObjectiveAndGradient(q, data) {
     var triangleSlack = Math.max(data.areaTol, 1e-12);
     var nI = data.interiorAugIndices.length;
-    var realized = realizeHybridState(q, data, 'Hybrid linear solve failed');
-    if (!realized || !realized.ok) return realized || buildLayoutError({ reason: 'Hybrid linear solve failed' });
+    var realized = realizeFABalancerState(q, data, 'FABalancer linear solve failed');
+    if (!realized || !realized.ok) return realized || buildLayoutError({ reason: 'FABalancer linear solve failed' });
     var lambda = realized.lambda;
     var factor = realized.factor;
     var x = realized.x;
@@ -895,7 +895,7 @@
       }
     }
     if (faceAreas.length === 0 || !(totalArea > 1e-12)) {
-      return buildLayoutError({ reason: 'Hybrid total bounded area is not positive' });
+      return buildLayoutError({ reason: 'FABalancer total bounded area is not positive' });
     }
 
     var zX = createZeroVector(nI);
@@ -1061,7 +1061,7 @@
     }
 
     var adjoint = solveTransposeLUWithTwoRhs(factor, zX, zY);
-    if (!adjoint) return buildLayoutError({ reason: 'Hybrid adjoint solve failed' });
+    if (!adjoint) return buildLayoutError({ reason: 'FABalancer adjoint solve failed' });
 
     var gradVec = projectAdjointToWeightGradient(data, lambda, x, y, adjoint);
 
@@ -1105,10 +1105,10 @@
     }, { moveTol: 1e-9 });
   }
 
-  async function runHybridOptimization(q0, data, opts) {
+  async function runFABalancerOptimization(q0, data, opts) {
     var maxIters = opts.maxIters;
     var maxPositionStep = opts.maxPositionStep;
-    var evaluate = typeof opts.evaluate === 'function' ? opts.evaluate : evaluateHybridObjectiveAndGradient;
+    var evaluate = typeof opts.evaluate === 'function' ? opts.evaluate : evaluateFABalancerObjectiveAndGradient;
     var q = q0.slice();
     var current = evaluate(q, data);
     if (!current.ok) return current;
@@ -1126,7 +1126,7 @@
     var completedIters = 0;
 
     for (var iter = 1; iter <= maxIters; iter += 1) {
-      if (current.gradNorm <= HYBRID_CONFIG.gradTol) {
+      if (current.gradNorm <= FABALANCER_CONFIG.gradTol) {
         stopReason = 'grad-converged';
         break;
       }
@@ -1136,8 +1136,8 @@
       var d = lbfgsDirection(current.gradVec, S, Y, Rho);
       if (!(vecDot(current.gradVec, d) < 0)) d = vecScale(current.gradVec, -1);
       var directionNorm = vecNorm(d);
-      if (directionNorm > HYBRID_CONFIG.maxStepNorm) {
-        d = vecScale(d, HYBRID_CONFIG.maxStepNorm / directionNorm);
+      if (directionNorm > FABALANCER_CONFIG.maxStepNorm) {
+        d = vecScale(d, FABALANCER_CONFIG.maxStepNorm / directionNorm);
       }
 
       var gtd = vecDot(current.gradVec, d);
@@ -1148,8 +1148,8 @@
         if (lineSearchAttempt === 1) {
           searchDir = vecScale(current.gradVec, -1);
           directionNorm = vecNorm(searchDir);
-          if (directionNorm > HYBRID_CONFIG.maxStepNorm) {
-            searchDir = vecScale(searchDir, HYBRID_CONFIG.maxStepNorm / directionNorm);
+          if (directionNorm > FABALANCER_CONFIG.maxStepNorm) {
+            searchDir = vecScale(searchDir, FABALANCER_CONFIG.maxStepNorm / directionNorm);
           }
           gtd = vecDot(current.gradVec, searchDir);
           if (!(gtd < 0)) {
@@ -1168,15 +1168,15 @@
           if (trial.ok) {
             var trialMoveStats = computeInteriorMoveStats(data, current.x, current.y, trial.x, trial.y);
             if (trialMoveStats.maxMove > maxPositionStep) {
-              alpha *= HYBRID_CONFIG.lineSearchTau;
+              alpha *= FABALANCER_CONFIG.lineSearchTau;
               continue;
             }
           }
-          if (trial.ok && trial.E <= current.E + HYBRID_CONFIG.lineSearchC1 * alpha * gtd) {
+          if (trial.ok && trial.E <= current.E + FABALANCER_CONFIG.lineSearchC1 * alpha * gtd) {
             accepted = { q: qTrial, eval: trial };
             break;
           }
-          alpha *= HYBRID_CONFIG.lineSearchTau;
+          alpha *= FABALANCER_CONFIG.lineSearchTau;
         }
       }
       if (!accepted) {
@@ -1226,14 +1226,14 @@
         stopReason = movementStatus.reason || 'movement-converged';
         break;
       }
-      if (stepNorm < HYBRID_CONFIG.stepTol) {
+      if (stepNorm < FABALANCER_CONFIG.stepTol) {
         stopReason = 'step-converged';
         break;
       }
 
       var ys = vecDot(y, s);
       if (ys > 1e-14) {
-        if (S.length === HYBRID_CONFIG.lbfgsMemory) {
+        if (S.length === FABALANCER_CONFIG.lbfgsMemory) {
           S.shift();
           Y.shift();
           Rho.shift();
@@ -1258,14 +1258,14 @@
   }
 
   async function runAngleStageOptimization(q0, data, opts) {
-    return runHybridOptimization(q0, data, Object.assign({}, opts, {
-      evaluate: evaluateHybridAngleStageObjectiveAndGradient
+    return runFABalancerOptimization(q0, data, Object.assign({}, opts, {
+      evaluate: evaluateFABalancerAngleStageObjectiveAndGradient
     }));
   }
 
-  async function runHybridFaceOptimization(q0, data, opts) {
-    return runHybridOptimization(q0, data, Object.assign({}, opts, {
-      evaluate: evaluateHybridObjectiveAndGradient
+  async function runFABalancerFaceOptimization(q0, data, opts) {
+    return runFABalancerOptimization(q0, data, Object.assign({}, opts, {
+      evaluate: evaluateFABalancerObjectiveAndGradient
     }));
   }
 
@@ -1273,8 +1273,8 @@
     return global.GraphUtils.createMovementConvergenceTracker({
       minItersBeforeStop: minItersBeforeStop,
       stableIterLimit: stableIterLimit,
-      maxMoveTol: HYBRID_CONFIG.movementStopTol * scale,
-      avgMoveTol: HYBRID_CONFIG.avgMovementStopTol * scale
+      maxMoveTol: FABALANCER_CONFIG.movementStopTol * scale,
+      avgMoveTol: FABALANCER_CONFIG.avgMovementStopTol * scale
     });
   }
 
@@ -1291,16 +1291,16 @@
     }
   }
 
-  function buildHybridStageData(augmented, outerFace, outerPos, objectiveGraph, baseEmbedding, overrides) {
-    return buildHybridData(Object.assign({
+  function buildFABalancerStageData(augmented, outerFace, outerPos, objectiveGraph, baseEmbedding, overrides) {
+    return buildFABalancerData(Object.assign({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
       outerFace: outerFace,
       outerPos: outerPos,
       objectiveGraph: objectiveGraph,
       baseEmbedding: baseEmbedding,
-      areaTol: HYBRID_CONFIG.areaTol,
-      angleTol: HYBRID_CONFIG.angleTol
+      areaTol: FABALANCER_CONFIG.areaTol,
+      angleTol: FABALANCER_CONFIG.angleTol
     }, overrides || {}));
   }
 
@@ -1323,8 +1323,8 @@
     });
   }
 
-  async function runHybridStage(config) {
-    var data = buildHybridStageData(
+  async function runFABalancerStage(config) {
+    var data = buildFABalancerStageData(
       config.augmented,
       config.outerFace,
       config.outerPos,
@@ -1333,23 +1333,23 @@
       config.dataOverrides
     );
     if (!data || !data.ok) {
-      return buildLayoutError({ reason: data && data.reason || 'Hybrid setup failed' });
+      return buildLayoutError({ reason: data && data.reason || 'FABalancer setup failed' });
     }
     var initialQResult = config.buildInitialQ(data);
     if (!initialQResult || !initialQResult.ok) {
-      return initialQResult || buildLayoutError({ reason: 'Hybrid initialization failed' });
+      return initialQResult || buildLayoutError({ reason: 'FABalancer initialization failed' });
     }
     var initialQ = initialQResult.q0;
-    var baseline = initializeHybridBaseline(data, initialQ);
+    var baseline = initializeFABalancerBaseline(data, initialQ);
     if (!baseline || !baseline.ok || !baseline.positions) {
-      return baseline || buildLayoutError({ reason: 'Hybrid initialization failed' });
+      return baseline || buildLayoutError({ reason: 'FABalancer initialization failed' });
     }
     if (typeof config.prepareData === 'function') {
       config.prepareData(data, baseline, initialQ);
     }
     var q0Result = config.buildSeed(data, baseline, initialQ);
     if (!q0Result || !q0Result.ok) {
-      return q0Result || buildLayoutError({ reason: 'Hybrid initialization failed' });
+      return q0Result || buildLayoutError({ reason: 'FABalancer initialization failed' });
     }
     var q0 = q0Result.q0;
     relaxMinFaceArea(data, q0, config.evaluate);
@@ -1372,7 +1372,7 @@
     });
   }
 
-  function buildHybridStageError(setup, fallbackMessage, g, outerFace, augmented) {
+  function buildFABalancerStageError(setup, fallbackMessage, g, outerFace, augmented) {
     return buildLayoutError({
       message: setup && (setup.reason || setup.message) || fallbackMessage,
       graph: g,
@@ -1381,18 +1381,18 @@
     });
   }
 
-  async function computeHybridPositionsFromPrepared(options, context) {
+  async function computeFABalancerPositionsFromPrepared(options, context) {
     options = options || {};
     var onIteration = typeof options.onIteration === 'function' ? options.onIteration : null;
     if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'Hybrid setup failed' });
+      return buildLayoutError(context || { message: 'FABalancer setup failed' });
     }
 
     var g = context.graph;
     var outerFace = context.augmentedOuterFace;
     var augmented = context.augmented;
     var baseEmbedding = context.baseEmbedding;
-    var outerPos = buildHybridOuterPositions(context);
+    var outerPos = buildFABalancerOuterPositions(context);
     var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmentedGraph);
     var STAGE_COUNT = 3;
 
@@ -1408,7 +1408,7 @@
       );
       var angleStats = computeAngleStats(g, positions);
       var faceStats = computeFaceStats(g, baseEmbedding, positions);
-      var tradeoffScore = computeHybridTradeoffScore(faceStats.faceAreaScore, angleStats.angleResolutionScore);
+      var tradeoffScore = computeFABalancerTradeoffScore(faceStats.faceAreaScore, angleStats.angleResolutionScore);
       await onIteration(Object.assign({}, rawProgress, {
         stage: stageKey,
         stageLabel: stageLabel,
@@ -1424,7 +1424,7 @@
 
     async function emitPostStageProgress(stageKey, stageLabel, stageIndex, step, maxSteps, positions, debug) {
       if (!onIteration) return;
-      var metrics = computeHybridStageMetrics(g, baseEmbedding, positions);
+      var metrics = computeFABalancerStageMetrics(g, baseEmbedding, positions);
       await onIteration({
         stage: stageKey,
         stageLabel: stageLabel,
@@ -1442,23 +1442,23 @@
       });
     }
 
-    var faceWarmSetup = await runHybridStage({
+    var faceWarmSetup = await runFABalancerStage({
       augmented: augmented,
       outerFace: outerFace,
       outerPos: outerPos,
       objectiveGraph: g,
       baseEmbedding: baseEmbedding,
       dataOverrides: {
-        angleBarrierWeight: HYBRID_CONFIG.faceWarmStage.angleBarrierWeight,
-        faceBarrierWeight: HYBRID_CONFIG.faceWarmStage.faceBarrierWeight,
-        edgeBarrierWeight: HYBRID_CONFIG.faceWarmStage.edgeBarrierWeight,
-        edgeUniformWeight: HYBRID_CONFIG.faceWarmStage.edgeUniformWeight,
-        faceWeight: HYBRID_CONFIG.faceWarmStage.faceWeight,
-        angleWeight: HYBRID_CONFIG.faceWarmStage.angleWeight,
-        horizontalityWeight: HYBRID_CONFIG.faceWarmStage.horizontalityWeight
+        angleBarrierWeight: FABALANCER_CONFIG.faceWarmStage.angleBarrierWeight,
+        faceBarrierWeight: FABALANCER_CONFIG.faceWarmStage.faceBarrierWeight,
+        edgeBarrierWeight: FABALANCER_CONFIG.faceWarmStage.edgeBarrierWeight,
+        edgeUniformWeight: FABALANCER_CONFIG.faceWarmStage.edgeUniformWeight,
+        faceWeight: FABALANCER_CONFIG.faceWarmStage.faceWeight,
+        angleWeight: FABALANCER_CONFIG.faceWarmStage.angleWeight,
+        horizontalityWeight: FABALANCER_CONFIG.faceWarmStage.horizontalityWeight
       },
       prepareData: function (data) {
-        data.minFaceArea = Math.max(0, HYBRID_CONFIG.faceWarmStage.minFaceAreaFactor * data.initialMinFaceArea);
+        data.minFaceArea = Math.max(0, FABALANCER_CONFIG.faceWarmStage.minFaceAreaFactor * data.initialMinFaceArea);
       },
       buildInitialQ: function (data) {
         return buildInitialLogitSeed(data, tutteWeights);
@@ -1466,41 +1466,41 @@
       buildSeed: function (data, baseline) {
         return buildStageSeedFromPositions(data, baseline.positions, tutteWeights);
       },
-      evaluate: evaluateHybridObjectiveAndGradient,
-      run: runHybridFaceOptimization,
-      maxIters: HYBRID_CONFIG.faceWarmStage.maxIters,
-      maxPositionStepRatio: HYBRID_CONFIG.faceWarmStage.maxPositionStepRatio,
-      minItersBeforeStop: HYBRID_CONFIG.faceWarmStage.minItersBeforeStop,
-      stableIterLimit: HYBRID_CONFIG.faceWarmStage.stableIterLimit,
+      evaluate: evaluateFABalancerObjectiveAndGradient,
+      run: runFABalancerFaceOptimization,
+      maxIters: FABALANCER_CONFIG.faceWarmStage.maxIters,
+      maxPositionStepRatio: FABALANCER_CONFIG.faceWarmStage.maxPositionStepRatio,
+      minItersBeforeStop: FABALANCER_CONFIG.faceWarmStage.minItersBeforeStop,
+      stableIterLimit: FABALANCER_CONFIG.faceWarmStage.stableIterLimit,
       onIteration: async function (progress) {
         await emitStageProgress('face-warm', 'face', 1, progress);
       }
     });
     if (!faceWarmSetup || !faceWarmSetup.ok) {
-      return buildHybridStageError(faceWarmSetup, 'Hybrid setup failed', g, outerFace, augmented);
+      return buildFABalancerStageError(faceWarmSetup, 'FABalancer setup failed', g, outerFace, augmented);
     }
     if (!faceWarmSetup.result || !faceWarmSetup.result.ok || !Array.isArray(faceWarmSetup.result.q)) {
-      return buildHybridStageError(faceWarmSetup.result, 'Hybrid face-warm stage did not return a valid result', g, outerFace, augmented);
+      return buildFABalancerStageError(faceWarmSetup.result, 'FABalancer face-warm stage did not return a valid result', g, outerFace, augmented);
     }
     var faceWarmQ = faceWarmSetup.result.q;
 
-    var angleSetup = await runHybridStage({
+    var angleSetup = await runFABalancerStage({
       augmented: augmented,
       outerFace: outerFace,
       outerPos: outerPos,
       objectiveGraph: g,
       baseEmbedding: baseEmbedding,
       dataOverrides: {
-        angleBarrierWeight: HYBRID_CONFIG.angleStage.angleBarrierWeight,
-        faceBarrierWeight: HYBRID_CONFIG.angleStage.faceBarrierWeight,
-        edgeBarrierWeight: HYBRID_CONFIG.angleStage.edgeBarrierWeight,
-        edgeUniformWeight: HYBRID_CONFIG.angleStage.edgeUniformWeight,
-        faceWeight: HYBRID_CONFIG.angleStage.faceWeight,
-        angleWeight: HYBRID_CONFIG.angleStage.angleWeight,
-        horizontalityWeight: HYBRID_CONFIG.angleStage.horizontalityWeight
+        angleBarrierWeight: FABALANCER_CONFIG.angleStage.angleBarrierWeight,
+        faceBarrierWeight: FABALANCER_CONFIG.angleStage.faceBarrierWeight,
+        edgeBarrierWeight: FABALANCER_CONFIG.angleStage.edgeBarrierWeight,
+        edgeUniformWeight: FABALANCER_CONFIG.angleStage.edgeUniformWeight,
+        faceWeight: FABALANCER_CONFIG.angleStage.faceWeight,
+        angleWeight: FABALANCER_CONFIG.angleStage.angleWeight,
+        horizontalityWeight: FABALANCER_CONFIG.angleStage.horizontalityWeight
       },
       prepareData: function (data) {
-        data.minFaceArea = Math.max(0, HYBRID_CONFIG.angleStage.minFaceAreaFactor * data.initialMinFaceArea);
+        data.minFaceArea = Math.max(0, FABALANCER_CONFIG.angleStage.minFaceAreaFactor * data.initialMinFaceArea);
         if (!(data.objectiveVertexIds.length > 0) || !(data.wedges.length > 0)) {
           data.angleWeight = 0;
         }
@@ -1514,22 +1514,22 @@
       buildSeed: function (_data, _baseline, initialQ) {
         return buildLayoutResult({ q0: initialQ.slice() });
       },
-      evaluate: evaluateHybridAngleStageObjectiveAndGradient,
+      evaluate: evaluateFABalancerAngleStageObjectiveAndGradient,
       run: runAngleStageOptimization,
-      maxIters: HYBRID_CONFIG.angleStage.maxIters,
-      maxPositionStepRatio: HYBRID_CONFIG.angleStage.maxPositionStepRatio,
-      minItersBeforeStop: HYBRID_CONFIG.angleStage.minItersBeforeStop,
-      stableIterLimit: HYBRID_CONFIG.angleStage.stableIterLimit,
+      maxIters: FABALANCER_CONFIG.angleStage.maxIters,
+      maxPositionStepRatio: FABALANCER_CONFIG.angleStage.maxPositionStepRatio,
+      minItersBeforeStop: FABALANCER_CONFIG.angleStage.minItersBeforeStop,
+      stableIterLimit: FABALANCER_CONFIG.angleStage.stableIterLimit,
       onIteration: async function (progress) {
         await emitStageProgress('angle', 'angle', 2, progress);
       }
     });
     if (!angleSetup || !angleSetup.ok) {
-      return buildHybridStageError(angleSetup, 'Hybrid setup failed', g, outerFace, augmented);
+      return buildFABalancerStageError(angleSetup, 'FABalancer setup failed', g, outerFace, augmented);
     }
     var angleResult = angleSetup.result;
     if (!angleResult || !angleResult.ok) {
-      return buildHybridStageError(angleResult, 'Hybrid optimization failed', g, outerFace, augmented);
+      return buildFABalancerStageError(angleResult, 'FABalancer optimization failed', g, outerFace, augmented);
     }
 
     var finalPositions = filteredOriginalPositions(angleResult.positions || {});
@@ -1539,13 +1539,13 @@
         graph: g,
         outerFace: outerFace,
         augmented: augmented,
-        message: 'Hybrid produced a non-plane drawing'
+        message: 'FABalancer produced a non-plane drawing'
       });
     }
-    var alignStage = applyHybridAxisAlignment(g, finalPositions, HYBRID_CONFIG.alignMaxPasses);
+    var alignStage = applyFABalancerAxisAlignment(g, finalPositions, FABALANCER_CONFIG.alignMaxPasses);
     if (!alignStage.ok) {
       return buildLayoutError({
-        message: alignStage.reason || alignStage.message || 'Hybrid axis-align failed',
+        message: alignStage.reason || alignStage.message || 'FABalancer axis-align failed',
         graph: g,
         outerFace: outerFace,
         augmented: augmented
@@ -1568,7 +1568,7 @@
       );
     }
 
-    var finalMetrics = computeHybridStageMetrics(g, baseEmbedding, finalPositions);
+    var finalMetrics = computeFABalancerStageMetrics(g, baseEmbedding, finalPositions);
     return buildLayoutResult({
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
@@ -1590,9 +1590,9 @@
     });
   }
 
-  function buildHybridOuterPositions(prepared) {
+  function buildFABalancerOuterPositions(prepared) {
     if (!prepared || !prepared.ok) {
-      throw new Error('buildHybridOuterPositions requires prepared graph data');
+      throw new Error('buildFABalancerOuterPositions requires prepared graph data');
     }
     var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
       prepared.augmentedGraph.nodeIds,
@@ -1609,31 +1609,40 @@
     return outerPos;
   }
 
-  async function computeHybridPositions(graph, options) {
+  function createLayoutInput(graph, options) {
     options = options || {};
-    return computeHybridPositionsFromPrepared(options, LayoutPreprocessing.prepareGraphData(graph, {
-      failureLabel: 'Hybrid layout',
+    return LayoutPreprocessing.createLayoutInput(graph, {
+      failureLabel: 'FABalancer layout',
       augmentationMethod: options.augmentationMethod === undefined ? null : options.augmentationMethod,
       augmentationOptions: typeof options.augmentationOptions === 'object' && options.augmentationOptions
         ? Object.assign({}, options.augmentationOptions)
         : null,
       currentPositions: options.currentPositions
-    }));
+    });
   }
 
-  async function applyHybridLayout(cy, options) {
+  async function computePositions(graph, layoutInput) {
+    return computeFABalancerPositionsFromPrepared(null, layoutInput);
+  }
+
+  async function computeFABalancerPositions(graph, options) {
+    options = options || {};
+    return computeFABalancerPositionsFromPrepared(options, createLayoutInput(graph, options));
+  }
+
+  async function applyFABalancerLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
-      prepareFailureLabel: 'Hybrid layout',
+      prepareFailureLabel: 'FABalancer layout',
       initialFitBounds: function (ctx) {
-        return CyRuntime.computePositionBounds(buildHybridOuterPositions(ctx.prepared));
+        return CyRuntime.computePositionBounds(buildFABalancerOuterPositions(ctx.prepared));
       },
       computePositions: function (_graph, computeOptions, prepared) {
-        return computeHybridPositionsFromPrepared(computeOptions || {}, prepared);
+        return computeFABalancerPositionsFromPrepared(computeOptions || {}, prepared);
       },
       buildResult: function (ctx) {
         var result = ctx.result;
-        var message = buildLayoutStatusMessage('Hybrid', {
+        var message = buildLayoutStatusMessage('FABalancer', {
           dummyCount: result.augmented.dummyCount,
           iters: result.iters,
           stopReason: result.stopReason,
@@ -1657,12 +1666,13 @@
           )
         };
       },
-      failureMessage: 'Hybrid failed'
+      failureMessage: 'FABalancer failed'
     });
   }
 
-  global.PlanarVibeHybrid = {
-    computeHybridPositions: computeHybridPositions,
-    applyHybridLayout: applyHybridLayout
-  };
+	  global.PlanarVibeFABalancer = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyFABalancerLayout
+	  };
 })(window);

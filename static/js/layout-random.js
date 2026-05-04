@@ -40,6 +40,23 @@
     });
   }
 
+  function createLayoutInput(_graph, runtime) {
+    runtime = runtime || {};
+    return {
+      ok: true,
+      width: runtime.width,
+      height: runtime.height
+    };
+  }
+
+  function computePositions(graph, layoutInput) {
+    return computeRandomPositions(
+      graph,
+      layoutInput.width,
+      layoutInput.height
+    );
+  }
+
   function applyRandomLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       initialFitBounds: function (ctx) {
@@ -52,16 +69,12 @@
           width: ctx.cy.width(),
           height: ctx.cy.height()
         };
-      },
-      computePositions: async function (graph, computeOptions) {
-        var result = computeRandomPositions(
-          graph,
-          computeOptions && computeOptions.width,
-          computeOptions && computeOptions.height
-        );
-        await emitSingleIteration(computeOptions || {}, result);
-        return result;
-      },
+	      },
+	      computePositions: async function (graph, computeOptions) {
+	        var result = computePositions(graph, createLayoutInput(graph, computeOptions));
+	        await emitSingleIteration(computeOptions || {}, result);
+	        return result;
+	      },
       buildResult: function () {
         return { ok: true, message: 'Applied random coordinates' };
       },
@@ -69,8 +82,9 @@
     });
   }
 
-  global.PlanarVibeRandom = {
-    computeRandomPositions: computeRandomPositions,
-    applyRandomLayout: applyRandomLayout
-  };
+	  global.PlanarVibeRandom = {
+	    createLayoutInput: createLayoutInput,
+	    computePositions: computePositions,
+	    applyLayout: applyRandomLayout
+	  };
 })(window);
