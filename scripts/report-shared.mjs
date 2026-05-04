@@ -100,6 +100,11 @@ export function createAlgorithmSpecs(windowObj) {
       run: (cy) => windowObj.PlanarVibeGPT.applyLayout(cy, sharedLayoutMethodOptions('gpt'))
     },
     {
+      key: 'claude',
+      label: 'Claude',
+      run: (cy) => windowObj.PlanarVibeClaude.applyLayout(cy, sharedLayoutMethodOptions('claude'))
+    },
+    {
       key: 'reweight',
       label: 'Reweight',
       run: (cy) => windowObj.PlanarVibeReweight.applyLayout(cy, sharedLayoutMethodOptions('reweight'))
@@ -359,6 +364,7 @@ export function loadBrowserModules() {
     'static/js/layout-anglebalancer.js',
     'static/js/layout-fabalancer.js',
     'static/js/layout-gpt.js',
+    'static/js/layout-claude.js',
     'static/js/layout-reweight.js',
     'static/js/layout-forcedir.js',
     'static/js/layout-impred.js',

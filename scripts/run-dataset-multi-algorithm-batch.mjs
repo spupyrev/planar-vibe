@@ -67,7 +67,7 @@ function parseArgs(argv) {
     } else if (arg === '--help' || arg === '-h') {
       process.stdout.write(
         'Usage: node scripts/run-dataset-multi-algorithm-batch.mjs ' +
-        '[--algorithms tutte,air,areagrad,...] [--timeout-ms 30000] [--concurrency 4] ' +
+        '[--algorithms tutte,air,gpt,claude,...] [--timeout-ms 30000] [--concurrency 4] ' +
         '[--output evaluation_data/all-algorithms-4bench-results.csv] ' +
         '[--scores-output evaluation_data/all-algorithms-4bench-scores.csv] ' +
         '[--files benchmark/sample_graphs.dot,benchmark/wiki.dot,benchmark/gd_collection.dot,benchmark/north.dot]\n'
