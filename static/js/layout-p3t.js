@@ -3,20 +3,9 @@
 
   var buildLayoutError = global.GraphUtils.buildLayoutError;
   var buildLayoutResult = global.GraphUtils.buildLayoutResult;
-  var buildLayoutStatusMessage = global.GraphUtils.buildLayoutStatusMessage;
   var CyRuntime = global.CyRuntime;
+  var emitSingleIteration = global.LayoutPreprocessing.emitSingleIteration;
   var normalizePositionMapToViewport = global.GeometryUtils.normalizePositionMapToViewport;
-
-  async function emitSingleIteration(options, result) {
-    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
-      return;
-    }
-    await options.onIteration({
-      iter: 1,
-      maxIters: 1,
-      positions: result.positions
-    });
-  }
 
   function cliqueKey(a, b, c, indexById) {
     var arr = [a, b, c];
@@ -137,9 +126,7 @@
       buildResult: function (ctx) {
         return {
           ok: true,
-          message: buildLayoutStatusMessage('P3T equal-face-area layout', {
-            vertexCount: ctx.result.nodeIds.length
-          })
+          message: 'Applied P3T equal-face-area layout (' + ctx.result.nodeIds.length + ' vertices)'
         };
       },
       failureMessage: 'P3T failed'

@@ -4,18 +4,8 @@
   var GraphUtils = global.GraphUtils;
   var CyRuntime = global.CyRuntime;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var emitSingleIteration = global.LayoutPreprocessing.emitSingleIteration;
   var normalizedHash = GraphUtils.normalizedHash;
-
-  async function emitSingleIteration(options, result) {
-    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
-      return;
-    }
-    await options.onIteration({
-      iter: 1,
-      maxIters: 1,
-      positions: result.positions
-    });
-  }
 
   function computeRandomPositions(graph, width, height) {
     var ids = Array.isArray(graph && graph.nodeIds) ? graph.nodeIds.map(String) : [];

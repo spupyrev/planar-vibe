@@ -10,19 +10,17 @@ const agenticLayouts = [
     key: 'gpt',
 	    script: 'static/js/layout-gpt.js',
 	    module: 'PlanarVibeGPT',
-	    method: 'applyLayout',
-	    missingMessage: 'GPT layout module is missing'
+	    method: 'applyLayout'
 	  },
   {
     key: 'claude',
 	    script: 'static/js/layout-claude.js',
 	    module: 'PlanarVibeClaude',
-	    method: 'applyLayout',
-	    missingMessage: 'Claude layout module is missing'
+	    method: 'applyLayout'
   }
 ];
 
-test('GPT and Claude layouts are wired from UI through runtime validation', () => {
+test('GPT and Claude layouts are wired from UI through the layout config table', () => {
   for (const layout of agenticLayouts) {
     assert.match(
       indexHtml,
@@ -36,13 +34,8 @@ test('GPT and Claude layouts are wired from UI through runtime validation', () =
     );
     assert.match(
       pluginJs,
-      new RegExp(`layoutName: '${layout.key}'[\\s\\S]*?module: global\\.${layout.module}[\\s\\S]*?methodName: '${layout.method}'`),
+      new RegExp(`${layout.key}: \\{[\\s\\S]*?getModule: function \\(\\) \\{ return global\\.${layout.module}; \\}[\\s\\S]*?methodName: '${layout.method}'`),
       `${layout.key} should have an applyLayout dispatcher entry`
-    );
-    assert.match(
-      pluginJs,
-      new RegExp(`layoutName: '${layout.key}'[\\s\\S]*?missingMessage: '${layout.missingMessage}'`),
-      `${layout.key} should be covered by validateRequirements`
     );
   }
 });
@@ -67,12 +60,12 @@ test('FABalancer replaces the former staged balancer wiring', () => {
   assert.match(indexHtml, /static\/js\/layout-fabalancer\.js/, 'FABalancer script should be loaded');
   assert.doesNotMatch(indexHtml, new RegExp('data-layout="' + oldKey + '"'), 'old layout key should not appear in the toolbar');
   assert.doesNotMatch(indexHtml, new RegExp(oldScript), 'old script path should not be loaded');
-  assert.match(pluginJs, /layoutName: 'fabalancer'[\s\S]*?module: global\.PlanarVibeFABalancer[\s\S]*?methodName: 'applyLayout'/, 'plugin should call the common FABalancer method');
+  assert.match(pluginJs, /fabalancer: \{[\s\S]*?getModule: function \(\) \{ return global\.PlanarVibeFABalancer; \}[\s\S]*?methodName: 'applyLayout'/, 'plugin should call the common FABalancer method');
 });
 
 test('Reweight uses the simple layout key and API name', () => {
   const oldKey = 'reweight' + 'tutte';
   assert.match(indexHtml, /data-layout="reweight"/, 'Reweight should have a toolbar button');
   assert.doesNotMatch(indexHtml, new RegExp('data-layout="' + oldKey + '"'), 'old Reweight key should not appear in the toolbar');
-  assert.match(pluginJs, /layoutName: 'reweight'[\s\S]*?module: global\.PlanarVibeReweight[\s\S]*?methodName: 'applyLayout'/, 'plugin should call the common Reweight method');
+  assert.match(pluginJs, /reweight: \{[\s\S]*?getModule: function \(\) \{ return global\.PlanarVibeReweight; \}[\s\S]*?methodName: 'applyLayout'/, 'plugin should call the common Reweight method');
 });

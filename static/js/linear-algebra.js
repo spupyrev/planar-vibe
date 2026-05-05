@@ -137,7 +137,6 @@
   }
 
   global.LinearAlgebraUtils = {
-    cloneMatrix: cloneMatrix,
     luFactorize: luFactorize,
     solveLUWithTwoRhs: solveLUWithTwoRhs,
     solveTransposeLUWithTwoRhs: solveTransposeLUWithTwoRhs

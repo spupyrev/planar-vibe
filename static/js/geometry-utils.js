@@ -88,6 +88,37 @@
     return out;
   }
 
+  function computeQuantile(values, q) {
+    if (!values || values.length === 0) {
+      return null;
+    }
+    var qq = Number.isFinite(q) ? Math.max(0, Math.min(1, q)) : 0.2;
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var idx = qq * (sorted.length - 1);
+    var lo = Math.floor(idx);
+    var hi = Math.ceil(idx);
+    var t = idx - lo;
+    if (lo === hi) {
+      return sorted[lo];
+    }
+    return sorted[lo] * (1 - t) + sorted[hi] * t;
+  }
+
+  function collectPositiveGaps(sortedValues, range) {
+    var gaps = [];
+    if (!sortedValues || sortedValues.length < 2) {
+      return gaps;
+    }
+    var minPositiveGap = Math.max(1e-12, (Number.isFinite(range) ? range : 0) * 1e-12);
+    for (var i = 1; i < sortedValues.length; i += 1) {
+      var gap = sortedValues[i] - sortedValues[i - 1];
+      if (gap > minPositiveGap) {
+        gaps.push(gap);
+      }
+    }
+    return gaps;
+  }
+
   function orientFaceCCW(face, posById) {
     var out = face.slice().map(String);
     if (polygonArea2(out, posById) < 0) {
@@ -216,17 +247,16 @@
     return out;
   }
 
-  function normalizePositionMapToViewport(posById, options) {
+  function normalizePositionMapToViewport(posById) {
     var source = copyPositionMap(posById || {});
     var ids = Object.keys(source);
     if (ids.length === 0) {
       return source;
     }
     var defaults = global.PlanarVibeViewportDefaults || {};
-    var opts = options || {};
-    var width = Number.isFinite(opts.width) ? opts.width : (Number.isFinite(defaults.width) ? defaults.width : 900);
-    var height = Number.isFinite(opts.height) ? opts.height : (Number.isFinite(defaults.height) ? defaults.height : 620);
-    var padding = Number.isFinite(opts.padding) ? Math.max(0, opts.padding) : 24;
+    var width = Number.isFinite(defaults.width) ? defaults.width : 900;
+    var height = Number.isFinite(defaults.height) ? defaults.height : 620;
+    var padding = 24;
     var minX = Infinity;
     var minY = Infinity;
     var maxX = -Infinity;
@@ -397,6 +427,8 @@
     vecSub: vecSub,
     vecScale: vecScale,
     createZeroVector: createZeroVector,
+    computeQuantile: computeQuantile,
+    collectPositiveGaps: collectPositiveGaps,
     orientFaceCCW: orientFaceCCW,
     outerFaceDiameter: outerFaceDiameter,
     triangleArea2: triangleArea2,

@@ -10,23 +10,13 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var edgeKey = GraphUtils.edgeKey;
+  var emitSingleIteration = LayoutPreprocessing.emitSingleIteration;
   var createZeroVector = GeometryUtils.createZeroVector;
   var filterPositions = GeometryUtils.filterPositionMap;
   var luFactorize = LinearAlgebraUtils.luFactorize;
   var normalizeOuterFace = GraphUtils.normalizeOuterFace;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var solveLUWithTwoRhs = LinearAlgebraUtils.solveLUWithTwoRhs;
-
-  async function emitSingleIteration(options, result) {
-    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
-      return;
-    }
-    await options.onIteration({
-      iter: 1,
-      maxIters: 1,
-      positions: result.positions
-    });
-  }
 
   function buildTutteWeights(graph, augmentedGraph) {
     var originalPairs = graph.edgePairs;
@@ -327,7 +317,6 @@
     buildTutteWeights: buildTutteWeights,
 	    defaultOuterPlacementOptions: defaultOuterPlacementOptions,
 	    placeOuterFaceVertices: placeOuterFaceVertices,
-	    buildTutteOuterPositions: buildTutteOuterPositions,
 	    computeBarycentricPositions: computeBarycentricPositions
 	  };
 })(window);

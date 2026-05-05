@@ -92,7 +92,7 @@
     });
 
     var parsedOuterFace = null;
-    if (hasExplicitPositions && global.PlanarGraphUtils && typeof global.PlanarGraphUtils.extractEmbeddingFromPositions === 'function') {
+    if (hasExplicitPositions) {
       var edgePairs = edges.map(function (edge) {
         return [String(edge.data.source), String(edge.data.target)];
       });
@@ -161,7 +161,6 @@
     };
 
     var currentParsed = null;
-    var GRAPH_STYLE_COOKIE_DAYS = 31;
     var DEFAULT_VERTEX_SIZE = 6;
     var DEFAULT_EDGE_WIDTH = 0.75;
     var DEFAULT_WORLD_WIDTH = global.PlanarVibeViewportDefaults.width;
@@ -173,63 +172,21 @@
     var PREF_STATUS_COLLAPSED_KEY = 'planarvibe_status_collapsed';
     var PREF_OUTER_CYCLE_AUGMENTATION_KEY = 'planarvibe_outer_cycle_augmentation';
 
-    function sharedLayoutMethodOptions(layoutName, overrides) {
-      var key = String(layoutName || '').toLowerCase();
-      if (key === 'ceg_bfs') key = 'ceg-bfs';
-      if (key === 'ceg_xy') key = 'ceg-xy';
-      var base = {};
-      if (key === 'air' ||
-          key === 'cleanair' ||
-          key === 'areagrad' ||
-          key === 'facebalancer' ||
-          key === 'edgebalancer' ||
-          key === 'anglebalancer' ||
-          key === 'fabalancer' ||
-          key === 'reweight' ||
-          key === 'forcedir' ||
-          key === 'impred' ||
-          key === 'gpt' ||
-          key === 'claude') {
-        base = {};
-      }
-      var mergedOverrides = Object.assign(
-        {},
-        base,
+    function sharedLayoutMethodOptions(overrides) {
+      return Object.assign(
         {},
         useOuterCycleAugmentation ? { augmentationMethod: 'outer-cycle' } : {},
         overrides || {}
       );
-      return mergedOverrides;
-    }
-
-    function writeCookie(name, value, days) {
-      var d = new Date();
-      d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
-      global.document.cookie = name + '=' + encodeURIComponent(String(value)) + ';expires=' + d.toUTCString() + ';path=/;SameSite=Lax';
-    }
-
-    function readCookie(name) {
-      var prefix = name + '=';
-      var parts = global.document.cookie ? global.document.cookie.split(';') : [];
-      for (var i = 0; i < parts.length; i += 1) {
-        var c = parts[i].trim();
-        if (c.indexOf(prefix) === 0) {
-          return decodeURIComponent(c.substring(prefix.length));
-        }
-      }
-      return null;
     }
 
     function readStorage(name) {
       try {
         if (global.localStorage) {
-          var v = global.localStorage.getItem(name);
-          if (v !== null && v !== undefined) {
-            return v;
-          }
+          return global.localStorage.getItem(name);
         }
       } catch (e) {}
-      return readCookie(name);
+      return null;
     }
 
     function writeStorage(name, value) {
@@ -238,7 +195,6 @@
           global.localStorage.setItem(name, String(value));
         }
       } catch (e) {}
-      writeCookie(name, value, GRAPH_STYLE_COOKIE_DAYS);
     }
 
     function readNumericPreference(name, fallback, min, max) {
@@ -266,7 +222,6 @@
     var layoutBusyState = null;
     var showDebugAugmentation = false;
     var currentDebugState = null;
-    var unavailableLayoutMessages = {};
 
     function computeNodeFontSize(vertexSize) {
       return Math.max(4, Math.round(vertexSize * 0.9));
@@ -528,50 +483,6 @@
       }
       setCurrentPositions(posById);
       renderStaticSnapshot();
-    }
-
-    function logOuterFaceDiagnostics(layoutLabel) {
-      var label = layoutLabel || 'Layout';
-      if (!currentParsed || !currentParsed.elements || !global.PlanarGraphUtils || !global.GraphUtils) {
-        return;
-      }
-      try {
-        var nodeIds = getNodeIdsFromParsed(currentParsed);
-        var edgePairs = edgePairsFromParsed(currentParsed);
-        var parsedOuter = null;
-        var liveOuter = null;
-        var parsedEmbedding = null;
-        var liveEmbedding = null;
-        if (currentParsed.hasExplicitPositions && currentParsed.positionsById) {
-          parsedEmbedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(
-            nodeIds,
-            edgePairs,
-            currentParsed.positionsById
-          );
-          parsedOuter = parsedEmbedding && parsedEmbedding.ok ? parsedEmbedding.outerFace : null;
-        }
-        if (cy && global.CyRuntime && typeof global.CyRuntime.currentPositionsFromCy === 'function') {
-          var livePositions = global.CyRuntime.currentPositionsFromCy(cy);
-          liveEmbedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(
-            nodeIds,
-            edgePairs,
-            livePositions
-          );
-          liveOuter = liveEmbedding && liveEmbedding.ok ? liveEmbedding.outerFace : null;
-        }
-        setStatus(
-          '[' + label + ' debug] parsed outer face: ' +
-          (Array.isArray(parsedOuter) ? parsedOuter.length + ' [' + parsedOuter.join(' ') + ']' : 'null'),
-          false
-        );
-        setStatus(
-          '[' + label + ' debug] live outer face: ' +
-          (Array.isArray(liveOuter) ? liveOuter.length + ' [' + liveOuter.join(' ') + ']' : 'null'),
-          false
-        );
-      } catch (err) {
-        setStatus('[' + label + ' debug] failed to collect outer-face diagnostics: ' + ((err && err.message) ? err.message : String(err)), true);
-      }
     }
 
     function buildDebugOverlayData() {
@@ -916,6 +827,63 @@
       setAlignEnabled(false);
     }
 
+    function renderLinePlot(plotId, options) {
+      var opts = options || {};
+      var values = Array.isArray(opts.values) ? opts.values : [];
+      var maxY = opts.maxY;
+      var size = getPlotSize(plotId);
+      var W = size.width;
+      var H = size.height;
+      var L = 36;
+      var T = 8;
+      var R = 8;
+      var B = 20;
+      var PW = W - L - R;
+      var PH = H - T - B;
+
+      function sx(idx) {
+        if (values.length <= 1) {
+          return L + PW / 2;
+        }
+        return L + (idx / (values.length - 1)) * PW;
+      }
+      function sy(v) {
+        return T + PH - (v / maxY) * PH;
+      }
+
+      var pts = '';
+      for (var i = 0; i < values.length; i += 1) {
+        var yValue = typeof opts.valueAt === 'function' ? opts.valueAt(i, values[i]) : values[i];
+        if (opts.clampMin !== false) {
+          yValue = Math.max(0, yValue);
+        }
+        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(yValue, maxY));
+      }
+
+      var yIdeal = sy(1);
+      var yMaxLabel = String(maxY);
+
+      var svg = '';
+      svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
+      svg += '<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + (L - 4) + '" y1="' + T + '" x2="' + (L + 4) + '" y2="' + T + '" stroke="#a8b7cc" stroke-width="1" />';
+      svg += '<line x1="' + L + '" y1="' + yIdeal + '" x2="' + (L + PW) + '" y2="' + yIdeal + '" stroke="#ea9624" stroke-width="1" stroke-dasharray="3 3" />';
+      if (opts.showLine !== false && values.length >= 1) {
+        svg += '<polyline fill="none" stroke="#1060A8" stroke-width="1.5" points="' + pts + '" />';
+      }
+      var yTickX = L - 4;
+      svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
+      svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
+      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">' + opts.yLabel + '</text>';
+      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">' + opts.xLabel + '</text>';
+      svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
+      global.$('#' + plotId)
+        .attr('viewBox', '0 0 ' + W + ' ' + H)
+        .attr('preserveAspectRatio', 'none')
+        .html(svg);
+    }
+
     function renderFaceAreaPlot(values, idealValues, showLine) {
       var pairs = [];
       var i;
@@ -933,113 +901,28 @@
         return ra - rb;
       });
       values = pairs.map(function (pair) { return pair.value; });
-      idealValues = pairs.map(function (pair) { return pair.ideal; });
+      var ideals = pairs.map(function (pair) { return pair.ideal; });
 
-      var size = getPlotSize('stats-face-plot');
-      var W = size.width;
-      var H = size.height;
-      var L = 36;
-      var R = 8;
-      var T = 8;
-      var B = 20;
-      var PW = W - L - R;
-      var PH = H - T - B;
-      var maxY = 5;
-      var ideals = Array.isArray(idealValues) && idealValues.length === values.length
-        ? idealValues.slice()
-        : values.map(function () { return Number.isFinite(idealValues) ? idealValues : 1; });
-
-      function sx(idx) {
-        if (values.length <= 1) {
-          return L + PW / 2;
+      renderLinePlot('stats-face-plot', {
+        values: values,
+        maxY: 5,
+        yLabel: 'area',
+        xLabel: 'faces sorted',
+        showLine: showLine,
+        clampMin: false,
+        valueAt: function (idx, value) {
+          return value / Math.max(ideals[idx], 1e-12);
         }
-        return L + (idx / (values.length - 1)) * PW;
-      }
-      function sy(v) {
-        return T + PH - (v / maxY) * PH;
-      }
-
-      var pts = '';
-      for (i = 0; i < values.length; i += 1) {
-        var safeIdeal = Math.max(ideals[i], 1e-12);
-        var normalizedY = values[i] / safeIdeal;
-        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.min(normalizedY, maxY));
-      }
-
-      var yIdeal = sy(1);
-      var yMaxLabel = '5';
-
-      var svg = '';
-      svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
-      svg += '<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + (L - 4) + '" y1="' + T + '" x2="' + (L + 4) + '" y2="' + T + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + L + '" y1="' + yIdeal + '" x2="' + (L + PW) + '" y2="' + yIdeal + '" stroke="#ea9624" stroke-width="1" stroke-dasharray="3 3" />';
-      if (showLine && values.length >= 1) {
-        svg += '<polyline fill="none" stroke="#1060A8" stroke-width="1.5" points="' + pts + '" />';
-      }
-      var yTickX = L - 4;
-      svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
-      svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
-      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">area</text>';
-      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">faces sorted</text>';
-      svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
-      global.$('#stats-face-plot')
-        .attr('viewBox', '0 0 ' + W + ' ' + H)
-        .attr('preserveAspectRatio', 'none')
-        .html(svg);
+      });
     }
 
     function renderAngleResolutionPlot(values) {
-      var size = getPlotSize('stats-angle-plot');
-      var W = size.width;
-      var H = size.height;
-      var L = 36;
-      var R = 8;
-      var T = 8;
-      var B = 20;
-      var PW = W - L - R;
-      var PH = H - T - B;
-      var maxY = 1;
-      var i;
-
-      function sx(idx) {
-        if (values.length <= 1) {
-          return L + PW / 2;
-        }
-        return L + (idx / (values.length - 1)) * PW;
-      }
-      function sy(v) {
-        return T + PH - (v / maxY) * PH;
-      }
-
-      var pts = '';
-      for (i = 0; i < values.length; i += 1) {
-        pts += (i ? ' ' : '') + sx(i) + ',' + sy(Math.max(0, Math.min(values[i], maxY)));
-      }
-
-      var yIdeal = sy(1);
-      var yMaxLabel = '1';
-
-      var svg = '';
-      svg += '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="#fbfdff" />';
-      svg += '<line x1="' + L + '" y1="' + (T + PH) + '" x2="' + (L + PW) + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + L + '" y1="' + T + '" x2="' + L + '" y2="' + (T + PH) + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + (L - 4) + '" y1="' + T + '" x2="' + (L + 4) + '" y2="' + T + '" stroke="#a8b7cc" stroke-width="1" />';
-      svg += '<line x1="' + L + '" y1="' + yIdeal + '" x2="' + (L + PW) + '" y2="' + yIdeal + '" stroke="#ea9624" stroke-width="1" stroke-dasharray="3 3" />';
-      if (values.length >= 1) {
-        svg += '<polyline fill="none" stroke="#1060A8" stroke-width="1.5" points="' + pts + '" />';
-      }
-      var yTickX = L - 4;
-      svg += '<text x="' + (yTickX - 3) + '" y="' + T + '" text-anchor="end" dominant-baseline="middle" fill="#5f6c80" font-size="10">' + yMaxLabel + '</text>';
-      svg += '<text x="' + yTickX + '" y="' + (T + PH + 11) + '" text-anchor="end" fill="#5f6c80" font-size="10">0</text>';
-      svg += '<text x="' + (L - 22) + '" y="' + (T + PH / 2) + '" text-anchor="middle" fill="#5f6c80" font-size="10" transform="rotate(-90 ' + (L - 22) + ' ' + (T + PH / 2) + ')">score</text>';
-      svg += '<text x="' + (W - 4) + '" y="' + (H - 4) + '" text-anchor="end" fill="#5f6c80" font-size="10">vertices sorted</text>';
-      svg += '<text x="' + (L - 4) + '" y="' + yIdeal + '" text-anchor="end" dominant-baseline="middle" fill="#ea9624" font-size="10">ideal</text>';
-      global.$('#stats-angle-plot')
-        .attr('viewBox', '0 0 ' + W + ' ' + H)
-        .attr('preserveAspectRatio', 'none')
-        .html(svg);
+      renderLinePlot('stats-angle-plot', {
+        values: values,
+        maxY: 1,
+        yLabel: 'score',
+        xLabel: 'vertices sorted'
+      });
     }
 
     function getNodeIdsFromParsed(parsed) {
@@ -1082,17 +965,8 @@
       renderAngleResolutionPlot(result.values);
     }
 
-    function numericMetricValue(result, key) {
-      if (!result || !result.ok) {
-        return null;
-      }
-      if (key === 'edgeRatio') {
-        return Number.isFinite(result.ratio) ? result.ratio : null;
-      }
-      if (key === 'face') {
-        return Number.isFinite(result.quality) ? result.quality : null;
-      }
-      return Number.isFinite(result.score) ? result.score : null;
+    function okNumber(result, fieldName) {
+      return result && result.ok && Number.isFinite(result[fieldName]) ? result[fieldName] : null;
     }
 
     function setOverallScoreFromValues(values) {
@@ -1115,9 +989,7 @@
       var metrics = global.PlanarVibeMetrics;
       if (!metrics ||
           !global.GeometryUtils ||
-          !global.PlanarGraphUtils ||
           typeof global.GeometryUtils.hasPositionCrossings !== 'function' ||
-          typeof global.PlanarGraphUtils.extractEmbeddingFromPositions !== 'function' ||
           typeof metrics.computeAngularResolutionScore !== 'function' ||
           typeof metrics.computeAspectRatioScore !== 'function' ||
           typeof metrics.computeConvexityScore !== 'function' ||
@@ -1137,16 +1009,16 @@
       }
       var embedding = global.PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
       var values = [
-        numericMetricValue(metrics.computeAngularResolutionScore(graph, posById), 'angularResolution'),
-        numericMetricValue(metrics.computeAspectRatioScore(nodeIds, posById), 'aspectRatio'),
-        numericMetricValue(metrics.computeConvexityScore(nodeIds, edgePairs, posById, embedding), 'convexity'),
-        numericMetricValue(metrics.computeEdgeLengthDeviationScore(edgePairs, posById), 'edgeLengthDeviation'),
-        numericMetricValue(metrics.computeEdgeLengthRatio(edgePairs, posById), 'edgeRatio'),
-        numericMetricValue(metrics.computeEdgeOrthogonalityScore(edgePairs, posById), 'edgeOrthogonality'),
-        numericMetricValue(metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding), 'face'),
-        numericMetricValue(metrics.computeNodeUniformityScore(nodeIds, posById), 'nodeUniformity'),
-        numericMetricValue(metrics.computeAxisAlignmentScore(nodeIds, posById), 'axisAlignment'),
-        numericMetricValue(metrics.computeSpacingUniformityScore(nodeIds, posById), 'spacingUniformity')
+        okNumber(metrics.computeAngularResolutionScore(graph, posById), 'score'),
+        okNumber(metrics.computeAspectRatioScore(nodeIds, posById), 'score'),
+        okNumber(metrics.computeConvexityScore(nodeIds, edgePairs, posById, embedding), 'score'),
+        okNumber(metrics.computeEdgeLengthDeviationScore(edgePairs, posById), 'score'),
+        okNumber(metrics.computeEdgeLengthRatio(edgePairs, posById), 'ratio'),
+        okNumber(metrics.computeEdgeOrthogonalityScore(edgePairs, posById), 'score'),
+        okNumber(metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding), 'quality'),
+        okNumber(metrics.computeNodeUniformityScore(nodeIds, posById), 'score'),
+        okNumber(metrics.computeAxisAlignmentScore(nodeIds, posById), 'score'),
+        okNumber(metrics.computeSpacingUniformityScore(nodeIds, posById), 'score')
       ];
       setOverallScoreFromValues(values);
     }
@@ -1218,7 +1090,7 @@
         global.$('#stats-overall-score').text('--');
         return;
       }
-      renderFaceAreaPlot(result.values, result.idealValues || result.ideal, !hasCrossings);
+      renderFaceAreaPlot(result.values, result.idealValues, !hasCrossings);
       global.$('#stats-face-quality').text(
         Number.isFinite(result.quality) ? result.quality.toFixed(3) : '--'
       );
@@ -1248,105 +1120,25 @@
         return;
       }
       var graph = global.GraphUtils.createGraph(nodeIds, edgePairs);
-      updateEdgeLengthRatio(edgePairs, posById);
-      updateEdgeLengthDeviation(edgePairs, posById);
-      updateEdgeOrthogonality(edgePairs, posById);
-      updateAspectRatio(nodeIds, posById);
-      updateNodeUniformity(nodeIds, posById);
-      updateSpacingUniformity(nodeIds, posById);
-      updateAxisAlignment(nodeIds, posById);
+      updateScalarMetric('#stats-edge-ratio', 'computeEdgeLengthRatio', [edgePairs, posById], 'ratio');
+      updateScalarMetric('#stats-edge-deviation', 'computeEdgeLengthDeviationScore', [edgePairs, posById], 'score');
+      updateScalarMetric('#stats-edge-orthogonality', 'computeEdgeOrthogonalityScore', [edgePairs, posById], 'score');
+      updateScalarMetric('#stats-aspect-ratio', 'computeAspectRatioScore', [nodeIds, posById], 'score');
+      updateScalarMetric('#stats-node-uniformity', 'computeNodeUniformityScore', [nodeIds, posById], 'score');
+      updateScalarMetric('#stats-spacing-uniformity', 'computeSpacingUniformityScore', [nodeIds, posById], 'score');
+      updateScalarMetric('#stats-axis-alignment', 'computeAxisAlignmentScore', [nodeIds, posById], 'score');
       updateOverallScore(graph, nodeIds, edgePairs, posById);
     }
 
-    function updateEdgeLengthRatio(edgePairs, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeEdgeLengthRatio) {
-        global.$('#stats-edge-ratio').text('--');
+    function updateScalarMetric(selector, methodName, args, fieldName) {
+      var metrics = global.PlanarVibeMetrics;
+      if (!metrics || typeof metrics[methodName] !== 'function') {
+        global.$(selector).text('--');
         return;
       }
-      var ratio = global.PlanarVibeMetrics.computeEdgeLengthRatio(edgePairs, posById);
-      if (!ratio || !ratio.ok || !Number.isFinite(ratio.ratio)) {
-        global.$('#stats-edge-ratio').text('--');
-        return;
-      }
-      global.$('#stats-edge-ratio').text(ratio.ratio.toFixed(3));
-    }
-
-    function updateSpacingUniformity(nodeIds, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeSpacingUniformityScore) {
-        global.$('#stats-spacing-uniformity').text('--');
-        return;
-      }
-      var result = global.PlanarVibeMetrics.computeSpacingUniformityScore(nodeIds, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-spacing-uniformity').text('--');
-        return;
-      }
-      global.$('#stats-spacing-uniformity').text(result.score.toFixed(3));
-    }
-
-    function updateEdgeLengthDeviation(edgePairs, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeEdgeLengthDeviationScore) {
-        global.$('#stats-edge-deviation').text('--');
-        return;
-      }
-      var result = global.PlanarVibeMetrics.computeEdgeLengthDeviationScore(edgePairs, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-edge-deviation').text('--');
-        return;
-      }
-      global.$('#stats-edge-deviation').text(result.score.toFixed(3));
-    }
-
-    function updateEdgeOrthogonality(edgePairs, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeEdgeOrthogonalityScore) {
-        global.$('#stats-edge-orthogonality').text('--');
-        return;
-      }
-      var result = global.PlanarVibeMetrics.computeEdgeOrthogonalityScore(edgePairs, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-edge-orthogonality').text('--');
-        return;
-      }
-      global.$('#stats-edge-orthogonality').text(result.score.toFixed(3));
-    }
-
-    function updateAspectRatio(nodeIds, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeAspectRatioScore) {
-        global.$('#stats-aspect-ratio').text('--');
-        return;
-      }
-      var result = global.PlanarVibeMetrics.computeAspectRatioScore(nodeIds, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-aspect-ratio').text('--');
-        return;
-      }
-      global.$('#stats-aspect-ratio').text(result.score.toFixed(3));
-    }
-
-    function updateNodeUniformity(nodeIds, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeNodeUniformityScore) {
-        global.$('#stats-node-uniformity').text('--');
-        return;
-      }
-      var result = global.PlanarVibeMetrics.computeNodeUniformityScore(nodeIds, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-node-uniformity').text('--');
-        return;
-      }
-      global.$('#stats-node-uniformity').text(result.score.toFixed(3));
-    }
-
-    function updateAxisAlignment(nodeIds, posById) {
-      if (!global.PlanarVibeMetrics || !global.PlanarVibeMetrics.computeAxisAlignmentScore) {
-        global.$('#stats-axis-alignment').text('--');
-        return;
-      }
-      var result = global.PlanarVibeMetrics.computeAxisAlignmentScore(nodeIds, posById);
-      if (!result || !result.ok || !Number.isFinite(result.score)) {
-        global.$('#stats-axis-alignment').text('--');
-        return;
-      }
-      global.$('#stats-axis-alignment').text(result.score.toFixed(3));
+      var result = metrics[methodName].apply(metrics, args);
+      var value = okNumber(result, fieldName);
+      global.$(selector).text(Number.isFinite(value) ? value.toFixed(3) : '--');
     }
 
     function computeDrawingCenter(posById) {
@@ -1780,9 +1572,8 @@
 
 	    function setLayoutEnabled(layoutName, isEnabled) {
 	      var $btn = global.$('.layout-btn[data-layout="' + layoutName + '"]');
-	      var isAvailable = unavailableLayoutMessages[layoutName] === undefined;
-	      setLayoutButtonDisabled($btn, !isEnabled || !isAvailable);
-	      if (!isEnabled || !isAvailable) {
+	      setLayoutButtonDisabled($btn, !isEnabled);
+	      if (!isEnabled) {
 	        $btn.removeClass('is-active');
 	      }
 	    }
@@ -1794,22 +1585,17 @@
 	        .attr('aria-disabled', isDisabled ? 'true' : 'false');
 	    }
 
-	    function syncUnavailableLayoutButtons() {
-	      global.$('.layout-btn').each(function () {
-	        var $btn = global.$(this);
-	        var layoutName = String($btn.data('layout') || '');
-        if (!layoutName) {
-          return;
-	        }
-	        if (unavailableLayoutMessages[layoutName] !== undefined) {
-	          setLayoutButtonDisabled($btn, true);
-	          $btn.removeClass('is-active');
-	        }
-	      });
-	    }
-
     function setAlignEnabled(isEnabled) {
       global.$('#align-axis-btn').prop('disabled', !isEnabled);
+    }
+
+    function setAlwaysAvailableLayoutButtonsEnabled(isEnabled) {
+      setLayoutEnabled('circle', isEnabled);
+      setLayoutEnabled('grid', isEnabled);
+      setLayoutEnabled('cose', isEnabled);
+      setLayoutEnabled('random', isEnabled);
+      setLayoutEnabled('gpt', isEnabled);
+      setLayoutEnabled('claude', isEnabled);
     }
 
     function setPlanarButtonsDisabled() {
@@ -1845,12 +1631,6 @@
         setPlanarButtonsDisabled();
         return;
       }
-      if (!global.PlanarVibePlanarityTest || !global.PlanarVibePlanarityTest.computePlanarEmbedding) {
-        setStatistics({ vertexCount: getNodeIdsFromParsed(parsed).length, edgeCount: edgePairsFromParsed(parsed).length, isPlanar: false, isBipartite: false, isPlanar3Tree: false });
-        clearDrawingStats('No plot');
-        setPlanarButtonsDisabled();
-        return;
-      }
       var nodeIds = getNodeIdsFromParsed(parsed);
       var edgePairs = edgePairsFromParsed(parsed);
       var graph = global.GraphUtils.createGraph(nodeIds, edgePairs);
@@ -1859,7 +1639,7 @@
       var isBipartite = !!(global.PlanarVibeMetrics && global.PlanarVibeMetrics.isBipartiteGraph &&
         global.PlanarVibeMetrics.isBipartiteGraph(graph));
       var isPlanar3Tree = false;
-      if (isPlanar && global.PlanarVibePlanarityTest.isPlanar3Tree) {
+      if (isPlanar) {
         isPlanar3Tree = !!global.PlanarVibePlanarityTest.isPlanar3Tree(graph);
       }
       setStatistics({
@@ -1869,6 +1649,7 @@
         isBipartite: isBipartite,
         isPlanar3Tree: isPlanar3Tree
       });
+      setAlwaysAvailableLayoutButtonsEnabled(true);
       setLayoutEnabled('tutte', isPlanar);
       setLayoutEnabled('air', isPlanar);
       setLayoutEnabled('cleanair', isPlanar);
@@ -2010,6 +1791,381 @@
       drawGraph();
     }
 
+    var layoutConfigs = {
+      circle: {
+        disabledMessage: 'Circle layout is currently unavailable',
+        getModule: function () { return global.PlanarVibeCytoscape; },
+        methodName: 'applyCircleLayout'
+      },
+      grid: {
+        disabledMessage: 'Grid layout is currently unavailable',
+        getModule: function () { return global.PlanarVibeCytoscape; },
+        methodName: 'applyGridLayout'
+      },
+      cose: {
+        disabledMessage: 'Force-directed layout is currently unavailable',
+        getModule: function () { return global.PlanarVibeCytoscape; },
+        methodName: 'applyCoseLayout'
+      },
+      random: {
+        disabledMessage: 'Random layout is currently unavailable',
+        getModule: function () { return global.PlanarVibeRandom; },
+        methodName: 'applyLayout'
+      },
+      impred: {
+        disabledMessage: 'ImPrEd layout is currently unavailable',
+        getModule: function () { return global.PlanarVibeImPrEd; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var debug = progressDebug(progress);
+              var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
+                ' | moved ' + progress.movedVertices +
+                ' | max move ' + progress.maxMove.toFixed(2) +
+                ' | cap ' + debug.moveCap.toFixed(2);
+              setStatus(msg, false);
+            }
+          });
+        }
+      },
+      tutte: {
+        disabledMessage: 'Tutte layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeTutte; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions();
+        }
+      },
+      air: {
+        disabledMessage: 'Air layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeAir; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var debug = progressDebug(progress);
+              var parts = [];
+              parts.push('Air sweep ' + progress.iter + '/' + progress.maxIters);
+              if (Number.isFinite(progress.maxRelError)) {
+                parts.push('face err ' + progress.maxRelError.toFixed(3));
+              }
+              if (Number.isFinite(debug.maxForce)) {
+                parts.push('max force ' + debug.maxForce.toExponential(2));
+              }
+              if (Number.isFinite(progress.maxMove)) {
+                parts.push('max move ' + progress.maxMove.toExponential(2));
+              }
+              if (Number.isFinite(debug.acceptedCount)) {
+                parts.push('accepted ' + debug.acceptedCount);
+              }
+              if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
+                  Number.isFinite(debug.plateauWindow)) {
+                parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
+              }
+              if (Number.isFinite(debug.boundedFaceCount)) {
+                parts.push('faces ' + debug.boundedFaceCount);
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      cleanair: {
+        disabledMessage: 'CleanAir layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeCleanAir; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var debug = progressDebug(progress);
+              var parts = [];
+              parts.push('CleanAir sweep ' + progress.iter + '/' + progress.maxIters);
+              if (Number.isFinite(progress.maxRelError)) {
+                parts.push('face err ' + progress.maxRelError.toFixed(3));
+              }
+              if (Number.isFinite(debug.maxForce)) {
+                parts.push('max force ' + debug.maxForce.toExponential(2));
+              }
+              if (Number.isFinite(progress.maxMove)) {
+                parts.push('max move ' + progress.maxMove.toExponential(2));
+              }
+              if (Number.isFinite(debug.acceptedCount)) {
+                parts.push('accepted ' + debug.acceptedCount);
+              }
+              if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
+                  Number.isFinite(debug.plateauWindow)) {
+                parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
+              }
+              if (Number.isFinite(debug.boundedFaceCount)) {
+                parts.push('faces ' + debug.boundedFaceCount);
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      areagrad: {
+        disabledMessage: 'AreaGrad layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeAreaGrad; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var debug = progressDebug(progress);
+              var parts = [];
+              parts.push('AreaGrad step ' + progress.iter + '/' + progress.maxIters);
+              if (Number.isFinite(progress.objective)) {
+                parts.push('obj ' + progress.objective.toFixed(3));
+              }
+              if (Number.isFinite(progress.tradeoffScore)) {
+                parts.push('tradeoff ' + progress.tradeoffScore.toFixed(3));
+              }
+              if (Number.isFinite(progress.maxRelError)) {
+                parts.push('face err ' + progress.maxRelError.toFixed(3));
+              }
+              if (Number.isFinite(debug.gradNorm)) {
+                parts.push('grad ' + debug.gradNorm.toExponential(2));
+              }
+              if (Number.isFinite(progress.maxMove)) {
+                parts.push('max move ' + progress.maxMove.toExponential(2));
+              }
+              if (Number.isFinite(debug.lineSearchSteps)) {
+                parts.push('backtracks ' + debug.lineSearchSteps);
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      facebalancer: {
+        disabledMessage: 'FaceBalancer layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeFaceBalancer; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var debug = progressDebug(progress);
+              var parts = [];
+              parts.push('FaceBalancer step ' + progress.iter + '/' + progress.maxIters);
+              if (Number.isFinite(progress.objective)) {
+                parts.push('obj ' + progress.objective.toFixed(3));
+              }
+              if (Number.isFinite(debug.gradNorm)) {
+                parts.push('grad ' + debug.gradNorm.toExponential(2));
+              }
+              if (Number.isFinite(progress.maxRelError)) {
+                parts.push('face err ' + progress.maxRelError.toFixed(3));
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      edgebalancer: {
+        disabledMessage: 'EdgeBalancer layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeEdgeBalancer; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var debug = progressDebug(progress);
+              var parts = [];
+              parts.push('EdgeBalancer step ' + progress.iter + '/' + progress.maxIters);
+              if (Number.isFinite(progress.edgeLengthDeviation)) {
+                parts.push('edge deviation ' + progress.edgeLengthDeviation.toFixed(3));
+              }
+              if (Number.isFinite(progress.edgeLengthRatio)) {
+                parts.push('min/max ' + progress.edgeLengthRatio.toFixed(3));
+              }
+              if (Number.isFinite(progress.objective)) {
+                parts.push('obj ' + progress.objective.toFixed(3));
+              }
+              if (Number.isFinite(debug.gradNorm)) {
+                parts.push('grad ' + debug.gradNorm.toExponential(2));
+              }
+              if (Number.isFinite(progress.maxLogDeviation)) {
+                parts.push('log spread ' + progress.maxLogDeviation.toFixed(3));
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      anglebalancer: {
+        disabledMessage: 'AngleBalancer layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeAngleBalancer; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var parts = [];
+              parts.push('AngleBalancer step ' + progress.iter + '/' + progress.maxIters);
+              if (Number.isFinite(progress.angleResolutionScore)) {
+                parts.push('angle score ' + progress.angleResolutionScore.toFixed(3));
+              }
+              if (Number.isFinite(progress.objective)) {
+                parts.push('obj ' + progress.objective.toFixed(3));
+              }
+              if (Number.isFinite(progress.maxAngleResidual)) {
+                parts.push('max resid ' + progress.maxAngleResidual.toFixed(3));
+              }
+              if (Number.isFinite(progress.minAngleRatio)) {
+                parts.push('min ratio ' + progress.minAngleRatio.toFixed(3));
+              }
+              if (Number.isFinite(progress.gradNorm)) {
+                parts.push('grad ' + progress.gradNorm.toExponential(2));
+              }
+              if (Number.isFinite(progress.maxMove)) {
+                parts.push('max move ' + progress.maxMove.toExponential(2));
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      fabalancer: {
+        disabledMessage: 'FABalancer layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeFABalancer; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) return;
+              var debug = progressDebug(progress);
+              var parts = [];
+              var stageLabel = progress.stageLabel || progress.stage || 'joint';
+              var stageText = 'FABalancer ' + stageLabel;
+              if (Number.isFinite(progress.stageIndex) && Number.isFinite(progress.stageCount)) {
+                stageText += ' ' + progress.stageIndex + '/' + progress.stageCount;
+              }
+              if (Number.isFinite(progress.maxIters) && progress.maxIters > 0) {
+                stageText += ' step ' + progress.iter + '/' + progress.maxIters;
+              } else if (Number.isFinite(progress.iter) && progress.iter >= 0) {
+                stageText += ' step ' + progress.iter;
+              }
+              parts.push(stageText);
+              if (Number.isFinite(progress.faceAreaScore)) {
+                parts.push('face score ' + progress.faceAreaScore.toFixed(3));
+              }
+              if (Number.isFinite(progress.angleResolutionScore)) {
+                parts.push('angle score ' + progress.angleResolutionScore.toFixed(3));
+              }
+              if (Number.isFinite(progress.objective)) {
+                parts.push('obj ' + progress.objective.toFixed(3));
+              }
+              if (Number.isFinite(progress.tradeoffScore)) {
+                parts.push('tradeoff ' + progress.tradeoffScore.toFixed(3));
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      'ceg-bfs': {
+        disabledMessage: 'CEG-bfs layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeCEGBfs; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions();
+        }
+      },
+      'ceg-xy': {
+        disabledMessage: 'CEG-xy layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeCEGXy; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions();
+        }
+      },
+      p3t: {
+        disabledMessage: 'P3T layout requires a planar 3-tree',
+        getModule: function () { return global.PlanarVibeP3T; },
+        methodName: 'applyLayout'
+      },
+      fpp: {
+        disabledMessage: 'FPP layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeFPP; },
+        methodName: 'applyLayout'
+      },
+      schnyder: {
+        disabledMessage: 'Schnyder layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeSchnyder; },
+        methodName: 'applyLayout'
+      },
+      reweight: {
+        disabledMessage: 'Reweight layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeReweight; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              if (!progress) {
+                return;
+              }
+              var debug = progressDebug(progress);
+              var parts = [];
+              parts.push('Reweight step ' + progress.iter + '/' + progress.maxIters);
+              if (Number.isFinite(progress.faceAreaScore)) {
+                parts.push('face score ' + progress.faceAreaScore.toFixed(3));
+              }
+              if (Number.isFinite(debug.faceAreaMinRatio) && Number.isFinite(debug.faceAreaMaxRatio)) {
+                parts.push('area ratio min/avg ' + debug.faceAreaMinRatio.toFixed(2) + ', max/avg ' + debug.faceAreaMaxRatio.toFixed(2));
+              }
+              if (Number.isFinite(debug.boundedFaceCount)) {
+                parts.push('faces ' + debug.boundedFaceCount);
+              }
+              setStatus(parts.join(' | '), false);
+            }
+          });
+        }
+      },
+      forcedir: {
+        disabledMessage: 'ForceDir layout requires a planar graph',
+        getModule: function () { return global.PlanarVibeForceDir; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions({
+            onIteration: function (progress) {
+              var debug = progressDebug(progress);
+              if (!progress || progress.iter % 10 !== 0) {
+                return;
+              }
+              setStatus(
+                'ForceDir step ' + progress.iter + '/' + progress.maxIters +
+                ' | accepted ' + debug.accepted +
+                ' | rejected ' + debug.rejected,
+                false
+              );
+            }
+          });
+        }
+      },
+      gpt: {
+        disabledMessage: 'GPT layout is currently unavailable',
+        getModule: function () { return global.PlanarVibeGPT; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions();
+        }
+      },
+      claude: {
+        disabledMessage: 'Claude layout is currently unavailable',
+        getModule: function () { return global.PlanarVibeClaude; },
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions();
+        }
+      }
+    };
+
     function applyLayout(layoutName, options) {
       var opts = options || {};
       var temporaryStaticRun = !!opts.temporaryStaticRun;
@@ -2025,993 +2181,28 @@
       if (cy.nodes().length === 0) {
         return;
       }
-      if (unavailableLayoutMessages[layoutName]) {
-        setStatus(unavailableLayoutMessages[layoutName], true);
-        return;
-      }
       setSelectedLayoutButton(layoutName);
       clearCurrentDebugState();
 
-      if (layoutName === 'circle') {
-        runManagedLayout({
-          layoutName: 'circle',
-          disabledMessage: 'Circle layout is currently unavailable',
-          module: global.PlanarVibeCytoscape,
-          methodName: 'applyCircleLayout'
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'grid') {
-        runManagedLayout({
-          layoutName: 'grid',
-          disabledMessage: 'Grid layout is currently unavailable',
-          module: global.PlanarVibeCytoscape,
-          methodName: 'applyGridLayout'
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'cose') {
-        runManagedLayout({
-          layoutName: 'cose',
-          disabledMessage: 'Force-directed layout is currently unavailable',
-          module: global.PlanarVibeCytoscape,
-          methodName: 'applyCoseLayout'
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'random') {
-        runManagedLayout({
-          layoutName: 'random',
-          disabledMessage: 'Random layout is currently unavailable',
-          module: global.PlanarVibeRandom,
-          methodName: 'applyLayout'
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'impred') {
-        runManagedLayout({
-          layoutName: 'impred',
-          disabledMessage: 'ImPrEd layout is currently unavailable',
-          module: global.PlanarVibeImPrEd,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('impred', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var msg = 'ImPrEd step ' + progress.iter + '/' + progress.maxIters +
-                  ' | moved ' + progress.movedVertices +
-                  ' | max move ' + progress.maxMove.toFixed(2) +
-                  ' | cap ' + debug.moveCap.toFixed(2);
-                setStatus(msg, false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'tutte') {
-        runManagedLayout({
-          layoutName: 'tutte',
-          disabledMessage: 'Tutte layout requires a planar graph',
-          module: global.PlanarVibeTutte,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('tutte');
-          }
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'air') {
-        logOuterFaceDiagnostics('Air');
-        runManagedLayout({
-          layoutName: 'air',
-          disabledMessage: 'Air layout requires a planar graph',
-          module: global.PlanarVibeAir,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('air', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var parts = [];
-                parts.push('Air sweep ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.maxRelError)) {
-                  parts.push('face err ' + progress.maxRelError.toFixed(3));
-                }
-                if (Number.isFinite(debug.maxForce)) {
-                  parts.push('max force ' + debug.maxForce.toExponential(2));
-                }
-                if (Number.isFinite(progress.maxMove)) {
-                  parts.push('max move ' + progress.maxMove.toExponential(2));
-                }
-                if (Number.isFinite(debug.acceptedCount)) {
-                  parts.push('accepted ' + debug.acceptedCount);
-                }
-                if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
-                    Number.isFinite(debug.plateauWindow)) {
-                  parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
-                }
-                if (Number.isFinite(debug.boundedFaceCount)) {
-                  parts.push('faces ' + debug.boundedFaceCount);
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'cleanair') {
-        logOuterFaceDiagnostics('CleanAir');
-        runManagedLayout({
-          layoutName: 'cleanair',
-          disabledMessage: 'CleanAir layout requires a planar graph',
-          module: global.PlanarVibeCleanAir,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('cleanair', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var parts = [];
-                parts.push('CleanAir sweep ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.maxRelError)) {
-                  parts.push('face err ' + progress.maxRelError.toFixed(3));
-                }
-                if (Number.isFinite(debug.maxForce)) {
-                  parts.push('max force ' + debug.maxForce.toExponential(2));
-                }
-                if (Number.isFinite(progress.maxMove)) {
-                  parts.push('max move ' + progress.maxMove.toExponential(2));
-                }
-                if (Number.isFinite(debug.acceptedCount)) {
-                  parts.push('accepted ' + debug.acceptedCount);
-                }
-                if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
-                    Number.isFinite(debug.plateauWindow)) {
-                  parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
-                }
-                if (Number.isFinite(debug.boundedFaceCount)) {
-                  parts.push('faces ' + debug.boundedFaceCount);
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'areagrad') {
-        runManagedLayout({
-          layoutName: 'areagrad',
-          disabledMessage: 'AreaGrad layout requires a planar graph',
-          module: global.PlanarVibeAreaGrad,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('areagrad', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var parts = [];
-                parts.push('AreaGrad step ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.objective)) {
-                  parts.push('obj ' + progress.objective.toFixed(3));
-                }
-                if (Number.isFinite(progress.tradeoffScore)) {
-                  parts.push('tradeoff ' + progress.tradeoffScore.toFixed(3));
-                }
-                if (Number.isFinite(progress.maxRelError)) {
-                  parts.push('face err ' + progress.maxRelError.toFixed(3));
-                }
-                if (Number.isFinite(debug.gradNorm)) {
-                  parts.push('grad ' + debug.gradNorm.toExponential(2));
-                }
-                if (Number.isFinite(progress.maxMove)) {
-                  parts.push('max move ' + progress.maxMove.toExponential(2));
-                }
-                if (Number.isFinite(debug.lineSearchSteps)) {
-                  parts.push('backtracks ' + debug.lineSearchSteps);
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'facebalancer') {
-        runManagedLayout({
-          layoutName: 'facebalancer',
-          disabledMessage: 'FaceBalancer layout requires a planar graph',
-          module: global.PlanarVibeFaceBalancer,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('facebalancer', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var parts = [];
-                parts.push('FaceBalancer step ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.objective)) {
-                  parts.push('obj ' + progress.objective.toFixed(3));
-                }
-                if (Number.isFinite(debug.gradNorm)) {
-                  parts.push('grad ' + debug.gradNorm.toExponential(2));
-                }
-                if (Number.isFinite(progress.maxRelError)) {
-                  parts.push('face err ' + progress.maxRelError.toFixed(3));
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'edgebalancer') {
-        runManagedLayout({
-          layoutName: 'edgebalancer',
-          disabledMessage: 'EdgeBalancer layout requires a planar graph',
-          module: global.PlanarVibeEdgeBalancer,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('edgebalancer', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var parts = [];
-                parts.push('EdgeBalancer step ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.edgeLengthDeviation)) {
-                  parts.push('edge deviation ' + progress.edgeLengthDeviation.toFixed(3));
-                }
-                if (Number.isFinite(progress.edgeLengthRatio)) {
-                  parts.push('min/max ' + progress.edgeLengthRatio.toFixed(3));
-                }
-                if (Number.isFinite(progress.objective)) {
-                  parts.push('obj ' + progress.objective.toFixed(3));
-                }
-                if (Number.isFinite(debug.gradNorm)) {
-                  parts.push('grad ' + debug.gradNorm.toExponential(2));
-                }
-                if (Number.isFinite(progress.maxLogDeviation)) {
-                  parts.push('log spread ' + progress.maxLogDeviation.toFixed(3));
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'anglebalancer') {
-        runManagedLayout({
-          layoutName: 'anglebalancer',
-          disabledMessage: 'AngleBalancer layout requires a planar graph',
-          module: global.PlanarVibeAngleBalancer,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('anglebalancer', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var parts = [];
-                parts.push('AngleBalancer step ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.angleResolutionScore)) {
-                  parts.push('angle score ' + progress.angleResolutionScore.toFixed(3));
-                }
-                if (Number.isFinite(progress.objective)) {
-                  parts.push('obj ' + progress.objective.toFixed(3));
-                }
-                if (Number.isFinite(progress.maxAngleResidual)) {
-                  parts.push('max resid ' + progress.maxAngleResidual.toFixed(3));
-                }
-                if (Number.isFinite(progress.minAngleRatio)) {
-                  parts.push('min ratio ' + progress.minAngleRatio.toFixed(3));
-                }
-                if (Number.isFinite(progress.gradNorm)) {
-                  parts.push('grad ' + progress.gradNorm.toExponential(2));
-                }
-                if (Number.isFinite(progress.maxMove)) {
-                  parts.push('max move ' + progress.maxMove.toExponential(2));
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'fabalancer') {
-        runManagedLayout({
-          layoutName: 'fabalancer',
-          disabledMessage: 'FABalancer layout requires a planar graph',
-          module: global.PlanarVibeFABalancer,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('fabalancer', {
-              onIteration: function (progress) {
-                if (!progress) return;
-                var debug = progressDebug(progress);
-                var parts = [];
-                var stageLabel = progress.stageLabel || progress.stage || 'joint';
-                var stageText = 'FABalancer ' + stageLabel;
-                if (Number.isFinite(progress.stageIndex) && Number.isFinite(progress.stageCount)) {
-                  stageText += ' ' + progress.stageIndex + '/' + progress.stageCount;
-                }
-                if (Number.isFinite(progress.maxIters) && progress.maxIters > 0) {
-                  stageText += ' step ' + progress.iter + '/' + progress.maxIters;
-                } else if (Number.isFinite(progress.iter) && progress.iter >= 0) {
-                  stageText += ' step ' + progress.iter;
-                }
-                parts.push(stageText);
-                if (Number.isFinite(progress.faceAreaScore)) {
-                  parts.push('face score ' + progress.faceAreaScore.toFixed(3));
-                }
-                if (Number.isFinite(progress.angleResolutionScore)) {
-                  parts.push('angle score ' + progress.angleResolutionScore.toFixed(3));
-                }
-                if (Number.isFinite(progress.objective)) {
-                  parts.push('obj ' + progress.objective.toFixed(3));
-                }
-                if (Number.isFinite(progress.tradeoffScore)) {
-                  parts.push('tradeoff ' + progress.tradeoffScore.toFixed(3));
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'ceg-bfs') {
-        runManagedLayout({
-          layoutName: 'ceg-bfs',
-          disabledMessage: 'CEG-bfs layout requires a planar graph',
-          module: global.PlanarVibeCEGBfs,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('ceg-bfs');
-          }
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'ceg-xy') {
-        runManagedLayout({
-          layoutName: 'ceg-xy',
-          disabledMessage: 'CEG-xy layout requires a planar graph',
-          module: global.PlanarVibeCEGXy,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('ceg-xy');
-          }
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'p3t') {
-        runManagedLayout({
-          layoutName: 'p3t',
-          disabledMessage: 'P3T layout requires a planar 3-tree',
-          module: global.PlanarVibeP3T,
-          methodName: 'applyLayout'
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'fpp') {
-        runManagedLayout({
-          layoutName: 'fpp',
-          disabledMessage: 'FPP layout requires a planar graph',
-          module: global.PlanarVibeFPP,
-          methodName: 'applyLayout'
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'schnyder') {
-        runManagedLayout({
-          layoutName: 'schnyder',
-          disabledMessage: 'Schnyder layout requires a planar graph',
-          module: global.PlanarVibeSchnyder,
-          methodName: 'applyLayout'
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'reweight') {
-        runManagedLayout({
-          layoutName: 'reweight',
-          disabledMessage: 'Reweight layout requires a planar graph',
-          module: global.PlanarVibeReweight,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('reweight', {
-              onIteration: function (progress) {
-                if (!progress) {
-                  return;
-                }
-                var debug = progressDebug(progress);
-                var parts = [];
-                parts.push('Reweight step ' + progress.iter + '/' + progress.maxIters);
-                if (Number.isFinite(progress.faceAreaScore)) {
-                  parts.push('face score ' + progress.faceAreaScore.toFixed(3));
-                }
-                if (Number.isFinite(debug.faceAreaMinRatio) && Number.isFinite(debug.faceAreaMaxRatio)) {
-                  parts.push('area ratio min/avg ' + debug.faceAreaMinRatio.toFixed(2) + ', max/avg ' + debug.faceAreaMaxRatio.toFixed(2));
-                }
-                if (Number.isFinite(debug.boundedFaceCount)) {
-                  parts.push('faces ' + debug.boundedFaceCount);
-                }
-                setStatus(parts.join(' | '), false);
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'forcedir') {
-        runManagedLayout({
-          layoutName: 'forcedir',
-          disabledMessage: 'ForceDir layout requires a planar graph',
-          module: global.PlanarVibeForceDir,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('forcedir', {
-              onIteration: function (progress) {
-                var debug = progressDebug(progress);
-                if (!progress || progress.iter % 10 !== 0) {
-                  return;
-                }
-                setStatus(
-                  'ForceDir step ' + progress.iter + '/' + progress.maxIters +
-                  ' | accepted ' + debug.accepted +
-                  ' | rejected ' + debug.rejected,
-                  false
-                );
-              }
-            });
-          },
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'gpt') {
-        runManagedLayout({
-          layoutName: 'gpt',
-          disabledMessage: 'GPT layout is currently unavailable',
-          module: global.PlanarVibeGPT,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('gpt');
-          }
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      if (layoutName === 'claude') {
-        runManagedLayout({
-          layoutName: 'claude',
-          disabledMessage: 'Claude layout is currently unavailable',
-          module: global.PlanarVibeClaude,
-          methodName: 'applyLayout',
-          buildMethodOptions: function () {
-            return sharedLayoutMethodOptions('claude');
-          }
-        }, function () {
-          if (temporaryStaticRun) {
-            setInteractiveMode(false, false, true);
-          }
-        });
-        return;
-      }
-
-      setStatus('Unknown layout: ' + layoutName, true);
-    }
-
-    function firstMissingFunction(moduleLike, methodNames, message) {
-      if (!moduleLike) {
-        return message;
-      }
-      for (var i = 0; i < methodNames.length; i += 1) {
-        if (typeof moduleLike[methodNames[i]] !== 'function') {
-          return message;
+      function afterLayoutDone() {
+        if (temporaryStaticRun) {
+          setInteractiveMode(false, false, true);
         }
       }
-      return null;
-    }
 
-    function missingUtilitiesByGroup(groupName, methodNames) {
-      var groups = {
-        cyRuntime: {
-          moduleLike: global.CyRuntime,
-          message: 'Shared Cytoscape runtime utilities are missing'
-        },
-        preprocessing: {
-          moduleLike: global.LayoutPreprocessing,
-          message: 'Shared layout preprocessing utilities are missing'
-        },
-        geometry: {
-          moduleLike: global.GeometryUtils,
-          message: 'Geometry utilities are missing'
-        },
-        graph: {
-          moduleLike: global.GraphUtils,
-          message: 'Graph utilities are missing'
-        },
-        planarGraph: {
-          moduleLike: global.PlanarGraphUtils,
-          message: 'Planar graph utilities are missing'
-        },
-        linearAlgebra: {
-          moduleLike: global.LinearAlgebraUtils,
-          message: 'Linear algebra utilities are missing'
-        },
-        planarity: {
-          moduleLike: global.PlanarVibePlanarityTest,
-          message: 'Planarity utilities are missing'
-        },
-        metrics: {
-          moduleLike: global.PlanarVibeMetrics,
-          message: 'Metric utilities are missing'
-        },
-        alignment: {
-          moduleLike: global.PlanarVibeAlignment,
-          message: 'Alignment utilities are missing'
-        },
-        planar3tree: {
-          moduleLike: global.PlanarVibePlanarityTest,
-          message: 'Planarity utilities are missing'
-        },
-        tutte: {
-          moduleLike: global.PlanarVibeTutte,
-          message: 'Tutte algorithm is missing'
-        }
-      };
-      var group = groups[groupName];
-      if (!group) {
-        return 'Unknown dependency group: ' + String(groupName);
+      var layoutConfig = layoutConfigs[layoutName];
+      if (!layoutConfig) {
+        setStatus('Unknown layout: ' + layoutName, true);
+        return;
       }
-      return firstMissingFunction(group.moduleLike, methodNames, group.message);
-    }
 
-    function validateRequiredDependencies(requirements) {
-      var requires = requirements || {};
-      var groups = Object.keys(requires);
-      for (var i = 0; i < groups.length; i += 1) {
-        var groupName = groups[i];
-        var failure = missingUtilitiesByGroup(groupName, requires[groupName]);
-        if (failure) {
-          return failure;
-        }
-      }
-      return null;
-    }
-
-    function validateRequirements() {
-      var layoutChecks = [
-        {
-          layoutName: 'circle',
-          module: global.PlanarVibeCytoscape,
-          methodName: 'applyCircleLayout',
-          missingMessage: 'Circle layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout']
-          }
-        },
-        {
-          layoutName: 'grid',
-          module: global.PlanarVibeCytoscape,
-          methodName: 'applyGridLayout',
-          missingMessage: 'Grid layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout']
-          }
-        },
-        {
-          layoutName: 'cose',
-          module: global.PlanarVibeCytoscape,
-          methodName: 'applyCoseLayout',
-          missingMessage: 'Force-directed layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout']
-          }
-        },
-        {
-          layoutName: 'random',
-          module: global.PlanarVibeRandom,
-          methodName: 'applyLayout',
-          missingMessage: 'Random layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            geometry: ['hasPositionCrossings', 'copyPositionMap', 'pointOnSegmentInterior', 'segmentsIntersectOrTouch']
-          }
-        },
-        {
-          layoutName: 'impred',
-          module: global.PlanarVibeImPrEd,
-          methodName: 'applyLayout',
-          missingMessage: 'ImPrEd layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['hasPositionCrossings', 'copyPositionMap', 'pointOnSegmentInterior', 'segmentsIntersectOrTouch'],
-            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker'],
-            planarGraph: ['extractEmbeddingFromPositions', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
-          }
-        },
-        {
-          layoutName: 'tutte',
-          module: global.PlanarVibeTutte,
-          methodName: 'applyLayout',
-          missingMessage: 'Tutte layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            graph: ['normalizeOuterFace', 'edgeKey'],
-            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
-            planarity: ['computePlanarEmbedding'],
-            geometry: ['hasPositionCrossings']
-          }
-        },
-        {
-          layoutName: 'air',
-          module: global.PlanarVibeAir,
-          methodName: 'applyLayout',
-          missingMessage: 'Air layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
-            graph: ['collectMovableVertices'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
-          }
-        },
-        {
-          layoutName: 'cleanair',
-          module: global.PlanarVibeCleanAir,
-          methodName: 'applyLayout',
-          missingMessage: 'CleanAir layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['polygonArea2', 'pointAdd', 'pointDot', 'pointNorm', 'pointRot90', 'pointScale', 'pointSub', 'orientFaceCCW', 'outerFaceDiameter', 'triangleArea2', 'hasPositionCrossings'],
-            graph: ['collectMovableVertices'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
-          }
-        },
-        {
-          layoutName: 'areagrad',
-          module: global.PlanarVibeAreaGrad,
-          methodName: 'applyLayout',
-          missingMessage: 'AreaGrad layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['copyPositionMap', 'orientFaceCCW', 'outerFaceDiameter', 'polygonArea2', 'triangleArea2', 'hasPositionCrossings'],
-            graph: ['collectMovableVertices', 'computePositionMoveStats'],
-            planarGraph: ['findOuterFaceIndex', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
-          }
-        },
-        {
-          layoutName: 'facebalancer',
-          module: global.PlanarVibeFaceBalancer,
-          methodName: 'applyLayout',
-          missingMessage: 'FaceBalancer layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
-            graph: ['collectMovableVertices'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
-            tutte: ['defaultOuterPlacementOptions']
-          }
-        },
-        {
-          layoutName: 'edgebalancer',
-          module: global.PlanarVibeEdgeBalancer,
-          methodName: 'applyLayout',
-          missingMessage: 'EdgeBalancer layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
-            graph: ['collectMovableVertices'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
-            tutte: ['defaultOuterPlacementOptions']
-          }
-        },
-        {
-          layoutName: 'anglebalancer',
-          module: global.PlanarVibeAngleBalancer,
-          methodName: 'applyLayout',
-          missingMessage: 'AngleBalancer layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            geometry: ['computeDrawingDiameter', 'copyPositionMap', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointScale'],
-            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace']
-          }
-        },
-        {
-          layoutName: 'fabalancer',
-          module: global.PlanarVibeFABalancer,
-          methodName: 'applyLayout',
-          missingMessage: 'FABalancer layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            geometry: ['computeDrawingDiameter', 'copyPositionMap', 'createZeroVector', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointOnSegmentInterior', 'pointScale', 'polygonArea2', 'triangleArea2', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub'],
-            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'faceKey'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
-            tutte: ['buildTutteWeights']
-          }
-        },
-        {
-          layoutName: 'ceg-bfs',
-          module: global.PlanarVibeCEGBfs,
-          methodName: 'applyLayout',
-          missingMessage: 'CEG-bfs layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['hasPositionCrossings'],
-            graph: ['edgeKey', 'collectMovableVertices'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
-            tutte: ['computeBarycentricPositions', 'defaultOuterPlacementOptions']
-          }
-        },
-        {
-          layoutName: 'ceg-xy',
-          module: global.PlanarVibeCEGXy,
-          methodName: 'applyLayout',
-          missingMessage: 'CEG-xy layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['hasPositionCrossings'],
-            graph: ['edgeKey', 'collectMovableVertices'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
-            tutte: ['computeBarycentricPositions', 'defaultOuterPlacementOptions']
-          }
-        },
-        {
-          layoutName: 'p3t',
-          module: global.PlanarVibeP3T,
-          methodName: 'applyLayout',
-          missingMessage: 'P3T layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            planar3tree: ['analyzePlanar3Tree']
-          }
-        },
-        {
-          layoutName: 'fpp',
-          module: global.PlanarVibeFPP,
-          methodName: 'applyLayout',
-          missingMessage: 'FPP layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphData'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions'],
-            planarity: ['computePlanarEmbedding']
-          }
-        },
-        {
-          layoutName: 'schnyder',
-          module: global.PlanarVibeSchnyder,
-          methodName: 'applyLayout',
-          missingMessage: 'Schnyder layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphData'],
-            geometry: ['copyPositionMap', 'hasPositionCrossings'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions']
-          }
-        },
-        {
-          layoutName: 'reweight',
-          module: global.PlanarVibeReweight,
-          methodName: 'applyLayout',
-          missingMessage: 'Reweight layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['computeDrawingDiameter', 'polygonAreaAbs'],
-            graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey'],
-            planarGraph: ['findOuterFaceIndex', 'triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs'],
-            tutte: ['placeOuterFaceVertices', 'defaultOuterPlacementOptions']
-          }
-        },
-        {
-          layoutName: 'forcedir',
-          module: global.PlanarVibeForceDir,
-          methodName: 'applyLayout',
-          missingMessage: 'ForceDir layout module is missing',
-          requires: {
-            cyRuntime: ['runLayout'],
-            preprocessing: ['prepareGraphAndLayoutData', 'createAugmentationDebugState'],
-            geometry: ['computeDrawingDiameter', 'copyPositionMap', 'segmentsIntersectOrTouch'],
-            graph: ['computePositionMoveStats', 'createMovementConvergenceTracker', 'collectMovableVertices'],
-            planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
-            linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs']
-          }
-        },
-        {
-          layoutName: 'gpt',
-          module: global.PlanarVibeGPT,
-          methodName: 'applyLayout',
-          missingMessage: 'GPT layout module is missing',
-          requires: {
-            cyRuntime: ['applyPositionsToCy', 'currentPositionsFromCy'],
-            geometry: ['hasPositionCrossings'],
-            graph: ['createGraph', 'edgeKey'],
-            planarGraph: ['extractEmbeddingFromPositions'],
-            planarity: ['analyzePlanar3Tree', 'computePlanarEmbedding'],
-            metrics: [
-              'computeAngularResolutionScore',
-              'computeAspectRatioScore',
-              'computeAxisAlignmentScore',
-              'computeConvexityScore',
-              'computeEdgeLengthDeviationScore',
-              'computeEdgeLengthRatio',
-              'computeEdgeOrthogonalityScore',
-              'computeNodeUniformityScore',
-              'computeSpacingUniformityScore',
-              'computeUniformFaceAreaScore'
-            ]
-          }
-        },
-        {
-          layoutName: 'claude',
-          module: global.PlanarVibeClaude,
-          methodName: 'applyLayout',
-          missingMessage: 'Claude layout module is missing',
-          requires: {
-            geometry: ['hasPositionCrossings', 'segmentsIntersectOrTouch'],
-            graph: ['createGraph'],
-            planarGraph: ['extractEmbeddingFromPositions', 'findOuterFaceIndex'],
-            metrics: [
-              'computeAngularResolutionScore',
-              'computeAspectRatioScore',
-              'computeAxisAlignmentScore',
-              'computeConvexityScore',
-              'computeEdgeLengthDeviationScore',
-              'computeEdgeLengthRatio',
-              'computeEdgeOrthogonalityScore',
-              'computeNodeUniformityScore',
-              'computeSpacingUniformityScore',
-              'computeUniformFaceAreaScore'
-            ],
-            alignment: ['alignToAxisGreedy']
-          }
-        }
-      ];
-      var nextMessages = {};
-      for (var i = 0; i < layoutChecks.length; i += 1) {
-        var check = layoutChecks[i];
-        var missingModuleMessage = firstMissingFunction(check.module, [check.methodName], check.missingMessage);
-        if (missingModuleMessage) {
-          nextMessages[check.layoutName] = missingModuleMessage;
-          continue;
-        }
-        var dependencyMessage = validateRequiredDependencies(check.requires);
-        if (dependencyMessage) {
-          nextMessages[check.layoutName] = dependencyMessage;
-        }
-      }
-      unavailableLayoutMessages = nextMessages;
-      syncUnavailableLayoutButtons();
+      runManagedLayout({
+        layoutName: layoutName,
+        disabledMessage: layoutConfig.disabledMessage,
+        module: layoutConfig.getModule(),
+        methodName: layoutConfig.methodName,
+        buildMethodOptions: layoutConfig.buildMethodOptions
+      }, afterLayoutDone);
     }
 
 	    function runAfterBusyPaint(fn) {
@@ -3091,28 +2282,22 @@
     }
 
 	    function enterLayoutBusy(activeLayoutName) {
-	      var snapshot = [];
 	      global.$('.layout-btn').each(function () {
 	        var $btn = global.$(this);
 	        var name = String($btn.data('layout') || '');
-	        snapshot.push({ name: name, disabled: !!$btn.prop('disabled') });
 	        if (name !== activeLayoutName) {
 	          setLayoutButtonDisabled($btn, true);
 	        }
 	      });
-	      layoutBusyState = snapshot;
+	      layoutBusyState = true;
 	    }
 
 	    function restoreLayoutBusy() {
 	      if (!layoutBusyState) {
 	        return;
 	      }
-	      for (var i = 0; i < layoutBusyState.length; i += 1) {
-	        var item = layoutBusyState[i];
-	        var shouldDisable = !!item.disabled || unavailableLayoutMessages[item.name] !== undefined;
-	        setLayoutButtonDisabled(global.$('.layout-btn[data-layout="' + item.name + '"]'), shouldDisable);
-	      }
 	      layoutBusyState = null;
+	      updateStatistics(currentParsed);
 	    }
 
     function resetZoom() {
@@ -3386,7 +2571,6 @@
       });
     }
 
-    validateRequirements();
     bindUiEvents();
     initStyleControls();
     setStatusPanelCollapsed(isStatusCollapsed, false);

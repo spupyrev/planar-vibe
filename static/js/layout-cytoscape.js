@@ -6,6 +6,7 @@
   var CyRuntime = global.CyRuntime;
   var buildLayoutError = GraphUtils.buildLayoutError;
   var buildLayoutResult = GraphUtils.buildLayoutResult;
+  var emitSingleIteration = global.LayoutPreprocessing.emitSingleIteration;
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
 
   function graphToElements(graph) {
@@ -115,17 +116,6 @@
           graph: graph
         }));
       }
-    });
-  }
-
-  async function emitSingleIteration(options, result) {
-    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
-      return;
-    }
-    await options.onIteration({
-      iter: 1,
-      maxIters: 1,
-      positions: result.positions
     });
   }
 

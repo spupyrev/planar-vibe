@@ -922,13 +922,13 @@
 
       setContinuationTargets(state.cleanAirData, toT);
       state.allowRelaxedAreaSteps = false;
-      var result = await runCleanAirIterations(state, { onIteration: null });
+      var result = await runCleanAirIterations(state, {});
 
       if (result.status !== 'realized') {
         replaceStatePositions(state, backupPositions);
         setContinuationTargets(state.cleanAirData, toT);
         state.allowRelaxedAreaSteps = true;
-        var relaxedResult = await runCleanAirIterations(state, { onIteration: null });
+        var relaxedResult = await runCleanAirIterations(state, {});
         var strictErr = result.stats && Number.isFinite(result.stats.maxRelError)
           ? result.stats.maxRelError
           : Infinity;

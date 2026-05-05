@@ -93,41 +93,9 @@
     return {
       ok: true,
       values: normalized,
-      ideal: idealValues.length > 0 ? (1 / idealValues.length) : null,
       idealValues: idealValues,
       quality: computeUniformityScore(normalized, idealValues)
     };
-  }
-
-  function computeQuantile(values, q) {
-    if (!values || values.length === 0) {
-      return null;
-    }
-    var qq = Number.isFinite(q) ? Math.max(0, Math.min(1, q)) : 0.2;
-    var sorted = values.slice().sort(function (a, b) { return a - b; });
-    var idx = qq * (sorted.length - 1);
-    var lo = Math.floor(idx);
-    var hi = Math.ceil(idx);
-    var t = idx - lo;
-    if (lo === hi) {
-      return sorted[lo];
-    }
-    return sorted[lo] * (1 - t) + sorted[hi] * t;
-  }
-
-  function collectPositiveGaps(sortedValues, range) {
-    var gaps = [];
-    if (!sortedValues || sortedValues.length < 2) {
-      return gaps;
-    }
-    var minPositiveGap = Math.max(1e-12, (Number.isFinite(range) ? range : 0) * 1e-12);
-    for (var i = 1; i < sortedValues.length; i += 1) {
-      var gap = sortedValues[i] - sortedValues[i - 1];
-      if (gap > minPositiveGap) {
-        gaps.push(gap);
-      }
-    }
-    return gaps;
   }
 
   function clusterSortedValues(sortedValues, tolerance) {
@@ -182,8 +150,8 @@
         rawTolerance = tolerance;
         source = 'fixed';
       } else {
-        var gaps = collectPositiveGaps(sorted, range);
-        var quantile = computeQuantile(gaps, opts.quantile);
+        var gaps = global.GeometryUtils.collectPositiveGaps(sorted, range);
+        var quantile = global.GeometryUtils.computeQuantile(gaps, opts.quantile);
         var scale = Number.isFinite(opts.toleranceScale) ? opts.toleranceScale : 2;
         var minTolerance = Number.isFinite(opts.minTolerance)
           ? Math.max(0, opts.minTolerance)
@@ -318,7 +286,6 @@
       return {
         ok: true,
         values: [],
-        ideal: null,
         idealValues: [],
         quality: 1,
         faceCount: 0
@@ -845,18 +812,10 @@
 
   function isBipartiteGraph(graph) {
     var nodeIds = graph.nodeIds;
-    var edgePairs = graph.edgePairs;
-    for (var i = 0; i < edgePairs.length; i += 1) {
-      var u = String(edgePairs[i][0]);
-      var v = String(edgePairs[i][1]);
-      if (u === v) {
-        return false;
-      }
-    }
     var adjacency = graph.adjacency;
 
     var color = {};
-    for (i = 0; i < nodeIds.length; i += 1) {
+    for (var i = 0; i < nodeIds.length; i += 1) {
       var start = String(nodeIds[i]);
       if (color[start] !== undefined) continue;
       color[start] = 0;

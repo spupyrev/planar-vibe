@@ -5,10 +5,6 @@
 
   var GeometryUtils = global.GeometryUtils;
 
-  if (!GeometryUtils) {
-    throw new Error('GeometryUtils must be loaded before PlanarGraphUtils');
-  }
-
   function sameCyclicDirection(a, b) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || a.length === 0) {
       return false;

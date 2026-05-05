@@ -187,22 +187,18 @@
       ? base.positions
       : (base.posById !== undefined ? base.posById : null);
     var posById = base.posById !== undefined ? base.posById : positions;
-    var iters = Number.isFinite(base.iters) ? base.iters : (Number.isFinite(base.iterations) ? base.iterations : null);
-    var iterations = Number.isFinite(base.iterations) ? base.iterations : iters;
-    var status = base.status !== undefined ? base.status : (base.stopReason !== undefined ? base.stopReason : null);
-    var stopReason = base.stopReason !== undefined ? base.stopReason : (base.status !== undefined ? base.status : null);
+    var iters = Number.isFinite(base.iters) ? base.iters : null;
 
     return Object.assign(out, {
       ok: base.ok !== false,
       positions: positions,
       posById: posById,
       iters: iters,
-      iterations: iterations,
       outerFace: base.outerFace !== undefined ? base.outerFace : null,
       graph: base.graph !== undefined ? base.graph : null,
       augmented: base.augmented !== undefined ? base.augmented : null,
-      status: status,
-      stopReason: stopReason
+      status: base.status !== undefined ? base.status : null,
+      stopReason: base.stopReason !== undefined ? base.stopReason : null
     });
   }
 
@@ -212,7 +208,6 @@
       positions: null,
       posById: null,
       iters: null,
-      iterations: null,
       outerFace: null,
       graph: null,
       augmented: null,

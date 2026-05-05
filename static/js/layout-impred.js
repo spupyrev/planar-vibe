@@ -581,7 +581,7 @@
       outerFace: seed.outerFace ? seed.outerFace.slice() : null,
       embedding: seed.baseEmbedding || null,
       positions: posById,
-      iterations: iter + 1,
+      iters: iter + 1,
       stopReason: stopReason,
       totalMove: lastStats.totalMove,
       maxMove: lastStats.maxMove,
@@ -601,14 +601,14 @@
         var result = ctx.result;
         return {
           ok: true,
-          iterations: result.iterations,
+          iters: result.iters,
           stopReason: result.stopReason,
           totalMove: result.totalMove,
           maxMove: result.maxMove,
           avgMove: result.avgMove,
           message: buildLayoutStatusMessage('ImPrEd', {
             vertexCount: result.nodeIds.length,
-            iters: result.iterations,
+            iters: result.iters,
             stopReason: result.stopReason
           })
         };

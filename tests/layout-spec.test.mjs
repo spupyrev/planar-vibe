@@ -156,7 +156,7 @@ function assertNormalizedFailureResult(result, label) {
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'positions'), true, `${label}: missing positions`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'posById'), true, `${label}: missing posById`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'iters'), true, `${label}: missing iters`);
-  assert.equal(Object.prototype.hasOwnProperty.call(result, 'iterations'), true, `${label}: missing iterations`);
+  assert.equal(Object.prototype.hasOwnProperty.call(result, 'iterations'), false, `${label}: unexpected iterations alias`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'outerFace'), true, `${label}: missing outerFace`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'graph'), true, `${label}: missing graph`);
   assert.equal(Object.prototype.hasOwnProperty.call(result, 'augmented'), true, `${label}: missing augmented`);

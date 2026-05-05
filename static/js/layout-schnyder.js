@@ -9,23 +9,13 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var copyPositions = GeometryUtils.copyPositionMap;
+  var emitSingleIteration = LayoutPreprocessing.emitSingleIteration;
   var hasPositionCrossings = GeometryUtils.hasPositionCrossings;
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
 
   var SCHNYDER_PREPARE_OPTIONS = {
     triangulateOuterFace: true
   };
-
-  async function emitSingleIteration(options, result) {
-    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
-      return;
-    }
-    await options.onIteration({
-      iter: 1,
-      maxIters: 1,
-      positions: result.positions
-    });
-  }
 
   function buildRotationById(embedding) {
     var byId = {};

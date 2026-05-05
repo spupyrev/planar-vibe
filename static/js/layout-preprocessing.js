@@ -91,6 +91,17 @@
     return augmented;
   }
 
+  async function emitSingleIteration(options, result) {
+    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
+      return;
+    }
+    await options.onIteration({
+      iter: 1,
+      maxIters: 1,
+      positions: result.positions
+    });
+  }
+
   function prepareGraphData(graph, config) {
     if (!graph || !Array.isArray(graph.nodeIds) || !Array.isArray(graph.edgePairs)) {
       throw new Error('prepareGraphData requires a graph');
@@ -331,6 +342,7 @@
 
   global.LayoutPreprocessing = {
     createAugmentationDebugState: createAugmentationDebugState,
+    emitSingleIteration: emitSingleIteration,
     computeInitialPositions: computeInitialPositions,
     verifyEmbeddingWithPositions: verifyEmbeddingWithPositions,
     prepareGraphData: prepareGraphData,

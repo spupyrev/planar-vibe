@@ -3,48 +3,7 @@
 
   var GraphUtils = global.GraphUtils;
   var Metrics = global.PlanarVibeMetrics;
-
-  function copyPositions(posById) {
-    var out = {};
-    var ids = Object.keys(posById || {});
-    for (var i = 0; i < ids.length; i += 1) {
-      var id = ids[i];
-      var p = posById[id];
-      out[id] = { x: p.x, y: p.y };
-    }
-    return out;
-  }
-
-  function computeQuantile(values, q) {
-    if (!values || values.length === 0) {
-      return null;
-    }
-    var qq = Number.isFinite(q) ? Math.max(0, Math.min(1, q)) : 0.2;
-    var sorted = values.slice().sort(function (a, b) { return a - b; });
-    var idx = qq * (sorted.length - 1);
-    var lo = Math.floor(idx);
-    var hi = Math.ceil(idx);
-    var t = idx - lo;
-    if (lo === hi) {
-      return sorted[lo];
-    }
-    return sorted[lo] * (1 - t) + sorted[hi] * t;
-  }
-
-  function collectPositiveGaps(sortedValues, range) {
-    var gaps = [];
-    if (!sortedValues || sortedValues.length < 2) {
-      return gaps;
-    }
-    var minPositiveGap = Math.max(1e-12, (Number.isFinite(range) ? range : 0) * 1e-12);
-    for (var i = 1; i < sortedValues.length; i += 1) {
-      var gap = sortedValues[i] - sortedValues[i - 1];
-      if (gap > minPositiveGap) {
-        gaps.push(gap);
-      }
-    }
-    return gaps;
-  }
+  var GeometryUtils = global.GeometryUtils;
 
   function computeAxisTolerance(values, options) {
     if (!values || values.length < 2) {
@@ -60,8 +19,8 @@
       return 0;
     }
 
-    var gaps = collectPositiveGaps(sorted, range);
-    var quantile = computeQuantile(gaps, opts.quantile);
+    var gaps = GeometryUtils.collectPositiveGaps(sorted, range);
+    var quantile = GeometryUtils.computeQuantile(gaps, opts.quantile);
     var scale = Number.isFinite(opts.toleranceScale) ? opts.toleranceScale : 2;
     var minTolerance = Number.isFinite(opts.minTolerance)
       ? Math.max(0, opts.minTolerance)
@@ -329,12 +288,6 @@
   }
 
   function alignToAxisGreedy(nodeIds, edgePairs, posById, options) {
-    if (!global.GeometryUtils ||
-        typeof global.GeometryUtils.hasPositionCrossings !== 'function' ||
-        typeof global.GeometryUtils.segmentsIntersectOrTouch !== 'function' ||
-        typeof global.GeometryUtils.pointOnSegmentInterior !== 'function') {
-      return { ok: false, reason: 'Geometry utilities are missing' };
-    }
     if (!nodeIds || nodeIds.length < 2) {
       return { ok: false, reason: 'Not enough nodes' };
     }
@@ -353,7 +306,7 @@
     var crossingContext = buildCrossingContext(edgePairs);
 
     var opts = options || {};
-    var working = copyPositions(posById);
+    var working = GeometryUtils.copyPositionMap(posById);
     var scoreEps = 1e-12;
     var scoreBeforeResult = Metrics && typeof Metrics.computeAxisAlignmentScore === 'function'
       ? Metrics.computeAxisAlignmentScore(nodeIds, working)
@@ -395,7 +348,7 @@
       ? Math.max(0, opts.mergeToleranceY)
       : yBaseTolerance * mergeToleranceScale;
 
-    var xTrial = copyPositions(working);
+    var xTrial = GeometryUtils.copyPositionMap(working);
     var xTrialResult = greedyAxisSweep(
       nodeIds,
       xTrial,
@@ -420,7 +373,7 @@
       xResult = xTrialResult;
     }
 
-    var yTrial = copyPositions(working);
+    var yTrial = GeometryUtils.copyPositionMap(working);
     var yTrialResult = greedyAxisSweep(
       nodeIds,
       yTrial,

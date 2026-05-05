@@ -9,22 +9,12 @@
   var buildLayoutResult = GraphUtils.buildLayoutResult;
   var buildLayoutStatusMessage = GraphUtils.buildLayoutStatusMessage;
   var edgeKey = GraphUtils.edgeKey;
+  var emitSingleIteration = LayoutPreprocessing.emitSingleIteration;
   var normalizePositionMapToViewport = GeometryUtils.normalizePositionMapToViewport;
 
   var FPP_PREPARE_OPTIONS = {
     triangulateOuterFace: true
   };
-
-  async function emitSingleIteration(options, result) {
-    if (!result || !result.ok || !result.positions || typeof options.onIteration !== 'function') {
-      return;
-    }
-    await options.onIteration({
-      iter: 1,
-      maxIters: 1,
-      positions: result.positions
-    });
-  }
 
   function computeCanonicalOrdering(layoutInput) {
     if (!layoutInput || !layoutInput.ok) {
