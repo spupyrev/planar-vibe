@@ -50,61 +50,6 @@
     affineStretchFactors: [1, 1.04, 1.1, 1.2]
   };
 
-  function toArray(collection) {
-    if (!collection) return [];
-    return typeof collection.toArray === 'function' ? collection.toArray() : collection;
-  }
-
-  function graphFromCy(cy) {
-    var nodes = toArray(cy.nodes());
-    var nodeIds = [];
-    var keep = {};
-    var i;
-    for (i = 0; i < nodes.length; i += 1) {
-      var node = nodes[i];
-      if (node && typeof node.hasClass === 'function' && node.hasClass('dummy-node')) {
-        continue;
-      }
-      var id = String(node.id());
-      nodeIds.push(id);
-      keep[id] = true;
-    }
-
-    var edges = toArray(cy.edges());
-    var edgePairs = [];
-    var seen = {};
-    for (i = 0; i < edges.length; i += 1) {
-      var source = String(edges[i].source().id());
-      var target = String(edges[i].target().id());
-      if (!keep[source] || !keep[target] || source === target) {
-        continue;
-      }
-      var key = GraphUtils.edgeKey(source, target);
-      if (seen[key]) {
-        continue;
-      }
-      seen[key] = true;
-      edgePairs.push([source, target]);
-    }
-    return GraphUtils.createGraph(nodeIds, edgePairs);
-  }
-
-  function currentPositionsFromCy(cy) {
-    if (CyRuntime && typeof CyRuntime.currentPositionsFromCy === 'function') {
-      return CyRuntime.currentPositionsFromCy(cy);
-    }
-    var out = {};
-    var nodes = toArray(cy.nodes());
-    for (var i = 0; i < nodes.length; i += 1) {
-      var id = String(nodes[i].id());
-      var p = nodes[i].position();
-      if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
-        out[id] = { x: p.x, y: p.y };
-      }
-    }
-    return out;
-  }
-
   function copyPositionsForNodes(posById, nodeIds) {
     var out = {};
     for (var i = 0; i < nodeIds.length; i += 1) {
@@ -1837,7 +1782,7 @@
 	  }
 
 	  function computeWithLayoutModule(module, graph, runtime) {
-	    var layoutInput = module.prepareGraphData(graph, runtime || {});
+	    var layoutInput = module.prepareGraphData(graph, runtime);
 	    return module.computePositions(layoutInput, {});
 	  }
 
@@ -1960,10 +1905,10 @@
     };
   }
 
-	  async function applyLayout(cy, options) {
-    var opts = Object.assign({}, DEFAULT_OPTIONS, options || {});
-    var graph = graphFromCy(cy);
-    var currentPositions = currentPositionsFromCy(cy);
+	  async function computePositions(layoutInput, options) {
+    var opts = options;
+    var graph = opts.graph;
+    var currentPositions = opts.currentPositions;
     var candidateNames = buildCandidateSpecs(graph, opts);
     var startedAt = Date.now();
     var deadlineMs = Number.isFinite(opts.budgetMs) ? startedAt + opts.budgetMs : null;
@@ -2069,13 +2014,9 @@
       };
     }
 
-    CyRuntime.applyPositionsToCy(cy, best.positions);
-    if (typeof cy.fit === 'function') {
-      cy.fit(undefined, 24);
-    }
-
     return {
       ok: true,
+      positions: GeometryUtils.normalizePositionMapToViewport(best.positions),
       candidate: best.name,
       score: best.score,
       rotation: best.rotation,
@@ -2084,7 +2025,22 @@
     };
   }
 
+  async function applyLayout(cy, options) {
+    var opts = Object.assign({}, DEFAULT_OPTIONS, options || {});
+    return CyRuntime.runLayout(cy, opts, {
+      initialFitBounds: function () {
+        var defaults = global.PlanarVibeViewportDefaults || {};
+        var width = Number.isFinite(defaults.width) ? defaults.width : 900;
+        var height = Number.isFinite(defaults.height) ? defaults.height : 620;
+        return { x1: 0, y1: 0, x2: width, y2: height };
+      },
+      computePositions: computePositions,
+      failureMessage: 'GPT failed'
+    });
+  }
+
 	  global.PlanarVibeGPT = {
+	    computePositions: computePositions,
 	    applyLayout: applyLayout
 	  };
 })(window);

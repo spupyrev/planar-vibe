@@ -86,6 +86,17 @@
     return lines.join('\n') + '\n';
   }
 
+  function randomTreeGraph(n, seed) {
+    var nodeCount = Math.max(1, Math.floor(Number(n) || 1));
+    var nextRand = createSeededRng(seed);
+    var lines = [];
+    for (var v = 2; v <= nodeCount; v += 1) {
+      var parent = 1 + Math.floor(nextRand() * (v - 1));
+      lines.push(parent + ' ' + v);
+    }
+    return lines.join('\n') + '\n';
+  }
+
   function maximalPlanar3Tree(n) {
     var nodeCount = Math.max(3, Math.floor(Number(n) || 3));
     var edges = [];
@@ -306,6 +317,7 @@
     grid4x20: gridGraph(4, 20),
     grid9x9: gridGraph(9, 9),
     wheel7: wheelGraph(7),
+    tree50: randomTreeGraph(50, 50050),
     xtree30: xTreeGraph(30),
     planar3tree10: maximalPlanar3Tree(10),
     planar3tree30: maximalPlanar3Tree(30),
