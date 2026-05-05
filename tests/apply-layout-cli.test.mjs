@@ -5,7 +5,8 @@ import { runCli } from '../scripts/apply-layout.mjs';
 import {
   createMockCy,
   initializeMockCyPositions,
-  loadBrowserModules
+  loadBrowserModules,
+  parseEdgeListText
 } from '../scripts/report-shared.mjs';
 
 test('apply_layout runs a layout on regex-matched graphs and prints metrics', async () => {
@@ -121,6 +122,36 @@ test('mock layout initialization uses explicit input coordinates when present', 
   assert.ok(Math.abs(pos.a.y - 24) < 1e-6);
   assert.ok(Math.abs(pos.b.x - 736) < 1e-6);
   assert.ok(Math.abs(pos.c.y - 596) < 1e-6);
+});
+
+test('Claude module candidates ignore live positions during preparation', async () => {
+  const windowObj = loadBrowserModules();
+  const parsed = parseEdgeListText(windowObj.PlanarVibeGraphGenerator.getSample('xtree30'));
+  const cy = createMockCy(parsed.nodeIds, parsed.edgePairs);
+  initializeMockCyPositions(
+    cy,
+    parsed.nodeIds,
+    'named:xtree30',
+    null,
+    windowObj.GeometryUtils
+  );
+
+  const originalPrepare = windowObj.PlanarVibeEdgeBalancer.prepareGraphData;
+  const sawCurrentPositions = [];
+  windowObj.PlanarVibeEdgeBalancer.prepareGraphData = function (graph, options) {
+    sawCurrentPositions.push(!!(options && options.currentPositions));
+    return originalPrepare.call(this, graph, options);
+  };
+
+  try {
+    const result = await windowObj.PlanarVibeClaude.applyLayout(cy, { claudeBudgetMs: 500 });
+    assert.equal(result && result.ok, true, result && result.message ? result.message : 'Claude failed');
+  } finally {
+    windowObj.PlanarVibeEdgeBalancer.prepareGraphData = originalPrepare;
+  }
+
+  assert.ok(sawCurrentPositions.length > 0, 'Claude should run the EdgeBalancer candidate');
+  assert.deepEqual(sawCurrentPositions, sawCurrentPositions.map(() => false));
 });
 
 test('layout algorithms use input coordinates to choose the outer face when available', async () => {

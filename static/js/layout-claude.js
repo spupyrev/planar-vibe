@@ -1086,7 +1086,9 @@
   }
 
   async function runModuleCandidate(module, graph, runtime) {
-    var layoutInput = module.prepareGraphData(graph, runtime);
+    var prepareOptions = Object.assign({}, runtime);
+    delete prepareOptions.currentPositions;
+    var layoutInput = module.prepareGraphData(graph, prepareOptions);
     var result = await module.computePositions(layoutInput, {});
     var positions = result && result.positions;
     var embedding = positions ? extractCandidateEmbedding(graph, positions) : null;
