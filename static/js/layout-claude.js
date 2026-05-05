@@ -1,6 +1,7 @@
 (function (global) {
   'use strict';
 
+  var GraphUtils = global.GraphUtils;
   var GeometryUtils = global.GeometryUtils;
   var PlanarGraphUtils = global.PlanarGraphUtils;
   var PlanarityTest = global.PlanarVibePlanarityTest;
@@ -23,7 +24,9 @@
     radialTreeMaxNodes: 220,
     unicyclicMaxNodes: 220,
     gridMaxNodes: 240,
-    outerplanarMaxNodes: 180
+    outerplanarMaxNodes: 180,
+    coreTreeMaxNodes: 110,
+    coreTreeMaxCoreNodes: 70
   };
 
   // Module-level cache: populated by computePositions at entry.
@@ -1080,6 +1083,233 @@
     return { ok: true, positions: positions, message: 'Computed outerplanar circle layout' };
   }
 
+  function copyPositionsForNodes(posById, nodeIds) {
+    var out = {};
+    for (var i = 0; i < nodeIds.length; i += 1) {
+      var id = String(nodeIds[i]);
+      var p = posById ? posById[id] : null;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return null;
+      out[id] = { x: p.x, y: p.y };
+    }
+    return out;
+  }
+
+  function medianFinite(values) {
+    var out = [];
+    for (var i = 0; i < values.length; i += 1) {
+      var value = Number(values[i]);
+      if (Number.isFinite(value)) out.push(value);
+    }
+    if (out.length === 0) return null;
+    out.sort(function (a, b) { return a - b; });
+    var mid = Math.floor(out.length / 2);
+    return out.length % 2 === 1 ? out[mid] : (out[mid - 1] + out[mid]) / 2;
+  }
+
+  function medianEdgeLength(graph, posById, edgeFilter) {
+    var lengths = [];
+    for (var i = 0; i < graph.edgePairs.length; i += 1) {
+      var u = String(graph.edgePairs[i][0]);
+      var v = String(graph.edgePairs[i][1]);
+      if (edgeFilter && !edgeFilter(u, v)) continue;
+      var pu = posById[u];
+      var pv = posById[v];
+      if (!pu || !pv) continue;
+      var dx = pu.x - pv.x;
+      var dy = pu.y - pv.y;
+      var len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0) lengths.push(len);
+    }
+    return medianFinite(lengths);
+  }
+
+  function computeTwoCoreInfo(graph, options) {
+    var opts = options;
+    var maxNodes = Number.isFinite(opts.coreTreeMaxNodes)
+      ? opts.coreTreeMaxNodes
+      : CUSTOM_LIMITS.coreTreeMaxNodes;
+    var maxCoreNodes = Number.isFinite(opts.coreTreeMaxCoreNodes)
+      ? opts.coreTreeMaxCoreNodes
+      : CUSTOM_LIMITS.coreTreeMaxCoreNodes;
+    if (graph.nodeIds.length > maxNodes) return null;
+
+    var info = graphInfo(graph);
+    if (!isConnected(graph, info)) return null;
+
+    var degree = {};
+    var removed = {};
+    var queue = [];
+    var i;
+    for (i = 0; i < graph.nodeIds.length; i += 1) {
+      var id = String(graph.nodeIds[i]);
+      degree[id] = info.degree[id] || 0;
+      if (degree[id] <= 1) queue.push(id);
+    }
+
+    for (var qi = 0; qi < queue.length; qi += 1) {
+      var u = queue[qi];
+      if (removed[u]) continue;
+      removed[u] = true;
+      var neighbors = info.adjacency[u] || [];
+      for (i = 0; i < neighbors.length; i += 1) {
+        var v = String(neighbors[i]);
+        if (removed[v]) continue;
+        degree[v] -= 1;
+        if (degree[v] === 1) queue.push(v);
+      }
+    }
+
+    var core = [];
+    var coreSet = {};
+    for (i = 0; i < graph.nodeIds.length; i += 1) {
+      id = String(graph.nodeIds[i]);
+      if (!removed[id]) {
+        core.push(id);
+        coreSet[id] = true;
+      }
+    }
+    if (core.length < 3 || core.length === graph.nodeIds.length || core.length > maxCoreNodes) return null;
+
+    var coreEdges = [];
+    for (i = 0; i < graph.edgePairs.length; i += 1) {
+      var a = String(graph.edgePairs[i][0]);
+      var b = String(graph.edgePairs[i][1]);
+      if (coreSet[a] && coreSet[b]) coreEdges.push([a, b]);
+    }
+    if (coreEdges.length < core.length) return null;
+
+    return {
+      info: info,
+      core: core,
+      coreSet: coreSet,
+      coreGraph: GraphUtils.createGraph(core, coreEdges)
+    };
+  }
+
+  function shouldTryCoreTreeGraph(graph, options) {
+    return !!computeTwoCoreInfo(graph, options);
+  }
+
+  function coreTreeLeafCount(children, id, memo) {
+    if (memo[id]) return memo[id];
+    var kids = children[id] || [];
+    if (kids.length === 0) {
+      memo[id] = 1;
+      return 1;
+    }
+    var total = 0;
+    for (var i = 0; i < kids.length; i += 1) total += coreTreeLeafCount(children, kids[i], memo);
+    memo[id] = total;
+    return total;
+  }
+
+  async function computeCoreTreePositions(graph, options) {
+    if (!hasComputeInterface(global.PlanarVibeEdgeBalancer)) {
+      return { ok: false, message: 'CoreTree requires EdgeBalancer' };
+    }
+    var coreInfo = computeTwoCoreInfo(graph, options);
+    if (!coreInfo) return { ok: false, message: 'Not an eligible core-tree graph' };
+
+    var coreOptions = Object.assign({}, options || {});
+    delete coreOptions.currentPositions;
+    var coreResult = await runModuleCandidate(global.PlanarVibeEdgeBalancer, coreInfo.coreGraph, coreOptions);
+    if (!coreResult || !coreResult.ok || !coreResult.posById) {
+      return { ok: false, message: 'CoreTree core layout failed' };
+    }
+
+    var positions = copyPositionsForNodes(coreResult.posById, coreInfo.core);
+    if (!positions || GeometryUtils.hasPositionCrossings(positions, coreInfo.coreGraph.edgePairs)) {
+      return { ok: false, message: 'CoreTree core drawing is not plane' };
+    }
+
+    var children = {};
+    var parent = {};
+    var queue = coreInfo.core.slice().sort();
+    var i;
+    for (i = 0; i < coreInfo.core.length; i += 1) {
+      var coreId = coreInfo.core[i];
+      parent[coreId] = null;
+      children[coreId] = [];
+    }
+
+    for (var qi = 0; qi < queue.length; qi += 1) {
+      var u = queue[qi];
+      var neighbors = (coreInfo.info.adjacency[u] || []).slice().sort();
+      for (i = 0; i < neighbors.length; i += 1) {
+        var v = String(neighbors[i]);
+        if (coreInfo.coreSet[v] || Object.prototype.hasOwnProperty.call(parent, v)) continue;
+        parent[v] = u;
+        if (!children[u]) children[u] = [];
+        children[u].push(v);
+        children[v] = [];
+        queue.push(v);
+      }
+    }
+    if (Object.keys(parent).length !== graph.nodeIds.length) {
+      return { ok: false, message: 'CoreTree attachment forest failed' };
+    }
+
+    var cx = 0;
+    var cy = 0;
+    for (i = 0; i < coreInfo.core.length; i += 1) {
+      coreId = coreInfo.core[i];
+      cx += positions[coreId].x;
+      cy += positions[coreId].y;
+    }
+    cx /= coreInfo.core.length;
+    cy /= coreInfo.core.length;
+
+    var levelGap = (medianEdgeLength(coreInfo.coreGraph, positions) || 1) * 0.95;
+    var leafMemo = {};
+    function assignSubtree(root, anchor, depth, startAngle, endAngle) {
+      var kids = (children[root] || []).slice().sort(function (a, b) {
+        var da = coreTreeLeafCount(children, a, leafMemo);
+        var db = coreTreeLeafCount(children, b, leafMemo);
+        if (db !== da) return db - da;
+        return a < b ? -1 : (a > b ? 1 : 0);
+      });
+      if (kids.length === 0) return;
+
+      var total = 0;
+      for (var ki = 0; ki < kids.length; ki += 1) {
+        total += coreTreeLeafCount(children, kids[ki], leafMemo);
+      }
+
+      var cursor = startAngle;
+      for (ki = 0; ki < kids.length; ki += 1) {
+        var child = kids[ki];
+        var span = (endAngle - startAngle) * coreTreeLeafCount(children, child, leafMemo) / Math.max(1, total);
+        var angle = cursor + span / 2;
+        positions[child] = {
+          x: anchor.x + levelGap * depth * Math.cos(angle),
+          y: anchor.y + levelGap * depth * Math.sin(angle)
+        };
+        assignSubtree(child, anchor, depth + 1, cursor, cursor + span);
+        cursor += span;
+      }
+    }
+
+    for (i = 0; i < coreInfo.core.length; i += 1) {
+      coreId = coreInfo.core[i];
+      var rootChildren = children[coreId] || [];
+      var attachmentCount = 0;
+      for (var ri = 0; ri < rootChildren.length; ri += 1) {
+        if (!coreInfo.coreSet[rootChildren[ri]]) attachmentCount += 1;
+      }
+      if (attachmentCount === 0) continue;
+      var p = positions[coreId];
+      var outward = Math.atan2(p.y - cy, p.x - cx);
+      var half = Math.min(Math.PI * 0.72, Math.max(Math.PI / 5, attachmentCount * Math.PI / 9));
+      assignSubtree(coreId, p, 1, outward - half, outward + half);
+    }
+
+    var out = copyPositionsForNodes(positions, graph.nodeIds);
+    if (!out || GeometryUtils.hasPositionCrossings(out, graph.edgePairs)) {
+      return { ok: false, message: 'CoreTree could not keep drawing plane' };
+    }
+    return { ok: true, positions: out, message: 'Computed core-tree layout' };
+  }
+
   function extractCandidateEmbedding(graph, posById) {
     var embedding = PlanarGraphUtils.extractEmbeddingFromPositions(graph.nodeIds, graph.edgePairs, posById);
     return embedding && embedding.ok ? embedding : null;
@@ -1095,8 +1325,8 @@
     return { ok: result && result.ok && !!embedding, posById: positions, embedding: embedding };
   }
 
-  async function runInternalCandidate(computeLayout, graph) {
-    var result = computeLayout(graph);
+  async function runInternalCandidate(computeLayout, graph, options) {
+    var result = await Promise.resolve(computeLayout(graph, options));
     var positions = result && result.positions;
     var embedding = positions ? extractCandidateEmbedding(graph, positions) : null;
     return { ok: result && result.ok && !!embedding, posById: positions, embedding: embedding };
@@ -1131,6 +1361,9 @@
     }
     if (n <= customLimit(opts, 'outerplanarMaxNodes') && isOuterplanarGraph(graph)) {
       runners.push(['OuterCircle', function () { return runInternalCandidate(computeOuterplanarCirclePositions, graph); }]);
+    }
+    if (n <= customLimit(opts, 'coreTreeMaxNodes') && shouldTryCoreTreeGraph(graph, opts)) {
+      runners.push(['CoreTree', function () { return runInternalCandidate(computeCoreTreePositions, graph, opts); }]);
     }
 
     if (hasComputeInterface(global.PlanarVibeEdgeBalancer)) {

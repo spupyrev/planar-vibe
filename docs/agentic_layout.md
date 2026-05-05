@@ -47,7 +47,7 @@ The strongest current baselines on `planar_train.dot` are:
 Newer data after v1 development on `planar_train.dot`:
 
 - gpt:    `0.7279` (runtime: 37 min)
-- claude: `0.7441` (runtime: 110 min)
+- claude: `0.7585` (runtime: 37 min)
 
 ## Implementation Rules
 
