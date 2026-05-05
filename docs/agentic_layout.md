@@ -41,8 +41,13 @@ The script also writes `evaluation_data/agentic-train-results-scores.csv`. In th
 
 The strongest current baselines on `planar_train.dot` are:
 
-- EdgeBalancer: `0.622226`
-- FABalancer: `0.596484`
+- EdgeBalancer: `0.6222` (runtime: 67 sec)
+- FABalancer:   `0.5965` (runtime: 270 sec)
+
+Newer data after v1 development on `planar_train.dot`:
+
+- gpt:    `0.7279` (runtime: 37 min)
+- claude: `0.7441` (runtime: 110 min)
 
 ## Implementation Rules
 

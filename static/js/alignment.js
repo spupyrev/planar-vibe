@@ -129,7 +129,147 @@
     return groups;
   }
 
-  function tryMergeGroups(groups, index, axis, posById, edgePairs) {
+  function buildCrossingContext(edgePairs) {
+    var edges = [];
+    var incidentEdgeIndexesByNode = {};
+    for (var i = 0; i < edgePairs.length; i += 1) {
+      var edge = {
+        u: String(edgePairs[i][0]),
+        v: String(edgePairs[i][1])
+      };
+      edges.push(edge);
+      if (!incidentEdgeIndexesByNode[edge.u]) {
+        incidentEdgeIndexesByNode[edge.u] = [];
+      }
+      if (!incidentEdgeIndexesByNode[edge.v]) {
+        incidentEdgeIndexesByNode[edge.v] = [];
+      }
+      incidentEdgeIndexesByNode[edge.u].push(i);
+      incidentEdgeIndexesByNode[edge.v].push(i);
+    }
+    return {
+      edges: edges,
+      incidentEdgeIndexesByNode: incidentEdgeIndexesByNode
+    };
+  }
+
+  function boxesOverlap(a, b, c, d, eps) {
+    return (
+      Math.min(a.x, b.x) - eps <= Math.max(c.x, d.x) &&
+      Math.min(c.x, d.x) - eps <= Math.max(a.x, b.x) &&
+      Math.min(a.y, b.y) - eps <= Math.max(c.y, d.y) &&
+      Math.min(c.y, d.y) - eps <= Math.max(a.y, b.y)
+    );
+  }
+
+  function edgesShareEndpoint(a, b) {
+    return a.u === b.u || a.u === b.v || a.v === b.u || a.v === b.v;
+  }
+
+  function collectAffectedEdgeIndexes(context, affectedSet, affectedIds) {
+    var affectedEdgeIndexes = [];
+    var affectedEdgeFlags = {};
+    for (var i = 0; i < affectedIds.length; i += 1) {
+      var id = String(affectedIds[i]);
+      affectedSet[id] = true;
+      var incident = context.incidentEdgeIndexesByNode[id] || [];
+      for (var j = 0; j < incident.length; j += 1) {
+        var edgeIndex = incident[j];
+        if (!affectedEdgeFlags[edgeIndex]) {
+          affectedEdgeFlags[edgeIndex] = true;
+          affectedEdgeIndexes.push(edgeIndex);
+        }
+      }
+    }
+    return affectedEdgeIndexes;
+  }
+
+  function hasLocalPositionCrossings(context, nodeIds, posById, affectedIds) {
+    var EPS = 1e-9;
+    var affectedSet = {};
+    var affectedEdgeIndexes = collectAffectedEdgeIndexes(context, affectedSet, affectedIds);
+    var edges = context.edges;
+    var i;
+    var j;
+
+    for (i = 0; i < affectedEdgeIndexes.length; i += 1) {
+      var affectedEdge = edges[affectedEdgeIndexes[i]];
+      var affectedU = posById[affectedEdge.u];
+      var affectedV = posById[affectedEdge.v];
+      if (!affectedU || !affectedV) {
+        continue;
+      }
+
+      for (j = 0; j < edges.length; j += 1) {
+        if (j === affectedEdgeIndexes[i]) {
+          continue;
+        }
+        var otherEdge = edges[j];
+        if (edgesShareEndpoint(affectedEdge, otherEdge)) {
+          continue;
+        }
+        var otherU = posById[otherEdge.u];
+        var otherV = posById[otherEdge.v];
+        if (!otherU || !otherV || !boxesOverlap(affectedU, affectedV, otherU, otherV, EPS)) {
+          continue;
+        }
+        if (global.GeometryUtils.segmentsIntersectOrTouch(affectedU, affectedV, otherU, otherV, EPS)) {
+          return true;
+        }
+      }
+    }
+
+    for (i = 0; i < affectedIds.length; i += 1) {
+      var affectedId = String(affectedIds[i]);
+      var affectedPos = posById[affectedId];
+      if (!affectedPos || !Number.isFinite(affectedPos.x) || !Number.isFinite(affectedPos.y)) {
+        continue;
+      }
+      for (j = 0; j < edges.length; j += 1) {
+        var edge = edges[j];
+        if (affectedId === edge.u || affectedId === edge.v) {
+          continue;
+        }
+        var edgeU = posById[edge.u];
+        var edgeV = posById[edge.v];
+        if (!edgeU || !edgeV) {
+          continue;
+        }
+        if (global.GeometryUtils.pointOnSegmentInterior(edgeU, edgeV, affectedPos, EPS)) {
+          return true;
+        }
+      }
+    }
+
+    for (i = 0; i < nodeIds.length; i += 1) {
+      var nodeId = String(nodeIds[i]);
+      if (affectedSet[nodeId]) {
+        continue;
+      }
+      var nodePos = posById[nodeId];
+      if (!nodePos || !Number.isFinite(nodePos.x) || !Number.isFinite(nodePos.y)) {
+        continue;
+      }
+      for (j = 0; j < affectedEdgeIndexes.length; j += 1) {
+        edge = edges[affectedEdgeIndexes[j]];
+        if (nodeId === edge.u || nodeId === edge.v) {
+          continue;
+        }
+        edgeU = posById[edge.u];
+        edgeV = posById[edge.v];
+        if (!edgeU || !edgeV) {
+          continue;
+        }
+        if (global.GeometryUtils.pointOnSegmentInterior(edgeU, edgeV, nodePos, EPS)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function tryMergeGroups(groups, index, axis, nodeIds, posById, crossingContext) {
     var left = groups[index];
     var right = groups[index + 1];
     var mergedCoord = ((left.coord * left.ids.length) + (right.coord * right.ids.length)) / (left.ids.length + right.ids.length);
@@ -141,7 +281,7 @@
       posById[id][axis] = mergedCoord;
     }
 
-    if (global.GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
+    if (hasLocalPositionCrossings(crossingContext, nodeIds, posById, affectedIds)) {
       for (i = 0; i < affectedIds.length; i += 1) {
         id = affectedIds[i];
         posById[id][axis] = oldCoords[id];
@@ -158,7 +298,7 @@
     };
   }
 
-  function greedyAxisSweep(nodeIds, edgePairs, posById, axis, groupTolerance, mergeTolerance) {
+  function greedyAxisSweep(nodeIds, posById, crossingContext, axis, groupTolerance, mergeTolerance) {
     var groups = buildAxisGroups(nodeIds, posById, axis, groupTolerance);
     var mergedCount = 0;
     var i = 0;
@@ -170,7 +310,7 @@
         continue;
       }
 
-      var merged = tryMergeGroups(groups, i, axis, posById, edgePairs);
+      var merged = tryMergeGroups(groups, i, axis, nodeIds, posById, crossingContext);
       if (!merged) {
         i += 1;
         continue;
@@ -189,7 +329,10 @@
   }
 
   function alignToAxisGreedy(nodeIds, edgePairs, posById, options) {
-    if (!global.GeometryUtils || typeof global.GeometryUtils.hasPositionCrossings !== 'function') {
+    if (!global.GeometryUtils ||
+        typeof global.GeometryUtils.hasPositionCrossings !== 'function' ||
+        typeof global.GeometryUtils.segmentsIntersectOrTouch !== 'function' ||
+        typeof global.GeometryUtils.pointOnSegmentInterior !== 'function') {
       return { ok: false, reason: 'Geometry utilities are missing' };
     }
     if (!nodeIds || nodeIds.length < 2) {
@@ -207,6 +350,7 @@
     if (global.GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
       return { ok: false, reason: 'Drawing is not plane' };
     }
+    var crossingContext = buildCrossingContext(edgePairs);
 
     var opts = options || {};
     var working = copyPositions(posById);
@@ -254,8 +398,8 @@
     var xTrial = copyPositions(working);
     var xTrialResult = greedyAxisSweep(
       nodeIds,
-      edgePairs,
       xTrial,
+      crossingContext,
       'x',
       xBaseTolerance,
       xMergeTolerance
@@ -279,8 +423,8 @@
     var yTrial = copyPositions(working);
     var yTrialResult = greedyAxisSweep(
       nodeIds,
-      edgePairs,
       yTrial,
+      crossingContext,
       'y',
       yBaseTolerance,
       yMergeTolerance
