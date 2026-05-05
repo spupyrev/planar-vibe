@@ -1381,19 +1381,18 @@
     });
   }
 
-  async function computeFABalancerPositionsFromPrepared(options, context) {
-    options = options || {};
+  async function computePositions(layoutInput, options) {
     var onIteration = typeof options.onIteration === 'function' ? options.onIteration : null;
-    if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'FABalancer setup failed' });
+    if (!layoutInput || !layoutInput.ok) {
+      return buildLayoutError(layoutInput || { message: 'FABalancer setup failed' });
     }
 
-    var g = context.graph;
-    var outerFace = context.augmentedOuterFace;
-    var augmented = context.augmented;
-    var baseEmbedding = context.baseEmbedding;
-    var outerPos = buildFABalancerOuterPositions(context);
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmented.graph);
+    var g = layoutInput.graph;
+    var outerFace = layoutInput.augmentedOuterFace;
+    var augmented = layoutInput.augmented;
+    var baseEmbedding = layoutInput.baseEmbedding;
+    var outerPos = buildFABalancerOuterPositions(layoutInput);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, layoutInput.augmented.graph);
     var STAGE_COUNT = 3;
 
     function filteredOriginalPositions(posById) {
@@ -1621,25 +1620,14 @@
     });
   }
 
-  async function computePositions(graph, layoutInput) {
-    return computeFABalancerPositionsFromPrepared(null, layoutInput);
-  }
-
-  async function computeFABalancerPositions(graph, options) {
-    options = options || {};
-    return computeFABalancerPositionsFromPrepared(options, prepareGraphData(graph, options));
-  }
-
-  async function applyFABalancerLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'FABalancer layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(buildFABalancerOuterPositions(ctx.prepared));
       },
-      computePositions: function (_graph, computeOptions, prepared) {
-        return computeFABalancerPositionsFromPrepared(computeOptions || {}, prepared);
-      },
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('FABalancer', {
@@ -1673,6 +1661,6 @@
 	  global.PlanarVibeFABalancer = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyFABalancerLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

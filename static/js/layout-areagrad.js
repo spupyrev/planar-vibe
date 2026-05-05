@@ -312,23 +312,12 @@
     });
   }
 
-  function prepareAreaGradState(graph, options) {
-    var settings = buildAreaGradSettings(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'AreaGrad layout',
-      augmentationMethod: settings.augmentationMethod,
-      augmentationOptions: settings.augmentationOptions,
-      currentPositions: settings.currentPositions
-    });
-    return buildAreaGradStateFromPrepared(context, settings);
-  }
-
-  async function runAreaGradIterations(prepared, options) {
-    var g = prepared.graph;
-    var posById = prepared.posById;
-    var areaGradData = prepared.areaGradData;
-    var movableVertices = prepared.movableVertices || [];
-    var outerDiameter = outerFaceDiameter(posById, prepared.outerFace);
+  async function runAreaGradIterations(layoutInput, options) {
+    var g = layoutInput.graph;
+    var posById = layoutInput.posById;
+    var areaGradData = layoutInput.areaGradData;
+    var movableVertices = layoutInput.movableVertices || [];
+    var outerDiameter = outerFaceDiameter(posById, layoutInput.outerFace);
     options.maxVertexMove = options.maxVertexMoveRel * outerDiameter;
     options.minTriangleArea = effectiveMinTriangleArea(areaGradData, options);
     var status = 'max_iters';
@@ -443,7 +432,7 @@
       moveStats: lastMoveStats,
       iters: Math.min(options.maxIters, Math.max(0, iter - (status === 'max_iters' ? 1 : 0))),
       boundedFaceCount: areaGradData.triangles.length,
-      dummyCount: prepared.augmented ? prepared.augmented.dummyCount : 0,
+      dummyCount: layoutInput.augmented ? layoutInput.augmented.dummyCount : 0,
       hasCrossings: hasCrossings
     };
   }
@@ -458,24 +447,12 @@
     });
   }
 
-  async function computePositions(graph, layoutInput) {
-    return computeAreaGradPositionsFromPrepared(graph, null, layoutInput);
-  }
-
-  async function computeAreaGradPositions(graph, options) {
-    var prepared = prepareAreaGradState(graph, options);
-    if (!prepared || !prepared.ok) {
-      return buildLayoutError(prepared || { message: 'AreaGrad setup failed' });
-    }
-    return finishAreaGradPositions(prepared, prepared.opts);
-  }
-
-  async function computeAreaGradPositionsFromPrepared(_graph, options, prepared) {
-    var state = buildAreaGradStateFromPrepared(prepared, options);
+  async function computePositions(layoutInput, options) {
+    var state = buildAreaGradStateFromPrepared(layoutInput, options);
     if (!state || !state.ok) {
       return buildLayoutError(state || { message: 'AreaGrad setup failed' });
     }
-    return finishAreaGradPositions(state, state.opts || options || {});
+    return finishAreaGradPositions(state, state.opts);
   }
 
   async function finishAreaGradPositions(state, options) {
@@ -539,14 +516,14 @@
     });
   }
 
-  async function applyAreaGradLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
       prepareFailureLabel: 'AreaGrad layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
-      computePositions: computeAreaGradPositionsFromPrepared,
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('AreaGrad', {
@@ -581,6 +558,6 @@
 	  global.PlanarVibeAreaGrad = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyAreaGradLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

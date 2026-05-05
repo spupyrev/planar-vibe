@@ -581,15 +581,15 @@
     );
   }
 
-  function applyCEGLayout(cy, options, computeLayout, failureMessage) {
+  function applyLayout(cy, options, computeLayout, failureMessage) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
       prepareFailureLabel: String(failureMessage || 'CEG layout').replace(/ failed$/i, ' layout'),
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
-      computePositions: async function (graph, computeOptions, prepared) {
-        var result = computeLayout(graph, computeOptions || {}, prepared);
+      computePositions: async function (prepared, computeOptions) {
+        var result = computeLayout(prepared.graph, computeOptions, prepared);
         if (result && result.ok && result.positions && typeof computeOptions.onIteration === 'function') {
           await computeOptions.onIteration({
             iter: 1,
@@ -611,30 +611,26 @@
     });
   }
 
-  function applyCEGBfsLayout(cy, options) {
-    return applyCEGLayout(cy, options, computeCEGBfsPositions, 'CEG-bfs failed');
-  }
-
-  function applyCEGXyLayout(cy, options) {
-    return applyCEGLayout(cy, options, computeCEGXyPositions, 'CEG-xy failed');
-  }
-
   global.PlanarVibeCEGBfs = {
     prepareGraphData: function (graph, options) {
       return prepareGraphData(graph, 'CEG-bfs', options);
     },
-	    computePositions: function (graph, layoutInput) {
-	      return computeCEGBfsPositions(graph, null, layoutInput);
+	    computePositions: function (layoutInput, options) {
+	      return computeCEGBfsPositions(layoutInput.graph, options, layoutInput);
 	    },
-	    applyLayout: applyCEGBfsLayout
+	    applyLayout: function (cy, options) {
+	      return applyLayout(cy, options, computeCEGBfsPositions, 'CEG-bfs failed');
+	    }
 	  };
   global.PlanarVibeCEGXy = {
     prepareGraphData: function (graph, options) {
       return prepareGraphData(graph, 'CEG-xy', options);
     },
-	    computePositions: function (graph, layoutInput) {
-	      return computeCEGXyPositions(graph, null, layoutInput);
+	    computePositions: function (layoutInput, options) {
+	      return computeCEGXyPositions(layoutInput.graph, options, layoutInput);
 	    },
-	    applyLayout: applyCEGXyLayout
+	    applyLayout: function (cy, options) {
+	      return applyLayout(cy, options, computeCEGXyPositions, 'CEG-xy failed');
+	    }
 	  };
 })(window);

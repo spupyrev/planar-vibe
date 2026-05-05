@@ -282,13 +282,13 @@
     return { accepted: accepted, rejected: rejected };
   }
 
-  function buildForceDirResult(state, context) {
+  function buildForceDirResult(state, layoutInput) {
     return buildLayoutResult({
       nodeIds: state.nodeIds,
       edgePairs: state.edgePairs,
       outerFace: state.outerFace,
       graph: state.graph,
-      augmented: context.augmented,
+      augmented: layoutInput.augmented,
       positions: state.bestPos || state.pos,
       stopReason: state.stopReason,
       iters: state.performedIters,
@@ -309,7 +309,7 @@
     }
   }
 
-  function runForceDirIterations(state, context, options) {
+  function runForceDirIterations(state, layoutInput, options) {
     var evalEvery = FORCE_DIR_CONFIG.evalEvery;
     var onIteration = options.onIteration;
     var movementTracker = options.movementTracker;
@@ -367,7 +367,7 @@
           break;
         }
       }
-      return buildForceDirResult(state, context);
+      return buildForceDirResult(state, layoutInput);
     }
 
     return (async function () {
@@ -378,22 +378,25 @@
         }
         await onIteration(step.progress);
       }
-      return buildForceDirResult(state, context);
+      return buildForceDirResult(state, layoutInput);
     })();
   }
 
-  function computeForceDirPositionsFromPrepared(context, options) {
-    var runtime = options || {};
+  function computePositions(layoutInput, options) {
+    if (!layoutInput.ok) {
+      return buildLayoutError(layoutInput);
+    }
+    var runtime = options;
     var alpha0 = FORCE_DIR_CONFIG.alpha;
-    var graph = context.graph;
+    var graph = layoutInput.graph;
     var ids = graph.nodeIds.slice();
     var pairs = graph.edgePairs.slice();
     if (pairs.length < 3) {
       return buildLayoutError({ message: 'ForceDir requires at least 3 edges', graph: graph });
     }
 
-    var outerFace = context.outerFace;
-    var pos = context.posById;
+    var outerFace = layoutInput.outerFace;
+    var pos = layoutInput.posById;
     var movable = collectMovableVertices(ids, outerFace);
 
     var lengths = [];
@@ -453,7 +456,7 @@
       stopReason: 'max-iters'
     };
 
-    return runForceDirIterations(state, context, {
+    return runForceDirIterations(state, layoutInput, {
       onIteration: typeof runtime.onIteration === 'function' ? runtime.onIteration : null,
       movementTracker: movementTracker
     });
@@ -468,31 +471,14 @@
     });
   }
 
-  function computePositions(graph, layoutInput) {
-    if (!layoutInput.ok) {
-      return buildLayoutError(layoutInput);
-    }
-    return computeForceDirPositionsFromPrepared(layoutInput, null);
-  }
-
-  function computeForceDirPositions(graph, options) {
-    var context = prepareGraphData(graph, options);
-    if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'ForceDir setup failed' });
-    }
-    return computeForceDirPositionsFromPrepared(context, options);
-  }
-
-  function applyForceDirLayout(cy, options) {
+  function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
       prepareFailureLabel: 'ForceDir layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
-      computePositions: function (_graph, computeOptions, prepared) {
-        return computeForceDirPositionsFromPrepared(prepared, computeOptions || {});
-      },
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -518,6 +504,6 @@
 	  global.PlanarVibeForceDir = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyForceDirLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

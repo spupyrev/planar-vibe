@@ -814,16 +814,15 @@
     });
   }
 
-  async function computeEdgeBalancerPositionsFromPrepared(options, context) {
-    options = options || {};
-    if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'EdgeBalancer setup failed' });
+  async function computePositions(layoutInput, options) {
+    if (!layoutInput || !layoutInput.ok) {
+      return buildLayoutError(layoutInput || { message: 'EdgeBalancer setup failed' });
     }
 
-    var g = context.graph;
-    var outerFace = context.augmentedOuterFace;
-    var augmented = context.augmented;
-    var outerPos = buildEdgeBalancerOuterPositions(context);
+    var g = layoutInput.graph;
+    var outerFace = layoutInput.augmentedOuterFace;
+    var augmented = layoutInput.augmented;
+    var outerPos = buildEdgeBalancerOuterPositions(layoutInput);
     var data = buildEdgeBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
@@ -847,7 +846,7 @@
         augmented: augmented
       });
     }
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmented.graph);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, layoutInput.augmented.graph);
     var q0Result = buildInitialLogitSeed(data, tutteWeights);
     if (!q0Result.ok) {
       return buildLayoutError({
@@ -962,25 +961,14 @@
     });
   }
 
-  async function computePositions(graph, layoutInput) {
-    return computeEdgeBalancerPositionsFromPrepared(null, layoutInput);
-  }
-
-  async function computeEdgeBalancerPositions(graph, options) {
-    options = options || {};
-    return computeEdgeBalancerPositionsFromPrepared(options, prepareGraphData(graph, options));
-  }
-
-  async function applyEdgeBalancerLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'EdgeBalancer layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(buildEdgeBalancerOuterPositions(ctx.prepared));
       },
-      computePositions: function (_graph, computeOptions, prepared) {
-        return computeEdgeBalancerPositionsFromPrepared(computeOptions || {}, prepared);
-      },
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('EdgeBalancer', {
@@ -1011,6 +999,6 @@
 	  global.PlanarVibeEdgeBalancer = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyEdgeBalancerLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

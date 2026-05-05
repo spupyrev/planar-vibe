@@ -215,12 +215,13 @@
     });
   }
 
-  function computeTutteLayoutWithPrepared(graph, prepared) {
-    var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
+  function computeTutteLayoutWithPrepared(prepared) {
     if (!prepared || !prepared.ok) {
       return buildLayoutError(prepared || { message: 'Tutte failed' });
     }
+    var graph = prepared.graph;
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
 
     var augmentedGraph = prepared.augmented.graph;
     var augmentedOuterFace = prepared.augmentedOuterFace;
@@ -270,12 +271,8 @@
     });
   }
 
-  function computePositions(graph, layoutInput) {
-    return computeTutteLayoutWithPrepared(graph, layoutInput);
-  }
-
-  function computeTutteLayout(graph, options) {
-    return computePositions(graph, prepareGraphData(graph, options));
+  function computePositions(layoutInput, options) {
+    return computeTutteLayoutWithPrepared(layoutInput);
   }
 
   function buildTutteOuterPositions(prepared) {
@@ -290,16 +287,16 @@
     return filterPositions(fullPos, prepared.augmentedOuterFace);
   }
 
-  function applyTutteLayout(cy, options) {
+  function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'Tutte layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(buildTutteOuterPositions(ctx.prepared));
       },
-      computePositions: async function (graph, computeOptions, prepared) {
-        var result = computeTutteLayoutWithPrepared(graph, prepared);
-        await emitSingleIteration(computeOptions || {}, result);
+      computePositions: async function (prepared, computeOptions) {
+        var result = computeTutteLayoutWithPrepared(prepared);
+        await emitSingleIteration(computeOptions, result);
         return result;
       },
       buildResult: function (ctx) {
@@ -326,7 +323,7 @@
   global.PlanarVibeTutte = {
     prepareGraphData: prepareGraphData,
     computePositions: computePositions,
-    applyLayout: applyTutteLayout,
+    applyLayout: applyLayout,
     buildTutteWeights: buildTutteWeights,
 	    defaultOuterPlacementOptions: defaultOuterPlacementOptions,
 	    placeOuterFaceVertices: placeOuterFaceVertices,

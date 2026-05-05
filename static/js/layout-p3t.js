@@ -114,14 +114,14 @@
     return { ok: true, graph: graph };
   }
 
-  function computePositions(graph, layoutInput) {
+  function computePositions(layoutInput, options) {
     if (!layoutInput.ok) {
       return layoutInput;
     }
-    return computeP3TPositions(graph);
+    return computeP3TPositions(layoutInput.graph);
   }
 
-  function applyP3TLayout(cy, options) {
+  function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       initialFitBounds: function (ctx) {
         var defaults = global.PlanarVibeViewportDefaults || {};
@@ -129,9 +129,9 @@
         var height = Number.isFinite(defaults.height) ? defaults.height : 620;
         return { x1: 0, y1: 0, x2: width, y2: height };
 	      },
-	      computePositions: async function (graph, computeOptions) {
-	        var result = computePositions(graph, prepareGraphData(graph));
-	        await emitSingleIteration(computeOptions || {}, result);
+	      computePositions: async function (_prepared, computeOptions) {
+	        var result = computePositions(prepareGraphData(computeOptions.graph), computeOptions);
+	        await emitSingleIteration(computeOptions, result);
 	        return result;
 	      },
       buildResult: function (ctx) {
@@ -149,6 +149,6 @@
 	  global.PlanarVibeP3T = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyP3TLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

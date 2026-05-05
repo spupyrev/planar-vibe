@@ -26,15 +26,15 @@
     });
   }
 
-  function computeCanonicalOrdering(prepared) {
-    if (!prepared || !prepared.ok) {
-      return buildLayoutError({ reason: 'Missing prepared embedding' });
+  function computeCanonicalOrdering(layoutInput) {
+    if (!layoutInput || !layoutInput.ok) {
+      return buildLayoutError({ reason: 'Missing layoutInput embedding' });
     }
-    if (!prepared.augmented.embedding || !prepared.augmented.embedding.ok) {
+    if (!layoutInput.augmented.embedding || !layoutInput.augmented.embedding.ok) {
       return buildLayoutError({ reason: 'Missing embedding' });
     }
 
-    var embedding = prepared.augmented.embedding;
+    var embedding = layoutInput.augmented.embedding;
     var nodeIds = embedding.idByIndex.slice();
     if (nodeIds.length < 3) {
       return buildLayoutError({ reason: 'Need at least 3 vertices' });
@@ -50,7 +50,7 @@
       rotationById[embedding.idByIndex[r]] = embedding.rotation[r] ? embedding.rotation[r].slice() : [];
     }
 
-    var adjacency = prepared.augmented.graph.adjacencySets;
+    var adjacency = layoutInput.augmented.graph.adjacencySets;
 
     function rotationPathInclusive(v, start, end) {
       var nbrs = rotationById[v] || [];
@@ -462,22 +462,23 @@
     });
   }
 
-  function computeFPPPositionsFromPrepared(graph, prepared) {
-    var ids = graph.nodeIds;
-    var pairs = graph.edgePairs;
-    if (!prepared || !prepared.ok) {
+  function computePositions(layoutInput, options) {
+    var graph = layoutInput.graph;
+    if (!layoutInput.ok) {
       return buildLayoutError({
-        message: prepared && (prepared.message || prepared.reason) || 'FPP setup failed',
+        message: layoutInput.message || layoutInput.reason || 'FPP setup failed',
         graph: graph
       });
     }
+    var ids = graph.nodeIds;
+    var pairs = graph.edgePairs;
 
-    var canonical = computeCanonicalOrdering(prepared);
+    var canonical = computeCanonicalOrdering(layoutInput);
     if (!canonical.ok) {
       return buildLayoutError({
         message: canonical.reason,
         graph: graph,
-        outerFace: prepared.outerFace
+        outerFace: layoutInput.outerFace
       });
     }
 
@@ -490,8 +491,8 @@
       edgePairs: pairs,
       outerFace: canonical.outerFace ? canonical.outerFace.slice() : null,
       graph: graph,
-      augmentedDummyCount: prepared.augmented.dummyCount || 0,
-      prepared: prepared,
+      augmentedDummyCount: layoutInput.augmented.dummyCount || 0,
+      prepared: layoutInput,
       canonical: canonical,
       positions: result.positions
     });
@@ -505,15 +506,7 @@
     });
   }
 
-  function computePositions(graph, layoutInput) {
-    return computeFPPPositionsFromPrepared(graph, layoutInput);
-  }
-
-  function computeFPPPositions(graph, options) {
-    return computePositions(graph, prepareGraphData(graph, options));
-  }
-
-  function applyFPPLayout(cy, options) {
+  function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'FPP',
@@ -526,9 +519,9 @@
       prepareOptions: {
         augmentationOptions: FPP_PREPARE_OPTIONS
       },
-      computePositions: async function (graph, computeOptions, prepared) {
-        var result = computeFPPPositionsFromPrepared(graph, prepared);
-        await emitSingleIteration(computeOptions || {}, result);
+      computePositions: async function (layoutInput, computeOptions) {
+        var result = computePositions(layoutInput, computeOptions);
+        await emitSingleIteration(computeOptions, result);
         return result;
       },
       buildResult: function (ctx) {
@@ -550,6 +543,6 @@
 	  global.PlanarVibeFPP = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyFPPLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

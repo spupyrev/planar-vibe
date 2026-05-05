@@ -1838,7 +1838,7 @@
 
 	  function computeWithLayoutModule(module, graph, runtime) {
 	    var layoutInput = module.prepareGraphData(graph, runtime || {});
-	    return module.computePositions(graph, layoutInput);
+	    return module.computePositions(layoutInput, {});
 	  }
 
   function buildCandidateSpecs(graph, options) {

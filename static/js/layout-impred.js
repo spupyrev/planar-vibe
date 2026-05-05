@@ -368,29 +368,30 @@
     };
   }
 
-  function buildImPrEdSeedFromPrepared(g, options, prepared) {
+  function buildImPrEdSeedFromPrepared(g, options, layoutInput) {
     var init = LayoutPreprocessing.computeInitialPositions(
-      prepared.augmented.graph,
-      prepared.augmentedOuterFace,
-      prepared.augmented.embedding,
-      prepared.graph
+      layoutInput.augmented.graph,
+      layoutInput.augmentedOuterFace,
+      layoutInput.augmented.embedding,
+      layoutInput.graph
     );
     if (!init || !init.ok || !init.positions) {
       return buildLayoutError(init || { message: 'ImPrEd initialization failed', graph: g });
     }
     return {
-      baseEmbedding: prepared.baseEmbedding || null,
-      outerFace: prepared.outerFace ? prepared.outerFace.slice() : null,
+      baseEmbedding: layoutInput.baseEmbedding || null,
+      outerFace: layoutInput.outerFace ? layoutInput.outerFace.slice() : null,
       posById: copyPositions(init.positions)
     };
   }
 
-  async function computeImPrEdPositionsFromPrepared(g, options, prepared) {
+  async function computePositions(layoutInput, options) {
+    var g = layoutInput.graph;
     if (!g.edgePairs || g.edgePairs.length === 0) {
       return buildLayoutError({ message: 'ImPrEd requires at least 1 edge', graph: g });
     }
 
-    var seed = buildImPrEdSeedFromPrepared(g, options, prepared);
+    var seed = buildImPrEdSeedFromPrepared(g, options, layoutInput);
     if (!seed || seed.ok === false) {
       return buildLayoutError(seed || { message: 'ImPrEd initialization failed', graph: g });
     }
@@ -407,26 +408,8 @@
     });
   }
 
-  async function computePositions(g, layoutInput) {
-    return computeImPrEdPositionsFromPrepared(g, null, layoutInput);
-  }
-
-  async function computeImPrEdPositions(g, options) {
-    var runtime = options || {};
-    if (!g.nodeIds || g.nodeIds.length < 3) {
-      return buildLayoutError({ message: 'ImPrEd requires at least 3 vertices', graph: g });
-    }
-
-    var prepared = prepareGraphData(g, runtime);
-    if (!prepared || !prepared.ok) {
-      return buildLayoutError(prepared || { message: 'ImPrEd initialization failed', graph: g });
-    }
-
-    return computeImPrEdPositionsFromPrepared(g, runtime, prepared);
-  }
-
   async function runImPrEdIterations(g, options, seed) {
-    var runtime = options || {};
+    var runtime = options;
     var posById = copyPositions(seed.posById || {});
     var fixedOuter = new Set(seed.outerFace.map(String));
     var delta = estimateDelta(g.edgePairs, posById);
@@ -606,16 +589,14 @@
     });
   }
 
-  async function applyImPrEdLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'ImPrEd layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.currentPositions);
       },
-      computePositions: function (graph, computeOptions, prepared) {
-        return computeImPrEdPositionsFromPrepared(graph, computeOptions || {}, prepared);
-      },
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -639,7 +620,7 @@
   global.PlanarVibeImPrEd = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyImPrEdLayout,
+	    applyLayout: applyLayout,
 	    buildImPrEdSeedFromPrepared: buildImPrEdSeedFromPrepared
 	  };
 })(window);

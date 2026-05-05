@@ -413,10 +413,17 @@
     return out;
   }
 
-  function computeSchnyderPositionsFromPrepared(g, prepared) {
-    var emb = prepared.augmented.embedding;
+  function computePositions(layoutInput, options) {
+    var g = layoutInput.graph;
+    if (!layoutInput.ok) {
+      return buildLayoutError({
+        message: layoutInput.message || 'Schnyder triangulation failed',
+        graph: g
+      });
+    }
+    var emb = layoutInput.augmented.embedding;
     var rotationById = buildRotationById(emb);
-    var adjacency = prepared.augmented.graph.adjacency;
+    var adjacency = layoutInput.augmented.graph.adjacency;
     var bestPos = null;
     var bestOverlapCount = Infinity;
     var candidates = candidateOuterTriples(emb, rotationById);
@@ -429,16 +436,16 @@
       var b = tri[1];
       var c = tri[2];
 
-      var L = contract(prepared.augmented.graph.nodeIds, adjacency, a, b, c);
-      if (L.length !== prepared.augmented.graph.nodeIds.length - 3) {
+      var L = contract(layoutInput.augmented.graph.nodeIds, adjacency, a, b, c);
+      if (L.length !== layoutInput.augmented.graph.nodeIds.length - 3) {
         continue;
       }
-      var r = realizer(prepared.augmented.graph.nodeIds, L, a, b, c, rotationById, adjacency);
+      var r = realizer(layoutInput.augmented.graph.nodeIds, L, a, b, c, rotationById, adjacency);
       if (!r.ok) {
         continue;
       }
 
-      var coords = computeSchnyderCoordinates(prepared.augmented.graph.nodeIds, r, a, b, c);
+      var coords = computeSchnyderCoordinates(layoutInput.augmented.graph.nodeIds, r, a, b, c);
       var pos = buildScreenPositions(coords, g.nodeIds);
       if (!pos) {
         continue;
@@ -487,22 +494,7 @@
     });
   }
 
-  function computePositions(g, layoutInput) {
-    var prepared = layoutInput;
-    if (!prepared || !prepared.ok) {
-      return buildLayoutError({
-        message: (prepared && prepared.message) || 'Schnyder triangulation failed',
-        graph: g
-      });
-    }
-    return computeSchnyderPositionsFromPrepared(g, prepared);
-  }
-
-  function computeSchnyderPositions(g, options) {
-    return computePositions(g, prepareGraphData(g, options));
-  }
-
-  function applySchnyderLayout(cy, options) {
+  function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'Schnyder layout',
@@ -515,9 +507,9 @@
       prepareOptions: {
         augmentationOptions: SCHNYDER_PREPARE_OPTIONS
       },
-      computePositions: async function (graph, computeOptions, prepared) {
-        var result = computeSchnyderPositionsFromPrepared(graph, prepared);
-        await emitSingleIteration(computeOptions || {}, result);
+      computePositions: async function (layoutInput, computeOptions) {
+        var result = computePositions(layoutInput, computeOptions);
+        await emitSingleIteration(computeOptions, result);
         return result;
       },
       buildResult: function (ctx) {
@@ -536,6 +528,6 @@
 	  global.PlanarVibeSchnyder = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applySchnyderLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

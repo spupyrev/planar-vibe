@@ -131,7 +131,7 @@
     ) {
       return buildLayoutError({ message: 'CleanAir initialization failed: Tutte layout is unavailable' });
     }
-    var result = PlanarVibeTutte.computePositions(graph, PlanarVibeTutte.prepareGraphData(graph));
+    var result = PlanarVibeTutte.computePositions(PlanarVibeTutte.prepareGraphData(graph), {});
     if (!result || !result.ok || !result.positions) {
       return buildLayoutError({
         message: result && result.message
@@ -1005,8 +1005,9 @@
     return buildCleanAirState(graph, options || {});
   }
 
-  async function computePositions(graph, layoutInput) {
+  async function computePositions(layoutInput, options) {
     var state = layoutInput;
+    var graph = state.graph;
     if (!state.ok) {
       return buildLayoutError(state);
     }
@@ -1093,11 +1094,11 @@
     });
 	  }
 
-	  async function computeCleanAirPositions(graph, options) {
-	    return computePositions(graph, prepareGraphData(graph, options));
-	  }
+  async function computeCleanAirPositions(graph, options) {
+	    return computePositions(prepareGraphData(graph, options), options);
+  }
 
-	  async function applyCleanAirLayout(cy, options) {
+	  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.currentPositions) ||
@@ -1127,6 +1128,6 @@
 	  global.PlanarVibeCleanAir = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyCleanAirLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

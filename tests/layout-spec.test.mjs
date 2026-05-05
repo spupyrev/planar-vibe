@@ -169,7 +169,7 @@ function assertNormalizedFailureResult(result, label) {
 
 function runStrictCompute(module, graph, runtime) {
   const layoutInput = module.prepareGraphData(graph, runtime);
-  return module.computePositions(graph, layoutInput);
+  return module.computePositions(layoutInput, {});
 }
 
 test('GraphUtils.createGraph requires canonical string ids and edge pairs', () => {

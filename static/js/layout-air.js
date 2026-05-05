@@ -380,25 +380,11 @@
     });
   }
 
-  function prepareAirState(graph, options) {
-    var opts = normalizeAirOptions(options);
-    var context = LayoutPreprocessing.prepareGraphAndLayoutData(graph, {
-      failureLabel: 'Air layout',
-      augmentationMethod: opts.augmentationMethod,
-      augmentationOptions: opts.augmentationOptions,
-      currentPositions: options && options.currentPositions
-    });
-    if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'Air setup failed' });
-    }
-    return buildAirStateFromPrepared(context, opts);
-  }
-
-  async function runAirIterations(prepared, options) {
-    var g = prepared.graph;
-    var posById = prepared.posById;
-    var airData = prepared.airData;
-    var movableVertices = prepared.movableVertices;
+  async function runAirIterations(layoutInput, options) {
+    var g = layoutInput.graph;
+    var posById = layoutInput.posById;
+    var airData = layoutInput.airData;
+    var movableVertices = layoutInput.movableVertices;
     var status = 'max_sweeps';
     var lastStats = computeAirStats(airData, posById, movableVertices, AIR_INTERNAL.tolAreaPositive);
     var outerDiameter = outerFaceDiameter(posById, airData.outerFace);
@@ -599,21 +585,9 @@
     });
   }
 
-  async function computePositions(graph, layoutInput) {
-    return computeAirPositionsFromPrepared(graph, null, layoutInput);
-  }
-
-  async function computeAirPositions(graph, options) {
-    var prepared = prepareAirState(graph, options);
-    if (!prepared.ok) {
-      return buildLayoutError(prepared);
-    }
-    return finishAirPositions(prepared);
-  }
-
-  async function computeAirPositionsFromPrepared(_graph, options, prepared) {
+  async function computePositions(layoutInput, options) {
     var opts = normalizeAirOptions(options);
-    var state = buildAirStateFromPrepared(prepared, opts);
+    var state = buildAirStateFromPrepared(layoutInput, opts);
     if (!state.ok) {
       return buildLayoutError(state);
     }
@@ -691,14 +665,14 @@
     });
   }
 
-  async function applyAirLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
       prepareFailureLabel: 'Air layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
-      computePositions: computeAirPositionsFromPrepared,
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -726,6 +700,6 @@
 	  global.PlanarVibeAir = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyAirLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

@@ -1,6 +1,6 @@
 (function (global) {
   'use strict';
- 
+
   var GraphUtils = global.GraphUtils;
   var GeometryUtils = global.GeometryUtils;
   var PlanarGraphUtils = global.PlanarGraphUtils;
@@ -31,15 +31,6 @@
     return { nodeIds: nodeIds, edgePairs: edgePairs, posById: posById };
   }
  
-  function positionsFromCy(cy) {
-    var out = {};
-    cy.nodes().forEach(function (n) {
-      var p = n.position();
-      out[String(n.id())] = { x: p.x, y: p.y };
-    });
-    return out;
-  }
- 
   function applyPositions(cy, posById) {
     cy.nodes().forEach(function (n) {
       var id = String(n.id());
@@ -51,16 +42,14 @@
   }
  
   // Module-level cache: populated by applyLayout at entry.
-  // Holds { graph, embedding } so every computeScores invocation reuses the same
-  // planar embedding instead of recomputing it.
+  // Holds graph-only context shared by all candidate scoring.
   var _sharedCtx = null;
  
   // Compute all 10 metrics and a total (mean). Assumes posById is a plane drawing —
   // all call sites guarantee this by construction (candidates return plane drawings,
   // rotations are rigid, alignment self-validates, polish uses local moveBreaksPlanarity).
-  function computeScores(nodeIds, edgePairs, posById) {
+  function computeScores(nodeIds, edgePairs, posById, embedding) {
     var graph = _sharedCtx.graph;
-    var embedding = _sharedCtx.embedding;
  
     var aspect = Metrics.computeAspectRatioScore(nodeIds, posById);
     var nodeU = Metrics.computeNodeUniformityScore(nodeIds, posById);
@@ -70,8 +59,12 @@
     var orth = Metrics.computeEdgeOrthogonalityScore(edgePairs, posById);
     var align = Metrics.computeAxisAlignmentScore(nodeIds, posById);
     var angRes = Metrics.computeAngularResolutionScore(graph, posById);
-    var face = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding);
-    var conv = Metrics.computeConvexityScore(nodeIds, edgePairs, posById, embedding);
+    var face = embedding
+      ? Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding)
+      : { ok: false };
+    var conv = embedding
+      ? Metrics.computeConvexityScore(nodeIds, edgePairs, posById, embedding)
+      : { ok: false };
  
     // Metric calls return { ok: false } on degenerate input (e.g., disconnected faces).
     // Treat missing values as 0 — same as the evaluator.
@@ -113,12 +106,12 @@
   }
  
   // Sweep 19 angles in [0, π/2] (rotations modulo π/2 are metric-equivalent) and pick the best.
-  function findBestRotation(nodeIds, edgePairs, posById) {
+  function findBestRotation(nodeIds, edgePairs, posById, embedding) {
     var bestPos = posById, bestScore = null;
     for (var i = 0; i <= 18; i += 1) {
       var theta = (i / 18) * (Math.PI / 2);
       var cand = i === 0 ? posById : rotatePositions(posById, theta);
-      var s = computeScores(nodeIds, edgePairs, cand);
+      var s = computeScores(nodeIds, edgePairs, cand, embedding);
       if (bestScore === null || s.total > bestScore.total) {
         bestScore = s; bestPos = cand;
       }
@@ -232,6 +225,7 @@
   // accept any move that improves the 10-metric mean and preserves planarity.
   function polishByLocalMoves(nodeIds, edgePairs, posById, opts) {
     opts = opts || {};
+    var embedding = opts.embedding;
     var maxPasses = opts.maxPasses || 2;
     var stepScale = opts.stepScale || 0.08;
     var minStepScale = opts.minStepScale || 0.005;
@@ -239,7 +233,7 @@
  
     var ctx = polishScaffold(nodeIds, edgePairs, posById);
     var posArr = ctx.posArr, n = ctx.n, diag = ctx.diag, adjIndex = ctx.adjIndex;
-    var bestTotal = computeScores(nodeIds, edgePairs, ctx.snapshot()).total;
+    var bestTotal = computeScores(nodeIds, edgePairs, ctx.snapshot(), embedding).total;
  
     var scale = stepScale;
     for (var pass = 0; pass < maxPasses && !timeUp(); pass += 1) {
@@ -253,7 +247,7 @@
           var dx = DIRS8[di][0] * step, dy = DIRS8[di][1] * step;
           if (moveBreaksPlanarity(vi, px + dx, py + dy, posArr, adjIndex)) continue;
           posArr[vi].x = px + dx; posArr[vi].y = py + dy;
-          var sc = computeScores(nodeIds, edgePairs, ctx.snapshot());
+          var sc = computeScores(nodeIds, edgePairs, ctx.snapshot(), embedding);
           posArr[vi].x = px; posArr[vi].y = py;
           if (sc.total > bestTotal + 1e-8) {
             bestTotal = sc.total; bestDx = dx; bestDy = dy; improved = true;
@@ -265,21 +259,22 @@
       }
       if (!improved) scale *= 0.5;
     }
- 
+
     var finalPos = ctx.snapshot();
-    return { positions: finalPos, scores: computeScores(nodeIds, edgePairs, finalPos) };
+    return { positions: finalPos, embedding: embedding, scores: computeScores(nodeIds, edgePairs, finalPos, embedding) };
   }
  
   // Move reflex vertices of non-convex faces toward their face centroid.
   function convexityRepair(nodeIds, edgePairs, posById, opts) {
     opts = opts || {};
+    var embedding = opts.embedding;
     var maxPasses = opts.maxPasses || 3;
     var timeUp = makeTimeGuard(opts.startTimeMs, opts.budgetMs);
  
     var ctx = polishScaffold(nodeIds, edgePairs, posById);
     var posArr = ctx.posArr, n = ctx.n, diag = ctx.diag, adjIndex = ctx.adjIndex;
     var idIndex = adjIndex.idIndex;
-    var bestTotal = computeScores(nodeIds, edgePairs, ctx.snapshot()).total;
+    var bestTotal = computeScores(nodeIds, edgePairs, ctx.snapshot(), embedding).total;
  
     function reflexIndicesOf(face) {
       // Signed-area sign determines orientation; reflex = turn sign opposite.
@@ -307,9 +302,9 @@
       }
       return result;
     }
- 
+
     for (var pass = 0; pass < maxPasses && !timeUp(); pass += 1) {
-      var emb = PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, ctx.snapshot());
+      var emb = embedding;
       if (!emb || !emb.ok) break;
       var outerIdx = PlanarGraphUtils.findOuterFaceIndex(emb.faces, emb.outerFace || []);
       var improved = false;
@@ -342,7 +337,7 @@
             var nx = px + dx * dist, ny = py + dy * dist;
             if (moveBreaksPlanarity(vIdx, nx, ny, posArr, adjIndex)) continue;
             posArr[vIdx].x = nx; posArr[vIdx].y = ny;
-            var sc = computeScores(nodeIds, edgePairs, ctx.snapshot());
+            var sc = computeScores(nodeIds, edgePairs, ctx.snapshot(), embedding);
             posArr[vIdx].x = px; posArr[vIdx].y = py;
             if (sc.total > bestTotal + 1e-8) {
               bestTotal = sc.total; bestDx = dx * dist; bestDy = dy * dist;
@@ -356,9 +351,9 @@
       }
       if (!improved) break;
     }
- 
+
     var finalPos = ctx.snapshot();
-    return { positions: finalPos, scores: computeScores(nodeIds, edgePairs, finalPos) };
+    return { positions: finalPos, embedding: embedding, scores: computeScores(nodeIds, edgePairs, finalPos, embedding) };
   }
  
   // Deterministic RNG seeded from graph structure.
@@ -382,6 +377,7 @@
   // Small random perturbation + polish. Returns improved positions if any.
   function restartPerturbAndPolish(nodeIds, edgePairs, posById, rng, opts) {
     opts = opts || {};
+    var embedding = opts.embedding;
     var perturbScale = opts.perturbScale || 0.03;
     var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (var i = 0; i < nodeIds.length; i += 1) {
@@ -401,9 +397,10 @@
       };
     }
     if (GeometryUtils.hasPositionCrossings(perturbed, edgePairs)) {
-      return { positions: posById, scores: computeScores(nodeIds, edgePairs, posById) };
+      return { positions: posById, embedding: embedding, scores: computeScores(nodeIds, edgePairs, posById, embedding) };
     }
     return polishByLocalMoves(nodeIds, edgePairs, perturbed, {
+      embedding: embedding,
       maxPasses: opts.maxPasses || 3,
       stepScale: opts.stepScale || 0.012,
       minStepScale: 0.0005,
@@ -412,29 +409,46 @@
     });
   }
  
-	  async function runCandidate(module, graph, runtime) {
-	    var layoutInput = module.prepareGraphData(graph, runtime);
-	    var result = await module.computePositions(graph, layoutInput);
-	    return { ok: result.ok, posById: result.positions };
-	  }
+  function extractCandidateEmbedding(graph, posById) {
+    var embedding = PlanarGraphUtils.extractEmbeddingFromPositions(graph.nodeIds, graph.edgePairs, posById);
+    return embedding && embedding.ok ? embedding : null;
+  }
+
+  async function runCandidate(module, graph, runtime) {
+    var layoutInput = module.prepareGraphData(graph, runtime);
+    var result = await module.computePositions(layoutInput, {});
+    var positions = result && result.positions;
+    var embedding = positions ? extractCandidateEmbedding(graph, positions) : null;
+    return { ok: result && result.ok && !!embedding, posById: positions, embedding: embedding };
+  }
  
   // Try a candidate + generate base/rot/rot+align/align variants, scoring each.
   // timeLeft is a callback returning remaining budget in ms; used to skip expensive
   // rotation / alignment work on large graphs when time is tight.
-  function expandVariants(label, posById, nodeIds, edgePairs, timeLeft) {
+  function expandVariants(label, posById, embedding, nodeIds, edgePairs, timeLeft) {
     var variants = [];
-    variants.push({ label: label + ':base', posById: posById, scores: computeScores(nodeIds, edgePairs, posById) });
+    variants.push({
+      label: label + ':base',
+      posById: posById,
+      embedding: embedding,
+      scores: computeScores(nodeIds, edgePairs, posById, embedding)
+    });
     // Skip rotation/alignment variants if not enough time; base alone is enough to be a
     // valid fallback. Rotation sweep does 19 computeScores calls, each O(n+m).
     if (timeLeft && timeLeft() < 1000) return variants;
  
-    var rot = findBestRotation(nodeIds, edgePairs, posById);
-    variants.push({ label: label + ':rot', posById: rot.posById, scores: rot.scores });
+    var rot = findBestRotation(nodeIds, edgePairs, posById, embedding);
+    variants.push({ label: label + ':rot', posById: rot.posById, embedding: embedding, scores: rot.scores });
  
     if (!timeLeft || timeLeft() > 500) {
       var a1 = Alignment.alignToAxisGreedy(nodeIds, edgePairs, rot.posById, {});
       if (a1.ok) {
-        variants.push({ label: label + ':rot+align', posById: a1.positions, scores: computeScores(nodeIds, edgePairs, a1.positions) });
+        variants.push({
+          label: label + ':rot+align',
+          posById: a1.positions,
+          embedding: embedding,
+          scores: computeScores(nodeIds, edgePairs, a1.positions, embedding)
+        });
       }
     }
     return variants;
@@ -443,30 +457,31 @@
   function tryAlign(nodeIds, edgePairs, best) {
     var a = Alignment.alignToAxisGreedy(nodeIds, edgePairs, best.posById, {});
     if (!a.ok) return best;
-    var s = computeScores(nodeIds, edgePairs, a.positions);
+    var s = computeScores(nodeIds, edgePairs, a.positions, best.embedding);
     if (s.total > best.scores.total) {
-      return { label: best.label + '+align', posById: a.positions, scores: s };
+      return { label: best.label + '+align', posById: a.positions, embedding: best.embedding, scores: s };
     }
     return best;
   }
  
   function tryRot(nodeIds, edgePairs, best) {
-    var r = findBestRotation(nodeIds, edgePairs, best.posById);
+    var r = findBestRotation(nodeIds, edgePairs, best.posById, best.embedding);
     if (r.scores.total > best.scores.total) {
-      return { label: best.label + '+rot', posById: r.posById, scores: r.scores };
+      return { label: best.label + '+rot', posById: r.posById, embedding: best.embedding, scores: r.scores };
     }
     return best;
   }
  
   function tryPolish(nodeIds, edgePairs, best, opts, tag) {
+    opts = Object.assign({}, opts || {}, { embedding: best.embedding });
     var res = polishByLocalMoves(nodeIds, edgePairs, best.posById, opts);
     if (res.scores.total > best.scores.total) {
-      return { label: best.label + tag, posById: res.positions, scores: res.scores };
+      return { label: best.label + tag, posById: res.positions, embedding: best.embedding, scores: res.scores };
     }
     return best;
   }
  
-	  async function applyLayout(cy, options) {
+  async function applyLayout(cy, options) {
     options = options || {};
     var startMs = Date.now();
     // Default 22s instead of 25s — gives an 8s wall-clock safety margin against the 30s
@@ -474,43 +489,38 @@
     var globalBudgetMs = Number.isFinite(options.claudeBudgetMs) ? options.claudeBudgetMs : 22000;
     var timeLeft = function () { return globalBudgetMs - (Date.now() - startMs); };
  
-	    var parsed = snapshotCy(cy);
-	    var nodeIds = parsed.nodeIds, edgePairs = parsed.edgePairs;
-	    var graph = GraphUtils.createGraph(nodeIds, edgePairs);
-	    // Compute the planar embedding once. All candidates / rotations / alignment / polish
-	    // preserve the embedding, so we reuse it across every computeScores call.
-	    _sharedCtx = {
-	      graph: graph,
-	      embedding: global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs)
-	    };
-	    var runtime = Object.assign({}, options, { currentPositions: parsed.posById });
+    var parsed = snapshotCy(cy);
+    var nodeIds = parsed.nodeIds, edgePairs = parsed.edgePairs;
+    var graph = GraphUtils.createGraph(nodeIds, edgePairs);
+    _sharedCtx = { graph: graph };
+    var runtime = Object.assign({}, options, { currentPositions: parsed.posById });
  
     // 1. Candidate layouts — EdgeBalancer is always listed first so we have at least one
     //    valid variant if time runs out before other candidates complete.
-	    var runners = [
-	      ['EdgeBalancer',   global.PlanarVibeEdgeBalancer],
-	      ['FABalancer',     global.PlanarVibeFABalancer],
-	      ['AngleBalancer',  global.PlanarVibeAngleBalancer],
-	      ['AreaGrad',       global.PlanarVibeAreaGrad],
-	      ['FaceBalancer',   global.PlanarVibeFaceBalancer],
-	      ['Reweight',       global.PlanarVibeReweight],
-	      ['Schnyder',       global.PlanarVibeSchnyder],
-	      ['CEGBfs',         global.PlanarVibeCEGBfs],
-	      ['Tutte',          global.PlanarVibeTutte]
-	    ];
- 
-	    var variants = [];
-	    for (var i = 0; i < runners.length; i += 1) {
-	      // If we've already spent most of the budget, skip further candidates.
-	      // Always try EdgeBalancer (i=0) since it's fast and our strongest single layout.
-	      if (i > 0 && timeLeft() < 3000) break;
-	      var label = runners[i][0], module = runners[i][1];
-	      var out = await runCandidate(module, graph, runtime);
-	      if (out.ok) {
-	        var expanded = expandVariants(label, out.posById, nodeIds, edgePairs, timeLeft);
-	        for (var k = 0; k < expanded.length; k += 1) variants.push(expanded[k]);
-	      }
-	    }
+    var runners = [
+      ['EdgeBalancer',   global.PlanarVibeEdgeBalancer],
+      ['FABalancer',     global.PlanarVibeFABalancer],
+      ['AngleBalancer',  global.PlanarVibeAngleBalancer],
+      ['AreaGrad',       global.PlanarVibeAreaGrad],
+      ['FaceBalancer',   global.PlanarVibeFaceBalancer],
+      ['Reweight',       global.PlanarVibeReweight],
+      ['Schnyder',       global.PlanarVibeSchnyder],
+      ['CEGBfs',         global.PlanarVibeCEGBfs],
+      ['Tutte',          global.PlanarVibeTutte]
+    ];
+
+    var variants = [];
+    for (var i = 0; i < runners.length; i += 1) {
+      // If we've already spent most of the budget, skip further candidates.
+      // Always try EdgeBalancer (i=0) since it's fast and our strongest single layout.
+      if (i > 0 && timeLeft() < 3000) break;
+      var label = runners[i][0], module = runners[i][1];
+      var out = await runCandidate(module, graph, runtime);
+      if (out.ok) {
+        var expanded = expandVariants(label, out.posById, out.embedding, nodeIds, edgePairs, timeLeft);
+        for (var k = 0; k < expanded.length; k += 1) variants.push(expanded[k]);
+      }
+    }
  
     variants.sort(function (a, b) { return b.scores.total - a.scores.total; });
     var best = variants[0];
@@ -529,11 +539,17 @@
       for (var si = 0; si < topK.length; si += 1) {
         var startVar = topK[si];
         var polished = polishByLocalMoves(nodeIds, edgePairs, startVar.posById, {
+          embedding: startVar.embedding,
           maxPasses: polishPasses, stepScale: polishStep,
           startTimeMs: Date.now(), budgetMs: perVariant
         });
         if (polished.scores.total > best.scores.total) {
-          best = { label: startVar.label + '+polish', posById: polished.positions, scores: polished.scores };
+          best = {
+            label: startVar.label + '+polish',
+            posById: polished.positions,
+            embedding: startVar.embedding,
+            scores: polished.scores
+          };
         }
       }
  
@@ -559,11 +575,17 @@
         // 4. Convexity repair for non-convex faces, followed by a brief settle polish.
         if (timeLeft() > 600) {
           var repaired = convexityRepair(nodeIds, edgePairs, best.posById, {
+            embedding: best.embedding,
             maxPasses: 3, startTimeMs: Date.now(),
             budgetMs: Math.min(n > 50 ? 2500 : 4000, timeLeft() - 500)
           });
           if (repaired.scores.total > best.scores.total) {
-            best = { label: best.label + '+cvx', posById: repaired.positions, scores: repaired.scores };
+            best = {
+              label: best.label + '+cvx',
+              posById: repaired.positions,
+              embedding: best.embedding,
+              scores: repaired.scores
+            };
           }
           if (timeLeft() > 400) {
             best = tryPolish(nodeIds, edgePairs, best, {
@@ -583,12 +605,18 @@
           for (var ri = 0; ri < numRestarts; ri += 1) {
             if (timeLeft() < 800) break;
             var res = restartPerturbAndPolish(nodeIds, edgePairs, best.posById, rng, {
+              embedding: best.embedding,
               perturbScale: perturbScales[ri % perturbScales.length],
               maxPasses: 3, stepScale: 0.012,
               startTimeMs: Date.now(), budgetMs: perRestart
             });
             if (res.scores.total > best.scores.total) {
-              best = { label: best.label + '+restart' + ri, posById: res.positions, scores: res.scores };
+              best = {
+                label: best.label + '+restart' + ri,
+                posById: res.positions,
+                embedding: best.embedding,
+                scores: res.scores
+              };
             }
           }
         }

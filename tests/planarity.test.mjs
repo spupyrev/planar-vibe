@@ -239,7 +239,7 @@ function buildMockCy(nodeIds, edgePairs) {
 
 function runStrictCompute(module, graph, runtime) {
   const layoutInput = module.prepareGraphData(graph, runtime);
-  return module.computePositions(graph, layoutInput);
+  return module.computePositions(layoutInput, {});
 }
 
 function orientation(a, b, c) {
@@ -825,7 +825,7 @@ test('shared layout runner fits once before compute even with a shared seed', as
         onIteration: ctx.onProgress
       };
     },
-    computePositions: async function (_graph, options, prepared) {
+    computePositions: async function (prepared, options) {
       fitCountAtComputeStart = cy._fitCalls;
       assert.equal(prepared && prepared.ok, true);
       await options.onIteration({
@@ -895,7 +895,7 @@ test('shared layout runner passes the original positions and prepared seed into 
     initialFitBounds: function (ctx) {
       return CyRuntime.computePositionBounds(ctx.prepared.posById);
     },
-    computePositions: function (_graph, options, prepared) {
+    computePositions: function (prepared, options) {
       computeCurrentPositions = options.currentPositions;
       computePrepared = prepared;
       return {
@@ -971,7 +971,7 @@ test('shared layout runner does not synthesize a final progress step for one-sho
     initialFitBounds: function (ctx) {
       return CyRuntime.computePositionBounds(ctx.currentPositions);
     },
-    computePositions: function () {
+    computePositions: function (_prepared, _options) {
       return {
         ok: true,
         positions: finalPos

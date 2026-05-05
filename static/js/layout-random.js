@@ -44,20 +44,21 @@
     runtime = runtime || {};
     return {
       ok: true,
+      graph: _graph,
       width: runtime.width,
       height: runtime.height
     };
   }
 
-  function computePositions(graph, layoutInput) {
+  function computePositions(layoutInput, options) {
     return computeRandomPositions(
-      graph,
+      layoutInput.graph,
       layoutInput.width,
       layoutInput.height
     );
   }
 
-  function applyRandomLayout(cy, options) {
+  function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       initialFitBounds: function (ctx) {
         var width = Math.max(Number(ctx.cy && ctx.cy.width && ctx.cy.width()) || 320, 320);
@@ -70,9 +71,9 @@
           height: ctx.cy.height()
         };
 	      },
-	      computePositions: async function (graph, computeOptions) {
-	        var result = computePositions(graph, prepareGraphData(graph, computeOptions));
-	        await emitSingleIteration(computeOptions || {}, result);
+	      computePositions: async function (_prepared, computeOptions) {
+	        var result = computePositions(prepareGraphData(computeOptions.graph, computeOptions), computeOptions);
+	        await emitSingleIteration(computeOptions, result);
 	        return result;
 	      },
       buildResult: function () {
@@ -85,6 +86,6 @@
 	  global.PlanarVibeRandom = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyRandomLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

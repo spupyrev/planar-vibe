@@ -656,16 +656,15 @@
     });
   }
 
-  async function computeFaceBalancerPositionsFromPrepared(options, prepared) {
-    options = options || {};
-    if (!prepared || !prepared.ok) {
-      return buildLayoutError(prepared || { message: 'FaceBalancer setup failed' });
+  async function computePositions(layoutInput, options) {
+    if (!layoutInput || !layoutInput.ok) {
+      return buildLayoutError(layoutInput || { message: 'FaceBalancer setup failed' });
     }
 
-    var g = prepared.graph;
-    var outerFace = prepared.augmentedOuterFace;
-    var augmented = prepared.augmented;
-    var outerPos = buildFaceBalancerOuterPositions(prepared);
+    var g = layoutInput.graph;
+    var outerFace = layoutInput.augmentedOuterFace;
+    var augmented = layoutInput.augmented;
+    var outerPos = buildFaceBalancerOuterPositions(layoutInput);
     var data = buildFaceBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
@@ -686,7 +685,7 @@
         augmented: augmented
       });
     }
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, prepared.augmented.graph);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, layoutInput.augmented.graph);
     var q0Result = buildInitialLogitSeed(data, tutteWeights);
     if (!q0Result.ok) {
       return buildLayoutError({
@@ -761,7 +760,7 @@
         message: 'FaceBalancer produced a non-plane drawing'
       });
     }
-    var faceScore = Metrics.computeUniformFaceAreaScore(g.nodeIds, g.edgePairs, finalPositions, prepared.baseEmbedding);
+    var faceScore = Metrics.computeUniformFaceAreaScore(g.nodeIds, g.edgePairs, finalPositions, layoutInput.baseEmbedding);
     return buildLayoutResult({
       nodeIds: g.nodeIds,
       edgePairs: g.edgePairs,
@@ -778,18 +777,18 @@
     });
   }
 
-  function buildFaceBalancerOuterPositions(prepared) {
-    if (!prepared || !prepared.ok) {
+  function buildFaceBalancerOuterPositions(layoutInput) {
+    if (!layoutInput || !layoutInput.ok) {
       throw new Error('buildFaceBalancerOuterPositions requires prepared graph data');
     }
     var fullPos = PlanarVibeTutte.placeOuterFaceVertices(
-      prepared.augmented.graph.nodeIds,
-      prepared.augmentedOuterFace,
+      layoutInput.augmented.graph.nodeIds,
+      layoutInput.augmentedOuterFace,
       PlanarVibeTutte.defaultOuterPlacementOptions()
     );
     var outerPos = {};
-    for (var i = 0; i < prepared.augmentedOuterFace.length; i += 1) {
-      var id = String(prepared.augmentedOuterFace[i]);
+    for (var i = 0; i < layoutInput.augmentedOuterFace.length; i += 1) {
+      var id = String(layoutInput.augmentedOuterFace[i]);
       if (fullPos[id] && Number.isFinite(fullPos[id].x) && Number.isFinite(fullPos[id].y)) {
         outerPos[id] = { x: fullPos[id].x, y: fullPos[id].y };
       }
@@ -809,25 +808,14 @@
     });
   }
 
-  async function computePositions(graph, layoutInput) {
-    return computeFaceBalancerPositionsFromPrepared(null, layoutInput);
-  }
-
-  async function computeFaceBalancerPositions(graph, options) {
-    options = options || {};
-    return computeFaceBalancerPositionsFromPrepared(options, prepareGraphData(graph, options));
-  }
-
-  async function applyFaceBalancerLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'FaceBalancer layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(buildFaceBalancerOuterPositions(ctx.prepared));
       },
-      computePositions: function (_graph, computeOptions, prepared) {
-        return computeFaceBalancerPositionsFromPrepared(computeOptions || {}, prepared);
-      },
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = result.boundedFaceCount === 0
@@ -858,6 +846,6 @@
 	  global.PlanarVibeFaceBalancer = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyFaceBalancerLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

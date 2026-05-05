@@ -34,12 +34,12 @@
     stableIterLimit: 4
   };
 
-  function solveWeighted(prepared, weights) {
-    return Tutte.computeBarycentricPositions(prepared.augmented.graph, prepared.outerFace, {
-      adjacency: prepared.adj,
+  function solveWeighted(layoutInput, weights) {
+    return Tutte.computeBarycentricPositions(layoutInput.augmented.graph, layoutInput.outerFace, {
+      adjacency: layoutInput.adj,
       weights: weights,
       initOptions: Tutte.defaultOuterPlacementOptions({
-        fixedOuterPos: prepared.fixedOuterPos
+        fixedOuterPos: layoutInput.fixedOuterPos
       })
     });
   }
@@ -59,9 +59,9 @@
     return map;
   }
 
-  function updateFacePressures(prepared, faceAreas, facePressure) {
-    var options = prepared.opts;
-    var boundedFaceIdx = prepared.boundedFaceIdx;
+  function updateFacePressures(layoutInput, faceAreas, facePressure) {
+    var options = layoutInput.opts;
+    var boundedFaceIdx = layoutInput.boundedFaceIdx;
     var next = facePressure.slice();
     var sum = 0;
     var cnt = 0;
@@ -69,7 +69,7 @@
       var fi = boundedFaceIdx[i];
       var area = faceAreas[fi];
       if (!Number.isFinite(area) || !(area > 1e-12)) continue;
-      var delta = Math.log(Math.max(prepared.desired, 1e-12) / Math.max(area, 1e-12));
+      var delta = Math.log(Math.max(layoutInput.desired, 1e-12) / Math.max(area, 1e-12));
       if (delta < -options.pressureDeltaClamp) delta = -options.pressureDeltaClamp;
       if (delta > options.pressureDeltaClamp) delta = options.pressureDeltaClamp;
       var p = next[fi] + options.pressureStep * delta;
@@ -90,10 +90,10 @@
     return next;
   }
 
-  function adjustWeights(prepared, faceAreas, oldWeights, facePressure) {
-    var edgePairs = prepared.augmented.graph.edgePairs;
-    var outerSet = new Set(prepared.outerFace.map(String));
-    var options = prepared.opts;
+  function adjustWeights(layoutInput, faceAreas, oldWeights, facePressure) {
+    var edgePairs = layoutInput.augmented.graph.edgePairs;
+    var outerSet = new Set(layoutInput.outerFace.map(String));
+    var options = layoutInput.opts;
     var newWeights = {};
     var sumW = 0;
     var cnt = 0;
@@ -110,7 +110,7 @@
         continue;
       }
 
-      var facesIdx = prepared.e2f[k] || [];
+      var facesIdx = layoutInput.e2f[k] || [];
       var areaSum = 0;
       var areaCnt = 0;
       for (var j = 0; j < facesIdx.length; j += 1) {
@@ -128,7 +128,7 @@
         continue;
       }
 
-      var penalty = (areaSum / areaCnt) / Math.max(prepared.desired, 1e-12);
+      var penalty = (areaSum / areaCnt) / Math.max(layoutInput.desired, 1e-12);
       var scale = penalty > 1 ? Math.sqrt(penalty) : penalty;
       if (scale < options.scaleMin) scale = options.scaleMin;
       if (scale > options.scaleMax) scale = options.scaleMax;
@@ -137,7 +137,7 @@
       var pCnt = 0;
       for (j = 0; j < facesIdx.length; j += 1) {
         fi = facesIdx[j];
-        if (!prepared.boundedSet.has(fi)) continue;
+        if (!layoutInput.boundedSet.has(fi)) continue;
         var p = facePressure[fi];
         if (Number.isFinite(p)) {
           pSum += p;
@@ -305,29 +305,29 @@
     };
   }
 
-  async function runReweightIterations(prepared, options) {
-    var outer = prepared.outerFace;
-    var augmented = prepared.augmented;
-    var faces = prepared.faces;
-    var boundedFaceIdx = prepared.boundedFaceIdx;
-    var weights = prepared.weights;
-    var facePressure = prepared.facePressure;
-    var currentPos = prepared.currentPos;
-    var totalInnerIters = prepared.initIters || 0;
+  async function runReweightIterations(layoutInput, options) {
+    var outer = layoutInput.outerFace;
+    var augmented = layoutInput.augmented;
+    var faces = layoutInput.faces;
+    var boundedFaceIdx = layoutInput.boundedFaceIdx;
+    var weights = layoutInput.weights;
+    var facePressure = layoutInput.facePressure;
+    var currentPos = layoutInput.currentPos;
+    var totalInnerIters = layoutInput.initIters || 0;
     var stopReason = 'max-iters';
     var performedOuterIters = 0;
     var finalIterationStats = null;
 
     for (var iter = 0; iter < options.maxOuterIters; iter += 1) {
       var prevPos = currentPos;
-      var inner = solveWeighted(prepared, weights);
+      var inner = solveWeighted(layoutInput, weights);
       totalInnerIters += inner.iters;
       performedOuterIters = iter + 1;
 
       var pos = inner.positions;
       currentPos = pos;
-      var moveStats = computePositionMoveStats(prepared.movableVertices, prevPos, pos, { moveTol: 1e-9 });
-      var movementStatus = prepared.movementTracker.update({
+      var moveStats = computePositionMoveStats(layoutInput.movableVertices, prevPos, pos, { moveTol: 1e-9 });
+      var movementStatus = layoutInput.movementTracker.update({
         maxMove: moveStats.maxMove,
         avgMove: moveStats.avgMove
       }, iter + 1);
@@ -341,8 +341,8 @@
       var iterStats = computeFaceAreaIterationStats(faceAreas, boundedFaceIdx);
       finalIterationStats = iterStats;
 
-      facePressure = updateFacePressures(prepared, faceAreas, facePressure);
-      weights = adjustWeights(prepared, faceAreas, weights, facePressure);
+      facePressure = updateFacePressures(layoutInput, faceAreas, facePressure);
+      weights = adjustWeights(layoutInput, faceAreas, weights, facePressure);
       if (options.onIteration) {
         await options.onIteration({
           iter: iter + 1,
@@ -368,12 +368,12 @@
       }
     }
 
-    var finalLayout = solveWeighted(prepared, weights);
+    var finalLayout = solveWeighted(layoutInput, weights);
     totalInnerIters += finalLayout.iters;
-    var finalPositions = filterPositions(finalLayout.positions, prepared.graph.nodeIds);
+    var finalPositions = filterPositions(finalLayout.positions, layoutInput.graph.nodeIds);
 
     return buildLayoutResult({
-      graph: prepared.graph,
+      graph: layoutInput.graph,
       outerFace: outer,
       augmented: augmented,
       positions: finalPositions,
@@ -397,36 +397,22 @@
     });
   }
 
-  async function computePositions(graph, layoutInput) {
-    return computeReweightPositionsFromPrepared(graph, null, layoutInput);
-  }
-
-  async function computeReweightPositions(graph, options) {
-    var settings = buildReweightSettings(options);
-    var prepared = buildReweightStateFromPrepared(prepareGraphData(graph, settings), settings);
-    if (!prepared || !prepared.ok) {
-      return buildLayoutError(prepared || { message: 'Reweight setup failed' });
-    }
-    return runReweightIterations(prepared, prepared.opts);
-  }
-
-  async function computeReweightPositionsFromPrepared(_graph, options, prepared) {
-    var opts = options || {};
-    var state = buildReweightStateFromPrepared(prepared, opts);
+  async function computePositions(layoutInput, options) {
+    var state = buildReweightStateFromPrepared(layoutInput, options);
     if (!state || !state.ok) {
       return buildLayoutError(state || { message: 'Reweight setup failed' });
     }
     return runReweightIterations(state, state.opts);
   }
 
-  async function applyReweightLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph+layout',
       prepareFailureLabel: 'Reweight layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(ctx.prepared.posById);
       },
-      computePositions: computeReweightPositionsFromPrepared,
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         return {
@@ -457,6 +443,6 @@
 	  global.PlanarVibeReweight = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyReweightLayout
+	    applyLayout: applyLayout
 	  };
 })(window);

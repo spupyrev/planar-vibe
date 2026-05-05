@@ -382,6 +382,7 @@
         opts,
         {
           currentPositions: initialCurrentPositions,
+          graph: graph,
           onIteration: onProgress
         },
         typeof cfg.patchComputeOptions === 'function'
@@ -393,7 +394,7 @@
           }) || {})
           : {}
       );
-      var result = cfg.computePositions(graph, computeOptions, preparedLayoutInput);
+      var result = cfg.computePositions(preparedLayoutInput, computeOptions);
       if (result && typeof result.then === 'function') {
         return result.then(finalizeResult);
       }

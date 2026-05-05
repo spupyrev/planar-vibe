@@ -818,17 +818,16 @@
     });
   }
 
-  async function computeAngleBalancerPositionsFromPrepared(options, context) {
-    options = options || {};
-    if (!context || !context.ok) {
-      return buildLayoutError(context || { message: 'AngleBalancer setup failed' });
+  async function computePositions(layoutInput, options) {
+    if (!layoutInput || !layoutInput.ok) {
+      return buildLayoutError(layoutInput || { message: 'AngleBalancer setup failed' });
     }
 
-    var g = context.graph;
-    var outerFace = context.augmentedOuterFace;
-    var augmented = context.augmented;
-    var baseEmbedding = context.baseEmbedding;
-    var outerPos = buildAngleBalancerOuterPositions(context);
+    var g = layoutInput.graph;
+    var outerFace = layoutInput.augmentedOuterFace;
+    var augmented = layoutInput.augmented;
+    var baseEmbedding = layoutInput.baseEmbedding;
+    var outerPos = buildAngleBalancerOuterPositions(layoutInput);
     var data = buildAngleBalancerData({
       augmentedEdgePairs: augmented.graph.edgePairs,
       augmentedEmbedding: augmented.embedding,
@@ -852,7 +851,7 @@
         augmented: augmented
       });
     }
-    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, context.augmented.graph);
+    var tutteWeights = PlanarVibeTutte.buildTutteWeights(g, layoutInput.augmented.graph);
     var q0Result = buildInitialLogitSeed(data, tutteWeights);
     if (!q0Result.ok) {
       return buildLayoutError({
@@ -992,25 +991,14 @@
     });
   }
 
-  async function computePositions(graph, layoutInput) {
-    return computeAngleBalancerPositionsFromPrepared(null, layoutInput);
-  }
-
-  async function computeAngleBalancerPositions(graph, options) {
-    options = options || {};
-    return computeAngleBalancerPositionsFromPrepared(options, prepareGraphData(graph, options));
-  }
-
-  async function applyAngleBalancerLayout(cy, options) {
+  async function applyLayout(cy, options) {
     return CyRuntime.runLayout(cy, options, {
       prepareMode: 'graph',
       prepareFailureLabel: 'AngleBalancer layout',
       initialFitBounds: function (ctx) {
         return CyRuntime.computePositionBounds(buildAngleBalancerOuterPositions(ctx.prepared));
       },
-      computePositions: function (_graph, computeOptions, prepared) {
-        return computeAngleBalancerPositionsFromPrepared(computeOptions || {}, prepared);
-      },
+      computePositions: computePositions,
       buildResult: function (ctx) {
         var result = ctx.result;
         var message = buildLayoutStatusMessage('AngleBalancer', {
@@ -1041,6 +1029,6 @@
 	  global.PlanarVibeAngleBalancer = {
 	    prepareGraphData: prepareGraphData,
 	    computePositions: computePositions,
-	    applyLayout: applyAngleBalancerLayout
+	    applyLayout: applyLayout
 	  };
 })(window);
