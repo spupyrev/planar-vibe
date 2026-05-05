@@ -36,7 +36,7 @@ test('gen_layout_table writes an html table with graph rows and algorithm column
     assert.match(html, />Graph</);
     assert.match(html, />Input</);
     assert.match(html, />Tutte</);
-    assert.match(html, /sample1 \(50v, 96e\)/);
+    assert.match(html, /sample1<br><span class="graph-size">\|V\| = 50, \|E\| = 96<\/span>/);
     assert.match(html, /<svg\b/);
     assert.match(html, /Layout Table/);
     assert.match(stdout.join(''), /Wrote .*tmp-layout-table-test\.html/);
@@ -75,6 +75,72 @@ test('gen_layout_table accepts glob patterns for algorithm selection', async () 
   } finally {
     if (fs.existsSync(outputPath)) {
       fs.unlinkSync(outputPath);
+    }
+  }
+});
+
+test('gen_layout_table can render html from a cached layout table payload', async () => {
+  const cachePath = path.join(process.cwd(), 'tmp-layout-table-cache-test.json');
+  const outputPath = path.join(process.cwd(), 'tmp-layout-table-from-cache-test.html');
+  for (const filePath of [cachePath, outputPath]) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
+  try {
+    const cacheStdout = [];
+    await runCli(
+      [
+        'benchmark/sample_graphs_coords.dot',
+        'sample1',
+        '--algorithms', 'input,tutte',
+        '--timeout', '30',
+        '--cache-only',
+        '--output', cachePath
+      ],
+      {
+        stdout: { write(chunk) { cacheStdout.push(String(chunk)); } },
+        stderr: { write() {} }
+      }
+    );
+
+    assert.equal(fs.existsSync(cachePath), true);
+    const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    assert.equal(cache.schema, 'planarvibe-layout-table-cache');
+    assert.equal(cache.version, 1);
+    assert.equal(cache.dataset.filePath, 'benchmark/sample_graphs_coords.dot');
+    assert.equal(cache.graphPattern, 'sample1');
+    assert.deepEqual(cache.algorithms.map((alg) => alg.label), ['Input', 'Tutte']);
+    assert.equal(cache.rows.length, 1);
+    assert.equal(cache.rows[0].results.length, 2);
+    assert.ok(cache.rows[0].results[0].positions);
+    assert.match(cacheStdout.join(''), /Wrote .*tmp-layout-table-cache-test\.json/);
+
+    const htmlStdout = [];
+    await runCli(
+      [
+        '--from-cache', cachePath,
+        '--output', outputPath
+      ],
+      {
+        stdout: { write(chunk) { htmlStdout.push(String(chunk)); } },
+        stderr: { write() {} }
+      }
+    );
+
+    const html = fs.readFileSync(outputPath, 'utf8');
+    assert.match(html, />Input</);
+    assert.match(html, />Tutte</);
+    assert.match(html, /sample1<br><span class="graph-size">\|V\| = 50, \|E\| = 96<\/span>/);
+    assert.match(html, /<svg\b/);
+    assert.match(htmlStdout.join(''), /Read .*tmp-layout-table-cache-test\.json/);
+    assert.match(htmlStdout.join(''), /Wrote .*tmp-layout-table-from-cache-test\.html/);
+  } finally {
+    for (const filePath of [cachePath, outputPath]) {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
     }
   }
 });

@@ -124,7 +124,7 @@ test('mock layout initialization uses explicit input coordinates when present', 
   assert.ok(Math.abs(pos.c.y - 596) < 1e-6);
 });
 
-test('Claude module candidates ignore live positions during preparation', async () => {
+test('Claude module candidates receive initial positions during preparation', async () => {
   const windowObj = loadBrowserModules();
   const parsed = parseEdgeListText(windowObj.PlanarVibeGraphGenerator.getSample('xtree30'));
   const cy = createMockCy(parsed.nodeIds, parsed.edgePairs);
@@ -151,7 +151,7 @@ test('Claude module candidates ignore live positions during preparation', async 
   }
 
   assert.ok(sawCurrentPositions.length > 0, 'Claude should run the EdgeBalancer candidate');
-  assert.deepEqual(sawCurrentPositions, sawCurrentPositions.map(() => false));
+  assert.deepEqual(sawCurrentPositions, sawCurrentPositions.map(() => true));
 });
 
 test('layout algorithms use input coordinates to choose the outer face when available', async () => {

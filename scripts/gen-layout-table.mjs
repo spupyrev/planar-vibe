@@ -17,6 +17,21 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_OUTPUT = 'layout-table.html';
+const DEFAULT_CACHE_OUTPUT = path.join('evaluation_data', 'layout-table-cache.json');
+const CACHE_SCHEMA = 'planarvibe-layout-table-cache';
+const CACHE_VERSION = 1;
+const SCORE_METRIC_KEYS = [
+  'angularResolution',
+  'aspectRatio',
+  'convexity',
+  'edgeLengthDeviation',
+  'edgeRatio',
+  'edgeOrthogonality',
+  'face',
+  'nodeUniformity',
+  'alignment',
+  'spacing'
+];
 
 export function usage(message, io) {
   const out = createIo(io);
@@ -24,8 +39,12 @@ export function usage(message, io) {
     out.stderr.write(`${message}\n\n`);
   }
   out.stderr.write(
-    'Usage: ./scripts/gen_layout_table <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--output layout-table.html]\n' +
-    'Example: ./scripts/gen_layout_table benchmark/sample_graphs_coords.dot "sample*" --algorithms input,tutte,*balancer* --output layout-table.html\n'
+    'Usage: ./scripts/gen_layout_table <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--output layout-table.html] [--cache-output evaluation_data/layout-table-cache.json]\n' +
+    '       ./scripts/gen_layout_table --from-cache evaluation_data/layout-table-cache.json [--output layout-table.html]\n' +
+    '       ./scripts/gen_layout_table_cache <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--output evaluation_data/layout-table-cache.json]\n' +
+    'Example: ./scripts/gen_layout_table benchmark/sample_graphs_coords.dot "sample*" --algorithms input,tutte,*balancer* --output layout-table.html\n' +
+    'Example: ./scripts/gen_layout_table_cache benchmark/sample_graphs_coords.dot "sample*" --algorithms input,tutte,*balancer* --output evaluation_data/sample-layout-table-cache.json\n' +
+    'Example: ./scripts/gen_layout_table --from-cache evaluation_data/sample-layout-table-cache.json --output layout-table.html\n'
   );
 }
 
@@ -39,11 +58,28 @@ function parseArgs(argv) {
   const opts = {
     algorithms: null,
     timeoutMs: DEFAULT_TIMEOUT_MS,
-    outputPath: DEFAULT_OUTPUT
+    outputPath: null,
+    cacheOutputPath: null,
+    cacheOnly: false,
+    fromCachePath: null
   };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
+    if (arg === '--cache-only') {
+      opts.cacheOnly = true;
+      continue;
+    }
+    if (arg === '--from-cache' && i + 1 < argv.length) {
+      opts.fromCachePath = String(argv[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg === '--cache-output' && i + 1 < argv.length) {
+      opts.cacheOutputPath = String(argv[i + 1]);
+      i += 1;
+      continue;
+    }
     if (arg === '--algorithms' && i + 1 < argv.length) {
       opts.algorithms = String(argv[i + 1]).split(',').map((s) => s.trim()).filter(Boolean);
       i += 1;
@@ -66,6 +102,23 @@ function parseArgs(argv) {
     positionals.push(arg);
   }
 
+  if (opts.fromCachePath) {
+    if (positionals.length !== 0) {
+      usage('--from-cache does not accept <graph-file> or <graph-pattern> arguments.');
+      process.exit(1);
+    }
+    if (opts.cacheOnly) {
+      usage('--cache-only cannot be combined with --from-cache.');
+      process.exit(1);
+    }
+    if (opts.algorithms) {
+      usage('--algorithms cannot be used when rendering from cache.');
+      process.exit(1);
+    }
+    opts.outputPath = opts.outputPath || DEFAULT_OUTPUT;
+    return opts;
+  }
+
   if (positionals.length !== 2) {
     usage('Expected exactly 2 positional arguments: <graph-file> <graph-pattern>.');
     process.exit(1);
@@ -73,6 +126,7 @@ function parseArgs(argv) {
 
   opts.filePath = String(positionals[0]);
   opts.graphPattern = String(positionals[1]);
+  opts.outputPath = opts.outputPath || (opts.cacheOnly ? DEFAULT_CACHE_OUTPUT : DEFAULT_OUTPUT);
   return opts;
 }
 
@@ -84,10 +138,20 @@ function renderCellSvg(graph, rec) {
   return svg ? svg.markup : '';
 }
 
+function meanMetricScore(rec) {
+  const values = SCORE_METRIC_KEYS.map((key) => rec[key]);
+  if (values.some((value) => !Number.isFinite(value))) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
 function renderCell(graph, rec) {
   const statusClass = rec.ok ? 'is-ok' : 'is-fail';
   const pieces = [];
-  pieces.push(`<div class="cell-status ${statusClass}">${escapeXml(rec.ok ? 'ok' : 'failed')}</div>`);
+  if (!rec.ok) {
+    pieces.push(`<div class="cell-status ${statusClass}">${escapeXml('failed')}</div>`);
+  }
   const svg = renderCellSvg(graph, rec);
   if (svg) {
     pieces.push(`<div class="drawing">${svg}</div>`);
@@ -101,16 +165,20 @@ function renderCell(graph, rec) {
       pieces.push('<div class="cell-message">Drawing export was unavailable</div>');
     }
   }
-  pieces.push(`<div class="cell-meta">runtime ${formatValue(rec.runtimeMs / 1000, 4)} s</div>`);
+  const score = meanMetricScore(rec);
+  pieces.push(`<div class="cell-meta">runtime ${formatValue(rec.runtimeMs / 1000, 1)} s | score ${formatValue(score, 3)}</div>`);
   return pieces.join('');
 }
 
-function buildHtml(dataset, regexText, algorithms, rows) {
+export function buildHtml(dataset, regexText, algorithms, rows) {
   const headerCells = algorithms.map((alg) => `<th scope="col">${escapeXml(alg.label)}</th>`).join('');
   const bodyRows = rows.map((row) => {
-    const graphLabel = `${row.graphName} (${row.parsed.nodeIds.length}v, ${row.parsed.edgePairs.length}e)`;
+    const graphLabel = [
+      escapeXml(row.graphName),
+      `<span class="graph-size">|V| = ${row.parsed.nodeIds.length}, |E| = ${row.parsed.edgePairs.length}</span>`
+    ].join('<br>');
     const cells = row.results.map((result) => `<td>${renderCell(row, result)}</td>`).join('');
-    return `<tr><th scope="row">${escapeXml(graphLabel)}</th>${cells}</tr>`;
+    return `<tr><th scope="row">${graphLabel}</th>${cells}</tr>`;
   }).join('\n');
 
   return `<!doctype html>
@@ -132,26 +200,29 @@ function buildHtml(dataset, regexText, algorithms, rows) {
     }
     * { box-sizing: border-box; }
     body {
+      height: 100vh;
       margin: 0;
       font-family: "Segoe UI", Arial, sans-serif;
       color: var(--ink);
+      overflow: hidden;
       background:
         radial-gradient(circle at top left, #fff7df 0, transparent 30%),
         linear-gradient(180deg, #f8f5ee 0%, #f1ebdd 100%);
     }
     main {
+      height: 100vh;
+      min-height: 0;
       padding: 24px;
-    }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 28px;
+      display: flex;
+      flex-direction: column;
     }
     .summary {
       margin: 0 0 20px;
       color: var(--muted);
     }
     .table-wrap {
-      max-height: max(320px, calc(100vh - 128px));
+      flex: 1 1 0;
+      min-height: 0;
       overflow: auto;
       border: 1px solid var(--line);
       background: var(--panel);
@@ -187,6 +258,13 @@ function buildHtml(dataset, regexText, algorithms, rows) {
       padding: 12px;
       text-align: left;
       background: #f7f2e7;
+    }
+    .graph-size {
+      display: inline-block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-weight: 500;
+      white-space: nowrap;
     }
     td {
       padding: 10px;
@@ -253,8 +331,7 @@ function buildHtml(dataset, regexText, algorithms, rows) {
 </head>
 <body>
   <main>
-    <h1>Layout Table</h1>
-    <p class="summary">Dataset: ${escapeXml(dataset.filePath)} | Regex: /${escapeXml(regexText)}/ | Graphs: ${rows.length} | Algorithms: ${algorithms.length}</p>
+    <p class="summary">Dataset: ${escapeXml(dataset.filePath)} | Graphs: ${rows.length} | Algorithms: ${algorithms.length}</p>
     <div class="table-wrap">
       <table>
         <thead>
@@ -274,18 +351,49 @@ function buildHtml(dataset, regexText, algorithms, rows) {
 `;
 }
 
-export async function runCli(argv = process.argv.slice(2), io) {
-  const out = createIo(io);
-  const opts = parseArgs(argv);
-  const dataset = loadGraphs(opts.filePath);
+function writeTextFile(filePath, content) {
+  const absPath = path.resolve(process.cwd(), filePath);
+  fs.mkdirSync(path.dirname(absPath), { recursive: true });
+  fs.writeFileSync(absPath, content, 'utf8');
+  return absPath;
+}
 
-  const matchedGraphs = dataset.graphs.filter((graph) => matchesGlob(graph.graphName, opts.graphPattern));
-  if (matchedGraphs.length === 0) {
-    throw new Error(`No graphs in ${opts.filePath} matched "${opts.graphPattern}".`);
+function writeJsonFile(filePath, value) {
+  return writeTextFile(filePath, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function buildCacheRecord(dataset, graphPattern, algorithms, rows) {
+  return {
+    schema: CACHE_SCHEMA,
+    version: CACHE_VERSION,
+    generatedAt: new Date().toISOString(),
+    dataset: {
+      name: dataset.dataset,
+      filePath: dataset.filePath
+    },
+    graphPattern,
+    algorithms,
+    rows
+  };
+}
+
+function readCacheRecord(cachePath) {
+  const absPath = path.resolve(process.cwd(), cachePath);
+  const cache = JSON.parse(fs.readFileSync(absPath, 'utf8'));
+  if (!cache || cache.schema !== CACHE_SCHEMA || cache.version !== CACHE_VERSION) {
+    throw new Error(`Unsupported layout table cache: ${cachePath}`);
   }
+  if (!cache.dataset || !Array.isArray(cache.algorithms) || !Array.isArray(cache.rows)) {
+    throw new Error(`Malformed layout table cache: ${cachePath}`);
+  }
+  return cache;
+}
 
-  const availableAlgorithms = getAvailableAlgorithmSpecs();
-  const selectedAlgorithms = resolveAlgorithmPatterns(availableAlgorithms, opts.algorithms);
+async function buildRows(dataset, graphPattern, selectedAlgorithms, timeoutMs, out) {
+  const matchedGraphs = dataset.graphs.filter((graph) => matchesGlob(graph.graphName, graphPattern));
+  if (matchedGraphs.length === 0) {
+    throw new Error(`No graphs in ${dataset.filePath} matched "${graphPattern}".`);
+  }
 
   const workerPath = getWorkerPath();
   const rows = [];
@@ -299,7 +407,7 @@ export async function runCli(argv = process.argv.slice(2), io) {
       const rec = await runOne(
         workerPath,
         algorithm.key,
-        opts.timeoutMs,
+        timeoutMs,
         dataset.dataset,
         graph.graphName,
         graph.parsed,
@@ -313,10 +421,46 @@ export async function runCli(argv = process.argv.slice(2), io) {
       results
     });
   }
+  return rows;
+}
+
+export async function runCli(argv = process.argv.slice(2), io) {
+  const out = createIo(io);
+  const opts = parseArgs(argv);
+
+  if (opts.fromCachePath) {
+    const cache = readCacheRecord(opts.fromCachePath);
+    const dataset = {
+      dataset: cache.dataset.name,
+      filePath: cache.dataset.filePath
+    };
+    const html = buildHtml(dataset, cache.graphPattern, cache.algorithms, cache.rows);
+    const absOutputPath = writeTextFile(opts.outputPath, html);
+    out.stdout.write(`Read ${path.relative(process.cwd(), path.resolve(process.cwd(), opts.fromCachePath))}\n`);
+    out.stdout.write(`Wrote ${path.relative(process.cwd(), absOutputPath)}\n`);
+    return;
+  }
+
+  const dataset = loadGraphs(opts.filePath);
+
+  const availableAlgorithms = getAvailableAlgorithmSpecs();
+  const selectedAlgorithms = resolveAlgorithmPatterns(availableAlgorithms, opts.algorithms);
+  const rows = await buildRows(dataset, opts.graphPattern, selectedAlgorithms, opts.timeoutMs, out);
+  const cache = buildCacheRecord(dataset, opts.graphPattern, selectedAlgorithms, rows);
+
+  if (opts.cacheOnly) {
+    const absCachePath = writeJsonFile(opts.cacheOutputPath || opts.outputPath, cache);
+    out.stdout.write(`Wrote ${path.relative(process.cwd(), absCachePath)}\n`);
+    return;
+  }
+
+  if (opts.cacheOutputPath) {
+    const absCachePath = writeJsonFile(opts.cacheOutputPath, cache);
+    out.stdout.write(`Wrote ${path.relative(process.cwd(), absCachePath)}\n`);
+  }
 
   const html = buildHtml(dataset, opts.graphPattern, selectedAlgorithms, rows);
-  const absOutputPath = path.resolve(process.cwd(), opts.outputPath);
-  fs.writeFileSync(absOutputPath, html, 'utf8');
+  const absOutputPath = writeTextFile(opts.outputPath, html);
   out.stdout.write(`Wrote ${path.relative(process.cwd(), absOutputPath)}\n`);
 }
 

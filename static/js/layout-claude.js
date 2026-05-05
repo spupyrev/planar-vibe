@@ -1317,7 +1317,6 @@
 
   async function runModuleCandidate(module, graph, runtime) {
     var prepareOptions = Object.assign({}, runtime);
-    delete prepareOptions.currentPositions;
     var layoutInput = module.prepareGraphData(graph, prepareOptions);
     var result = await module.computePositions(layoutInput, {});
     var positions = result && result.positions;
