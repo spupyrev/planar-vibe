@@ -28,6 +28,7 @@
     coreTreeMaxNodes: 110,
     coreTreeMaxCoreNodes: 70
   };
+  var BALANCER_MAX_INTERIOR_AUG_VERTICES = 400;
 
   // Module-level cache: populated by computePositions at entry.
   // Holds graph-only context shared by all candidate scoring.
@@ -1318,6 +1319,10 @@
   async function runModuleCandidate(module, graph, runtime) {
     var prepareOptions = Object.assign({}, runtime);
     var layoutInput = module.prepareGraphData(graph, prepareOptions);
+    return runPreparedModuleCandidate(module, graph, layoutInput);
+  }
+
+  async function runPreparedModuleCandidate(module, graph, layoutInput) {
     var result = await module.computePositions(layoutInput, {});
     var positions = result && result.positions;
     var embedding = positions ? extractCandidateEmbedding(graph, positions) : null;
@@ -1341,10 +1346,49 @@
     return Number.isFinite(options[key]) ? options[key] : CUSTOM_LIMITS[key];
   }
 
+  function balancerInteriorAugVertexCount(prepared) {
+    if (!prepared || !prepared.ok || !prepared.augmented || !prepared.augmented.graph) return Infinity;
+    var augNodeIds = prepared.augmented.graph.nodeIds || [];
+    var outerFace = prepared.augmentedOuterFace || [];
+    var outerSeen = {};
+    var outerCount = 0;
+    for (var i = 0; i < outerFace.length; i += 1) {
+      var id = String(outerFace[i]);
+      if (!outerSeen[id]) {
+        outerSeen[id] = true;
+        outerCount += 1;
+      }
+    }
+    return augNodeIds.length - outerCount;
+  }
+
+  function balancerInteriorLimit(options) {
+    return Number.isFinite(options.balancerMaxInteriorAugVertices)
+      ? Math.max(0, Math.floor(options.balancerMaxInteriorAugVertices))
+      : BALANCER_MAX_INTERIOR_AUG_VERTICES;
+  }
+
   function buildCandidateRunners(graph, options, runtime) {
     var opts = options;
     var n = graph.nodeIds.length;
     var runners = [];
+    var balancerPrepared = null;
+    var balancerPreparedReady = false;
+
+    function getBalancerPrepared(module) {
+      if (!balancerPreparedReady) {
+        balancerPreparedReady = true;
+        balancerPrepared = module.prepareGraphData(graph, Object.assign({}, runtime));
+      }
+      return balancerPrepared;
+    }
+
+    function maybePushBalancer(label, module) {
+      if (!hasComputeInterface(module)) return;
+      var prepared = getBalancerPrepared(module);
+      if (balancerInteriorAugVertexCount(prepared) > balancerInteriorLimit(opts)) return;
+      runners.push([label, function () { return runPreparedModuleCandidate(module, graph, prepared); }]);
+    }
 
     if (n <= customLimit(opts, 'treeMaxNodes') && isTreeGraph(graph)) {
       runners.push(['Tree', function () { return runInternalCandidate(computeTreePositions, graph); }]);
@@ -1365,21 +1409,13 @@
       runners.push(['CoreTree', function () { return runInternalCandidate(computeCoreTreePositions, graph, opts); }]);
     }
 
-    if (hasComputeInterface(global.PlanarVibeEdgeBalancer)) {
-      runners.push(['EdgeBalancer', function () { return runModuleCandidate(global.PlanarVibeEdgeBalancer, graph, runtime); }]);
-    }
-    if (hasComputeInterface(global.PlanarVibeFABalancer)) {
-      runners.push(['FABalancer', function () { return runModuleCandidate(global.PlanarVibeFABalancer, graph, runtime); }]);
-    }
-    if (hasComputeInterface(global.PlanarVibeAngleBalancer)) {
-      runners.push(['AngleBalancer', function () { return runModuleCandidate(global.PlanarVibeAngleBalancer, graph, runtime); }]);
-    }
+    maybePushBalancer('EdgeBalancer', global.PlanarVibeEdgeBalancer);
+    maybePushBalancer('FABalancer', global.PlanarVibeFABalancer);
+    maybePushBalancer('AngleBalancer', global.PlanarVibeAngleBalancer);
     if (hasComputeInterface(global.PlanarVibeAreaGrad)) {
       runners.push(['AreaGrad', function () { return runModuleCandidate(global.PlanarVibeAreaGrad, graph, runtime); }]);
     }
-    if (hasComputeInterface(global.PlanarVibeFaceBalancer)) {
-      runners.push(['FaceBalancer', function () { return runModuleCandidate(global.PlanarVibeFaceBalancer, graph, runtime); }]);
-    }
+    maybePushBalancer('FaceBalancer', global.PlanarVibeFaceBalancer);
     if (hasComputeInterface(global.PlanarVibeReweight)) {
       runners.push(['Reweight', function () { return runModuleCandidate(global.PlanarVibeReweight, graph, runtime); }]);
     }

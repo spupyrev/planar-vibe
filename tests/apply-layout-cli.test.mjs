@@ -154,6 +154,51 @@ test('Claude module candidates receive initial positions during preparation', as
   assert.deepEqual(sawCurrentPositions, sawCurrentPositions.map(() => true));
 });
 
+test('Claude skips balancer candidates when augmented interior is above cap', async () => {
+  const windowObj = loadBrowserModules();
+  const parsed = parseEdgeListText(windowObj.PlanarVibeGraphGenerator.getSample('xtree30'));
+  const cy = createMockCy(parsed.nodeIds, parsed.edgePairs);
+  initializeMockCyPositions(
+    cy,
+    parsed.nodeIds,
+    'named:xtree30',
+    null,
+    windowObj.GeometryUtils
+  );
+
+  const originalPrepare = windowObj.PlanarVibeEdgeBalancer.prepareGraphData;
+  const originalCompute = windowObj.PlanarVibeEdgeBalancer.computePositions;
+  let prepareCount = 0;
+  let computeCalled = false;
+  windowObj.PlanarVibeEdgeBalancer.prepareGraphData = function () {
+    prepareCount += 1;
+    return {
+      ok: true,
+      augmented: {
+        graph: {
+          nodeIds: Array.from({ length: 450 }, (_, i) => String(i))
+        }
+      },
+      augmentedOuterFace: Array.from({ length: 10 }, (_, i) => String(i))
+    };
+  };
+  windowObj.PlanarVibeEdgeBalancer.computePositions = function () {
+    computeCalled = true;
+    return { ok: false, message: 'should have been skipped' };
+  };
+
+  try {
+    const result = await windowObj.PlanarVibeClaude.applyLayout(cy, { claudeBudgetMs: 500 });
+    assert.equal(result && result.ok, true, result && result.message ? result.message : 'Claude failed');
+  } finally {
+    windowObj.PlanarVibeEdgeBalancer.prepareGraphData = originalPrepare;
+    windowObj.PlanarVibeEdgeBalancer.computePositions = originalCompute;
+  }
+
+  assert.equal(prepareCount, 1);
+  assert.equal(computeCalled, false);
+});
+
 test('layout algorithms use input coordinates to choose the outer face when available', async () => {
   const stdoutPlain = [];
   await runCli(
