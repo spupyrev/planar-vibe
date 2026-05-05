@@ -2804,7 +2804,7 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
+            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
             graph: ['collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
@@ -2819,7 +2819,7 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'segmentsIntersectStrict', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
+            geometry: ['hasPositionCrossings', 'pointOnSegmentInterior', 'polygonArea2', 'orientFaceCCW', 'triangleArea2', 'createZeroVector', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub', 'computeDrawingDiameter'],
             graph: ['collectMovableVertices'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
@@ -2847,7 +2847,7 @@
           requires: {
             cyRuntime: ['runLayout'],
             preprocessing: ['prepareGraphData', 'createAugmentationDebugState'],
-            geometry: ['computeDrawingDiameter', 'copyPositionMap', 'createZeroVector', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointOnSegmentInterior', 'pointScale', 'polygonArea2', 'segmentsIntersectStrict', 'triangleArea2', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub'],
+            geometry: ['computeDrawingDiameter', 'copyPositionMap', 'createZeroVector', 'filterPositionMap', 'hasPositionCrossings', 'pointAdd', 'pointNorm', 'pointOnSegmentInterior', 'pointScale', 'polygonArea2', 'triangleArea2', 'vecAddScaled', 'vecDot', 'vecNorm', 'vecScale', 'vecSub'],
             graph: ['collectMovableVertices', 'computePositionMoveStats', 'createMovementConvergenceTracker', 'edgeKey', 'faceKey'],
             planarGraph: ['triangulateByFaceStellation', 'triangulateByOuterCycle', 'extractEmbeddingFromPositions', 'embeddingHasFace'],
             linearAlgebra: ['luFactorize', 'solveLUWithTwoRhs', 'solveTransposeLUWithTwoRhs'],
@@ -2978,7 +2978,7 @@
           methodName: 'applyLayout',
           missingMessage: 'Claude layout module is missing',
           requires: {
-            geometry: ['hasPositionCrossings', 'segmentsIntersectStrict'],
+            geometry: ['hasPositionCrossings', 'segmentsIntersectOrTouch'],
             graph: ['createGraph'],
             planarGraph: ['extractEmbeddingFromPositions', 'findOuterFaceIndex'],
             metrics: [

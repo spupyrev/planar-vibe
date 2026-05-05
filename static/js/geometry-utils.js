@@ -163,16 +163,6 @@
     return false;
   }
 
-  function segmentsIntersectStrict(a, b, c, d, eps) {
-    var o1 = triangleArea2(a, b, c);
-    var o2 = triangleArea2(a, b, d);
-    var o3 = triangleArea2(c, d, a);
-    var o4 = triangleArea2(c, d, b);
-
-    return (((o1 > eps && o2 < -eps) || (o1 < -eps && o2 > eps)) &&
-      ((o3 > eps && o4 < -eps) || (o3 < -eps && o4 > eps)));
-  }
-
   function computeDrawingDiameter(nodeIds, posById) {
     var minX = Infinity;
     var minY = Infinity;
@@ -410,7 +400,6 @@
     orientFaceCCW: orientFaceCCW,
     outerFaceDiameter: outerFaceDiameter,
     triangleArea2: triangleArea2,
-    segmentsIntersectStrict: segmentsIntersectStrict,
     segmentsIntersectOrTouch: segmentsIntersectOrTouch,
     computeDrawingDiameter: computeDrawingDiameter,
     copyPositionMap: copyPositionMap,

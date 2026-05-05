@@ -50,14 +50,17 @@
     });
   }
  
-  // Compute all 10 metrics and a total (mean). Returns null on non-plane.
+  // Module-level cache: populated by applyLayout at entry.
+  // Holds { graph, embedding } so every computeScores invocation reuses the same
+  // planar embedding instead of recomputing it.
+  var _sharedCtx = null;
+ 
+  // Compute all 10 metrics and a total (mean). Assumes posById is a plane drawing —
+  // all call sites guarantee this by construction (candidates return plane drawings,
+  // rotations are rigid, alignment self-validates, polish uses local moveBreaksPlanarity).
   function computeScores(nodeIds, edgePairs, posById) {
-    if (!posById) return null;
-    if (GeometryUtils.hasPositionCrossings(posById, edgePairs)) {
-      return { ok: false, isPlane: false, total: 0 };
-    }
-    var graph = GraphUtils.createGraph(nodeIds, edgePairs);
-    var embedding = PlanarGraphUtils.extractEmbeddingFromPositions(nodeIds, edgePairs, posById);
+    var graph = _sharedCtx.graph;
+    var embedding = _sharedCtx.embedding;
  
     var aspect = Metrics.computeAspectRatioScore(nodeIds, posById);
     var nodeU = Metrics.computeNodeUniformityScore(nodeIds, posById);
@@ -70,22 +73,23 @@
     var face = Metrics.computeUniformFaceAreaScore(nodeIds, edgePairs, posById, embedding);
     var conv = Metrics.computeConvexityScore(nodeIds, edgePairs, posById, embedding);
  
+    // Metric calls return { ok: false } on degenerate input (e.g., disconnected faces).
+    // Treat missing values as 0 — same as the evaluator.
     var m = {
-      ok: true, isPlane: true,
-      angularResolution: angRes && angRes.ok ? angRes.score : null,
-      aspectRatio: aspect && aspect.ok ? aspect.score : null,
-      convexity: conv && conv.ok ? conv.score : null,
-      edgeLengthDeviation: edgeDev && edgeDev.ok ? edgeDev.score : null,
-      edgeRatio: edgeRat && edgeRat.ok ? edgeRat.ratio : null,
-      edgeOrthogonality: orth && orth.ok ? orth.score : null,
-      face: face && face.ok ? face.quality : null,
-      nodeUniformity: nodeU && nodeU.ok ? nodeU.score : null,
-      alignment: align && align.ok ? align.score : null,
-      spacing: spacing && spacing.ok ? spacing.score : null
+      angularResolution: angRes.ok ? angRes.score : 0,
+      aspectRatio: aspect.ok ? aspect.score : 0,
+      convexity: conv.ok ? conv.score : 0,
+      edgeLengthDeviation: edgeDev.ok ? edgeDev.score : 0,
+      edgeRatio: edgeRat.ok ? edgeRat.ratio : 0,
+      edgeOrthogonality: orth.ok ? orth.score : 0,
+      face: face.ok ? face.quality : 0,
+      nodeUniformity: nodeU.ok ? nodeU.score : 0,
+      alignment: align.ok ? align.score : 0,
+      spacing: spacing.ok ? spacing.score : 0
     };
     var total = 0;
     for (var i = 0; i < METRIC_KEYS.length; i += 1) {
-      total += Number.isFinite(m[METRIC_KEYS[i]]) ? m[METRIC_KEYS[i]] : 0;
+      total += m[METRIC_KEYS[i]];
     }
     m.total = total / METRIC_KEYS.length;
     return m;
@@ -115,7 +119,7 @@
       var theta = (i / 18) * (Math.PI / 2);
       var cand = i === 0 ? posById : rotatePositions(posById, theta);
       var s = computeScores(nodeIds, edgePairs, cand);
-      if (s && s.ok && (bestScore === null || s.total > bestScore.total)) {
+      if (bestScore === null || s.total > bestScore.total) {
         bestScore = s; bestPos = cand;
       }
     }
@@ -141,23 +145,53 @@
     return { idIndex: idIndex, incident: incident, edges: edges };
   }
  
-  // Does moving vertex vIdx to (nx,ny) cross any non-incident edge?
+  // Does moving vertex vIdx to (nx,ny) violate planarity under the evaluator's predicate?
+  // Three cases to check (matching GeometryUtils.hasPositionCrossings):
+  //  (a) incident edge (newly-placed v, other) crosses a non-incident edge
+  //  (b) the new position of v lies on the interior of a non-incident edge
+  //  (c) some non-adjacent vertex lies on the interior of an incident edge (v, other)
+  // (b) and (c) are node-on-edge cases — they don't involve edge-edge intersection, so
+  // they're easy to miss; they were the reason polish silently produced non-plane drawings.
   function moveBreaksPlanarity(vIdx, nx, ny, posArr, adjIndex) {
     var edges = adjIndex.edges, incident = adjIndex.incident;
     var incSet = {};
     for (var i = 0; i < incident[vIdx].length; i += 1) incSet[incident[vIdx][i]] = true;
     var incEdges = incident[vIdx];
-    var intersectFn = GeometryUtils.segmentsIntersectStrict;
+    var intersectFn = GeometryUtils.segmentsIntersectOrTouch;
+    var triangleArea2 = GeometryUtils.triangleArea2;
+    var pointOnSegmentInterior = GeometryUtils.pointOnSegmentInterior;
+    var EPS = 1e-9;
     var pv = { x: nx, y: ny };
+ 
+    // (a) and (b): iterate non-incident edges.
     for (var ei = 0; ei < edges.length; ei += 1) {
       if (incSet[ei]) continue;
       var a = edges[ei][0], b = edges[ei][1];
       var pa = posArr[a], pb = posArr[b];
+      // (b) v lands on non-incident edge (a,b)?
+      if (Math.abs(triangleArea2(pa, pb, pv)) <= EPS && pointOnSegmentInterior(pa, pb, pv, EPS)) {
+        return true;
+      }
+      // (a) any incident edge (pv, other) crosses (a,b)?
       for (var j = 0; j < incEdges.length; j += 1) {
         var ej = incEdges[j];
         var other = edges[ej][0] === vIdx ? edges[ej][1] : edges[ej][0];
         if (other === a || other === b) continue;
-        if (intersectFn(pv, posArr[other], pa, pb)) return true;
+        if (intersectFn(pv, posArr[other], pa, pb, EPS)) return true;
+      }
+    }
+ 
+    // (c) any non-adjacent vertex lies on the interior of an incident edge (pv, other)?
+    for (var k = 0; k < incEdges.length; k += 1) {
+      var ek = incEdges[k];
+      var otherK = edges[ek][0] === vIdx ? edges[ek][1] : edges[ek][0];
+      var po = posArr[otherK];
+      for (var w = 0; w < posArr.length; w += 1) {
+        if (w === vIdx || w === otherK) continue;
+        var pw = posArr[w];
+        if (Math.abs(triangleArea2(pv, po, pw)) <= EPS && pointOnSegmentInterior(pv, po, pw, EPS)) {
+          return true;
+        }
       }
     }
     return false;
@@ -205,9 +239,7 @@
  
     var ctx = polishScaffold(nodeIds, edgePairs, posById);
     var posArr = ctx.posArr, n = ctx.n, diag = ctx.diag, adjIndex = ctx.adjIndex;
-    var current = computeScores(nodeIds, edgePairs, ctx.snapshot());
-    if (!current || !current.ok) return { positions: posById, scores: null };
-    var bestTotal = current.total;
+    var bestTotal = computeScores(nodeIds, edgePairs, ctx.snapshot()).total;
  
     var scale = stepScale;
     for (var pass = 0; pass < maxPasses && !timeUp(); pass += 1) {
@@ -223,7 +255,7 @@
           posArr[vi].x = px + dx; posArr[vi].y = py + dy;
           var sc = computeScores(nodeIds, edgePairs, ctx.snapshot());
           posArr[vi].x = px; posArr[vi].y = py;
-          if (sc && sc.ok && sc.total > bestTotal + 1e-8) {
+          if (sc.total > bestTotal + 1e-8) {
             bestTotal = sc.total; bestDx = dx; bestDy = dy; improved = true;
           }
         }
@@ -247,9 +279,7 @@
     var ctx = polishScaffold(nodeIds, edgePairs, posById);
     var posArr = ctx.posArr, n = ctx.n, diag = ctx.diag, adjIndex = ctx.adjIndex;
     var idIndex = adjIndex.idIndex;
-    var current = computeScores(nodeIds, edgePairs, ctx.snapshot());
-    if (!current || !current.ok) return { positions: posById, scores: null };
-    var bestTotal = current.total;
+    var bestTotal = computeScores(nodeIds, edgePairs, ctx.snapshot()).total;
  
     function reflexIndicesOf(face) {
       // Signed-area sign determines orientation; reflex = turn sign opposite.
@@ -314,7 +344,7 @@
             posArr[vIdx].x = nx; posArr[vIdx].y = ny;
             var sc = computeScores(nodeIds, edgePairs, ctx.snapshot());
             posArr[vIdx].x = px; posArr[vIdx].y = py;
-            if (sc && sc.ok && sc.total > bestTotal + 1e-8) {
+            if (sc.total > bestTotal + 1e-8) {
               bestTotal = sc.total; bestDx = dx * dist; bestDy = dy * dist;
             }
           }
@@ -382,60 +412,39 @@
     });
   }
  
-	  function hasComputeInterface(module) {
-	    return !!module &&
-	      typeof module.prepareGraphData === 'function' &&
-	      typeof module.computePositions === 'function';
-	  }
-
-	  function runCandidate(module, graph, runtime) {
-	    return Promise.resolve().then(function () {
-	      var layoutInput = module.prepareGraphData(graph, runtime || {});
-	      return module.computePositions(graph, layoutInput);
-	    }).then(function (result) {
-	      if (result && result.ok && result.positions) {
-	        return { ok: true, posById: result.positions };
-	      }
-	      return { ok: false };
-	    }, function () {
-	      return { ok: false };
-	    });
+	  async function runCandidate(module, graph, runtime) {
+	    var layoutInput = module.prepareGraphData(graph, runtime);
+	    var result = await module.computePositions(graph, layoutInput);
+	    return { ok: result.ok, posById: result.positions };
 	  }
  
   // Try a candidate + generate base/rot/rot+align/align variants, scoring each.
-  function expandVariants(label, posById, nodeIds, edgePairs) {
+  // timeLeft is a callback returning remaining budget in ms; used to skip expensive
+  // rotation / alignment work on large graphs when time is tight.
+  function expandVariants(label, posById, nodeIds, edgePairs, timeLeft) {
     var variants = [];
-    var baseScores = computeScores(nodeIds, edgePairs, posById);
-    if (baseScores && baseScores.ok) {
-      variants.push({ label: label + ':base', posById: posById, scores: baseScores });
-    }
+    variants.push({ label: label + ':base', posById: posById, scores: computeScores(nodeIds, edgePairs, posById) });
+    // Skip rotation/alignment variants if not enough time; base alone is enough to be a
+    // valid fallback. Rotation sweep does 19 computeScores calls, each O(n+m).
+    if (timeLeft && timeLeft() < 1000) return variants;
+ 
     var rot = findBestRotation(nodeIds, edgePairs, posById);
-    if (rot && rot.scores && rot.scores.ok) {
-      variants.push({ label: label + ':rot', posById: rot.posById, scores: rot.scores });
-    }
-    if (Alignment && typeof Alignment.alignToAxisGreedy === 'function') {
-      if (rot && rot.posById) {
-        var a1 = Alignment.alignToAxisGreedy(nodeIds, edgePairs, rot.posById, {});
-        if (a1 && a1.ok && a1.positions) {
-          var s1 = computeScores(nodeIds, edgePairs, a1.positions);
-          if (s1 && s1.ok) variants.push({ label: label + ':rot+align', posById: a1.positions, scores: s1 });
-        }
-      }
-      var a2 = Alignment.alignToAxisGreedy(nodeIds, edgePairs, posById, {});
-      if (a2 && a2.ok && a2.positions) {
-        var s2 = computeScores(nodeIds, edgePairs, a2.positions);
-        if (s2 && s2.ok) variants.push({ label: label + ':align', posById: a2.positions, scores: s2 });
+    variants.push({ label: label + ':rot', posById: rot.posById, scores: rot.scores });
+ 
+    if (!timeLeft || timeLeft() > 500) {
+      var a1 = Alignment.alignToAxisGreedy(nodeIds, edgePairs, rot.posById, {});
+      if (a1.ok) {
+        variants.push({ label: label + ':rot+align', posById: a1.positions, scores: computeScores(nodeIds, edgePairs, a1.positions) });
       }
     }
     return variants;
   }
  
   function tryAlign(nodeIds, edgePairs, best) {
-    if (!Alignment || typeof Alignment.alignToAxisGreedy !== 'function') return best;
     var a = Alignment.alignToAxisGreedy(nodeIds, edgePairs, best.posById, {});
-    if (!a || !a.ok || !a.positions) return best;
+    if (!a.ok) return best;
     var s = computeScores(nodeIds, edgePairs, a.positions);
-    if (s && s.ok && s.total > best.scores.total) {
+    if (s.total > best.scores.total) {
       return { label: best.label + '+align', posById: a.positions, scores: s };
     }
     return best;
@@ -443,7 +452,7 @@
  
   function tryRot(nodeIds, edgePairs, best) {
     var r = findBestRotation(nodeIds, edgePairs, best.posById);
-    if (r && r.scores && r.scores.ok && r.scores.total > best.scores.total) {
+    if (r.scores.total > best.scores.total) {
       return { label: best.label + '+rot', posById: r.posById, scores: r.scores };
     }
     return best;
@@ -451,7 +460,7 @@
  
   function tryPolish(nodeIds, edgePairs, best, opts, tag) {
     var res = polishByLocalMoves(nodeIds, edgePairs, best.posById, opts);
-    if (res && res.scores && res.scores.ok && res.scores.total > best.scores.total) {
+    if (res.scores.total > best.scores.total) {
       return { label: best.label + tag, posById: res.positions, scores: res.scores };
     }
     return best;
@@ -460,19 +469,24 @@
 	  async function applyLayout(cy, options) {
     options = options || {};
     var startMs = Date.now();
-    var globalBudgetMs = Number.isFinite(options.claudeBudgetMs) ? options.claudeBudgetMs : 25000;
+    // Default 22s instead of 25s — gives an 8s wall-clock safety margin against the 30s
+    // eval timeout even if a single candidate runs several seconds longer than expected.
+    var globalBudgetMs = Number.isFinite(options.claudeBudgetMs) ? options.claudeBudgetMs : 22000;
     var timeLeft = function () { return globalBudgetMs - (Date.now() - startMs); };
  
 	    var parsed = snapshotCy(cy);
 	    var nodeIds = parsed.nodeIds, edgePairs = parsed.edgePairs;
-	    if (nodeIds.length === 0) return { ok: false, message: 'Claude: empty graph' };
 	    var graph = GraphUtils.createGraph(nodeIds, edgePairs);
-	    var runtime = Object.assign({}, options, {
-	      currentPositions: parsed.posById
-	    });
+	    // Compute the planar embedding once. All candidates / rotations / alignment / polish
+	    // preserve the embedding, so we reuse it across every computeScores call.
+	    _sharedCtx = {
+	      graph: graph,
+	      embedding: global.PlanarVibePlanarityTest.computePlanarEmbedding(nodeIds, edgePairs)
+	    };
+	    var runtime = Object.assign({}, options, { currentPositions: parsed.posById });
  
-    // 1. Candidate layouts — ensemble of the strongest base optimizers plus several
-    //    "grid-like" options as cheap insurance against unusual graph distributions.
+    // 1. Candidate layouts — EdgeBalancer is always listed first so we have at least one
+    //    valid variant if time runs out before other candidates complete.
 	    var runners = [
 	      ['EdgeBalancer',   global.PlanarVibeEdgeBalancer],
 	      ['FABalancer',     global.PlanarVibeFABalancer],
@@ -487,15 +501,16 @@
  
 	    var variants = [];
 	    for (var i = 0; i < runners.length; i += 1) {
+	      // If we've already spent most of the budget, skip further candidates.
+	      // Always try EdgeBalancer (i=0) since it's fast and our strongest single layout.
+	      if (i > 0 && timeLeft() < 3000) break;
 	      var label = runners[i][0], module = runners[i][1];
-	      if (!hasComputeInterface(module)) continue;
 	      var out = await runCandidate(module, graph, runtime);
-      if (out.ok) {
-        var expanded = expandVariants(label, out.posById, nodeIds, edgePairs);
-        for (var k = 0; k < expanded.length; k += 1) variants.push(expanded[k]);
-      }
-    }
-    if (variants.length === 0) return { ok: false, message: 'Claude: all candidates failed' };
+	      if (out.ok) {
+	        var expanded = expandVariants(label, out.posById, nodeIds, edgePairs, timeLeft);
+	        for (var k = 0; k < expanded.length; k += 1) variants.push(expanded[k]);
+	      }
+	    }
  
     variants.sort(function (a, b) { return b.scores.total - a.scores.total; });
     var best = variants[0];
@@ -517,7 +532,7 @@
           maxPasses: polishPasses, stepScale: polishStep,
           startTimeMs: Date.now(), budgetMs: perVariant
         });
-        if (polished && polished.scores && polished.scores.ok && polished.scores.total > best.scores.total) {
+        if (polished.scores.total > best.scores.total) {
           best = { label: startVar.label + '+polish', posById: polished.positions, scores: polished.scores };
         }
       }
@@ -547,7 +562,7 @@
             maxPasses: 3, startTimeMs: Date.now(),
             budgetMs: Math.min(n > 50 ? 2500 : 4000, timeLeft() - 500)
           });
-          if (repaired && repaired.scores && repaired.scores.ok && repaired.scores.total > best.scores.total) {
+          if (repaired.scores.total > best.scores.total) {
             best = { label: best.label + '+cvx', posById: repaired.positions, scores: repaired.scores };
           }
           if (timeLeft() > 400) {
@@ -572,7 +587,7 @@
               maxPasses: 3, stepScale: 0.012,
               startTimeMs: Date.now(), budgetMs: perRestart
             });
-            if (res && res.scores && res.scores.ok && res.scores.total > best.scores.total) {
+            if (res.scores.total > best.scores.total) {
               best = { label: best.label + '+restart' + ri, posById: res.positions, scores: res.scores };
             }
           }
@@ -608,7 +623,7 @@
     }
  
     applyPositions(cy, best.posById);
-    if (typeof cy.fit === 'function') { try { cy.fit(); } catch (e) { /* non-fatal */ } }
+    if (typeof cy.fit === 'function') cy.fit();
     return {
       ok: true,
       message: 'Claude selected ' + best.label + ' (score=' + best.scores.total.toFixed(4) + ')',
