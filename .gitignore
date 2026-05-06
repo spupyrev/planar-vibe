@@ -1,4 +1,3 @@
-docs/prompt.md
 docs/TODOs.md
 cpp_examples
 *code-workspace
@@ -6,12 +5,12 @@ layout-table*
 report.html
 evaluation_data
 .codex
+.claude
 
 __pycache__/
 **/__pycache__/
 *.py[cod]
 .pytest_cache/
 *.egg-info/
-.claude/
 src-python/benchmarks_work/
-src-python/tests/golden/
+src-python/tests/
