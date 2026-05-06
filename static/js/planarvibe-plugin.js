@@ -290,7 +290,8 @@
       if (!$status.length) {
         return;
       }
-      var $entry = global.$('<div class="status-entry"></div>').text(String(message || ''));
+      var text = String(message || '');
+      var $entry = global.$('<div class="status-entry"></div>').text(text);
       if (isError) {
         $entry.addClass('is-error');
       }
@@ -452,6 +453,23 @@
         };
       }
       return byId;
+    }
+
+    function applyDeterministicPositionsToCy(parsed) {
+      if (!cy || !parsed || !parsed.elements) {
+        return false;
+      }
+      var positions = assignDeterministicPositionsForParsed(parsed);
+      cy.nodes().forEach(function (node) {
+        var id = String(node.id());
+        var p = positions[id];
+        if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) {
+          node.position({ x: p.x, y: p.y });
+        }
+      });
+      setCurrentPositions(positions);
+      fitCurrentDrawingViewport();
+      return true;
     }
 
     function setCurrentPositions(posById) {
@@ -1452,10 +1470,14 @@
     }
 
     function setModeUi() {
+      var interactionLabel = isInteractive ? 'Disable graph interaction' : 'Enable graph interaction';
       global.$('#interactive-toggle-btn')
+        .attr('title', interactionLabel)
+        .attr('aria-label', interactionLabel)
         .attr('aria-pressed', isInteractive ? 'true' : 'false')
         .toggleClass('is-inactive', !isInteractive);
       global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
+      global.$('.debug-augmentation-toggle').toggleClass('is-checked', showDebugAugmentation);
       global.$('#cy').toggle(isInteractive);
       global.$('#cy-static-wrap').toggle(!isInteractive);
       global.$('.layout-toolbar').show();
@@ -1470,6 +1492,7 @@
     function setDebugAugmentationVisible(visible, suppressStatus) {
       showDebugAugmentation = !!visible;
       global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
+      global.$('.debug-augmentation-toggle').toggleClass('is-checked', showDebugAugmentation);
       if (cy) {
         global.CyRuntime.syncOverlayInCy(cy, buildDebugOverlayData());
       } else {
@@ -1549,18 +1572,18 @@
     }
 
 	    function setLayoutEnabled(layoutName, isEnabled) {
-	      var $btn = global.$('.layout-btn[data-layout="' + layoutName + '"]');
-	      setLayoutButtonDisabled($btn, !isEnabled);
-	      if (!isEnabled) {
-	        $btn.removeClass('is-active');
-	      }
-	    }
+      var $btn = global.$('.layout-btn[data-layout="' + layoutName + '"]');
+      setLayoutButtonDisabled($btn, !isEnabled);
+      if (!isEnabled) {
+        $btn.removeClass('is-active').attr('aria-pressed', 'false');
+      }
+    }
 
 	    function setLayoutButtonDisabled($btn, isDisabled) {
-	      $btn
-	        .prop('disabled', !!isDisabled)
-	        .toggleClass('disabled', !!isDisabled)
-	        .attr('aria-disabled', isDisabled ? 'true' : 'false');
+      $btn
+        .prop('disabled', !!isDisabled)
+        .toggleClass('disabled', !!isDisabled)
+        .attr('aria-disabled', isDisabled ? 'true' : 'false');
 	    }
 
     function setAlignEnabled(isEnabled) {
@@ -1692,7 +1715,7 @@
           saveViewportState(null);
           updateStatistics(currentParsed);
           if (!applyParsedPositionsIfAny()) {
-            applyLayout('random', { suppressActiveSelection: true });
+            applyDeterministicPositionsToCy(currentParsed);
           }
           setInteractiveMode(false, false, true);
           markCurrentInputAsVisualized();
@@ -2227,12 +2250,18 @@
 	    }
 
     function setSelectedLayoutButton(layoutName) {
-      global.$('.layout-btn').removeClass('is-active');
-      global.$('.layout-btn[data-layout="' + layoutName + '"]').addClass('is-active');
+      global.$('.layout-btn')
+        .removeClass('is-active')
+        .attr('aria-pressed', 'false');
+      global.$('.layout-btn[data-layout="' + layoutName + '"]')
+        .addClass('is-active')
+        .attr('aria-pressed', 'true');
     }
 
     function clearSelectedLayoutButton() {
-      global.$('.layout-btn').removeClass('is-active');
+      global.$('.layout-btn')
+        .removeClass('is-active')
+        .attr('aria-pressed', 'false');
     }
 
 	    function enterLayoutBusy(activeLayoutName) {
@@ -2523,6 +2552,7 @@
 
     bindUiEvents();
     initStyleControls();
+    clearSelectedLayoutButton();
     setStatusPanelCollapsed(isStatusCollapsed, false);
 
     clearDrawingStats(isInteractive ? 'No graph' : 'Static mode');

@@ -107,12 +107,12 @@
         }
 
         finishWith(buildLayoutError({
-          message: 'Cytoscape layout "' + layoutName + '" is unavailable',
+          message: 'Built-in layout "' + layoutName + '" is unavailable',
           graph: graph
         }));
       } catch (err) {
         finishWith(buildLayoutError({
-          message: (err && err.message) ? err.message : ('Cytoscape layout "' + layoutName + '" failed'),
+          message: (err && err.message) ? err.message : ('Built-in layout "' + layoutName + '" failed'),
           graph: graph
         }));
       }

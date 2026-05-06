@@ -40,7 +40,7 @@
                 <table class="sample-table" role="presentation">
                   <tr>
                     <td>
-                      <select id="sample-main-select" class="form-select form-select-sm sample-select" title="Main samples">
+                      <select id="sample-main-select" class="form-select form-select-sm sample-select">
                         <option value="">Sample</option>
                         <option value="sample1">sample1</option>
                         <option value="sample2">sample2</option>
@@ -52,7 +52,7 @@
                       </select>
                     </td>
                     <td>
-                      <select id="sample-3tree-select" class="form-select form-select-sm sample-select" title="Planar 3-tree samples">
+                      <select id="sample-3tree-select" class="form-select form-select-sm sample-select">
                         <option value="">Planar 3-Tree</option>
                         <option value="planar3tree10">10 vertices</option>
                         <option value="planar3tree30">30 vertices</option>
@@ -62,7 +62,7 @@
                   </tr>
                   <tr>
                     <td>
-                      <select id="sample-misc-select" class="form-select form-select-sm sample-select" title="Misc samples">
+                      <select id="sample-misc-select" class="form-select form-select-sm sample-select">
                         <option value="">Misc</option>
                         <option value="cycle20">Cycle 20</option>
                         <option value="tree50">Tree 50</option>
@@ -71,7 +71,7 @@
                       </select>
                     </td>
                     <td>
-                      <select id="sample-grid-select" class="form-select form-select-sm sample-select" title="Grid samples">
+                      <select id="sample-grid-select" class="form-select form-select-sm sample-select">
                         <option value="">Grid</option>
                         <option value="grid2x10">2x10</option>
                         <option value="grid2x20">2x20</option>
@@ -82,14 +82,14 @@
                   </tr>
                   <tr>
                     <td>
-                      <select id="sample-nonplanar-select" class="form-select form-select-sm sample-select" title="Non-planar samples">
+                      <select id="sample-nonplanar-select" class="form-select form-select-sm sample-select">
                         <option value="">Non-Planar</option>
                         <option value="nonplanar1">1 (K3,3)</option>
                         <option value="nonplanar2">2 (K6)</option>
                       </select>
                     </td>
                     <td>
-                      <select id="sample-random-planar-select" class="form-select form-select-sm sample-select" title="Random planar samples">
+                      <select id="sample-random-planar-select" class="form-select form-select-sm sample-select">
                         <option value="">Random Planar</option>
                         <option value="randomplanar1">G(30, 80)</option>
                         <option value="randomplanar2">G(50, 130)</option>
@@ -213,25 +213,27 @@
 
       <section class="col-12 col-lg draw-col">
         <div class="panel drawing-panel">
-          <button id="reset-zoom-btn" type="button" class="btn btn-light btn-sm reset-zoom-btn" title="Reset Zoom" aria-label="Reset Zoom">
-            <img src="static/img/zoom-reset.svg" alt="">
-          </button>
-          <button id="save-svg-btn" type="button" class="btn btn-light btn-sm save-svg-btn" title="Save SVG" aria-label="Save SVG">
-            <img src="static/img/save_as.svg" alt="">
-          </button>
-          <label class="debug-augmentation-toggle" title="Show exact augmentation vertices and added edges from the latest algorithm run">
-            <input id="show-augmentation-toggle" type="checkbox">
-            <span>Aug</span>
-          </label>
-          <button id="interactive-toggle-btn" type="button" class="btn btn-light btn-sm interactive-toggle-btn" title="Toggle Cytoscape interactivity" aria-label="Toggle Cytoscape interactivity" aria-pressed="true">
-            <img src="static/img/interactive.svg" alt="">
-          </button>
-          <button id="rotate-graph-btn" type="button" class="btn btn-light btn-sm rotate-graph-btn" title="Rotate graph" aria-label="Rotate graph">
-            <img src="static/img/rotate.svg" alt="">
-          </button>
-          <button id="align-axis-btn" type="button" class="btn btn-light btn-sm align-axis-btn" title="Align to grid" aria-label="Align to grid" disabled>
-            <img src="static/img/align.svg" alt="">
-          </button>
+          <div class="drawing-action-bar" aria-label="Drawing actions">
+            <button id="save-svg-btn" type="button" class="btn btn-light btn-sm save-svg-btn draw-tool-btn" title="Save SVG" aria-label="Save SVG">
+              <img src="static/img/save_as.svg" alt="">
+            </button>
+            <label class="debug-augmentation-toggle" title="Show exact augmentation vertices and added edges from the latest algorithm run">
+              <input id="show-augmentation-toggle" type="checkbox">
+              <img src="static/img/bug.svg" alt="">
+            </label>
+            <button id="reset-zoom-btn" type="button" class="btn btn-light btn-sm reset-zoom-btn draw-tool-btn" title="Reset Zoom" aria-label="Reset Zoom">
+              <img src="static/img/zoom-reset.svg" alt="">
+            </button>
+            <button id="interactive-toggle-btn" type="button" class="btn btn-light btn-sm interactive-toggle-btn draw-tool-btn" title="Disable graph interaction" aria-label="Disable graph interaction" aria-pressed="true">
+              <img src="static/img/interactive.svg" alt="">
+            </button>
+            <button id="rotate-graph-btn" type="button" class="btn btn-light btn-sm rotate-graph-btn draw-tool-btn" title="Rotate graph" aria-label="Rotate graph">
+              <img src="static/img/rotate.svg" alt="">
+            </button>
+            <button id="align-axis-btn" type="button" class="btn btn-light btn-sm align-axis-btn draw-tool-btn" title="Align to grid" aria-label="Align to grid" disabled>
+              <img src="static/img/align.svg" alt="">
+            </button>
+          </div>
           <div class="style-controls" aria-label="Style controls">
             <div id="vertex-size-control-row" class="style-control-row">
               <label for="vertex-size-slider" title="Vertex size">Vertex</label>
@@ -254,7 +256,7 @@
               <div class="layout-group-buttons">
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="random" title="Deterministic pseudo-random coordinates seeded by vertex ids">Random</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" title="Places vertices evenly on a circle">Circular</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" title="Force-directed COSE layout from Cytoscape.js">Force-Dir</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" title="Force-directed layout">Force-Dir</button>
               </div>
             </div>
             <div class="layout-group">
