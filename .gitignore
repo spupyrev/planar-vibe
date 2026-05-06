@@ -3,11 +3,13 @@ docs/TODOs.md
 cpp_examples
 *code-workspace
 layout-table*
+report.html
 evaluation_data
 .codex
 
 __pycache__/
-*.pyc
+**/__pycache__/
+*.py[cod]
 .pytest_cache/
 *.egg-info/
 .claude/
