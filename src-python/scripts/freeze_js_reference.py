@@ -30,7 +30,7 @@ GOLDEN_ROOT = REPO_ROOT / "src-python" / "tests" / "golden"
 # scripts/report-shared.mjs). Random is covered via the 'input' pseudo-algo for
 # graphs with embedded coords; for graphs without coords we'd need to add it.
 ALGORITHMS = [
-    "tutte", "air", "cleanair", "areagrad",
+    "tutte", "air", "areagrad",
     "facebalancer", "edgebalancer", "anglebalancer", "fabalancer",
     "gpt", "claude",
     "reweight", "forcedir", "impred",
@@ -88,7 +88,7 @@ def main() -> int:
     parser.add_argument("--benchmark", required=True, help="Path to a .dot benchmark file (relative to repo root).")
     parser.add_argument("--algorithm", action="append", default=[], help="Algorithm key(s) to freeze. Repeatable. Default: all.")
     parser.add_argument("--graph", action="append", default=[], help="Graph name(s) to include. Default: all graphs in the benchmark.")
-    parser.add_argument("--node", default=os.environ.get("NODE_BIN", "/local/home/spupyrev/opt/node-v16.20.2-linux-x64/bin/node"), help="Path to node binary.")
+    parser.add_argument("--node", default=os.environ.get("NODE_BIN", "node"), help="Path to node binary.")
     parser.add_argument("--max-graphs", type=int, default=None, help="Freeze only the first N graphs (useful for iteration).")
     args = parser.parse_args()
 

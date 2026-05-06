@@ -1601,7 +1601,6 @@
     function setPlanarButtonsDisabled() {
       setLayoutEnabled('tutte', false);
       setLayoutEnabled('air', false);
-      setLayoutEnabled('cleanair', false);
       setLayoutEnabled('areagrad', false);
       setLayoutEnabled('facebalancer', false);
       setLayoutEnabled('edgebalancer', false);
@@ -1652,7 +1651,6 @@
       setAlwaysAvailableLayoutButtonsEnabled(true);
       setLayoutEnabled('tutte', isPlanar);
       setLayoutEnabled('air', isPlanar);
-      setLayoutEnabled('cleanair', isPlanar);
       setLayoutEnabled('areagrad', isPlanar);
       setLayoutEnabled('facebalancer', isPlanar);
       setLayoutEnabled('edgebalancer', isPlanar);
@@ -1849,41 +1847,6 @@
               var debug = progressDebug(progress);
               var parts = [];
               parts.push('Air sweep ' + progress.iter + '/' + progress.maxIters);
-              if (Number.isFinite(progress.maxRelError)) {
-                parts.push('face err ' + progress.maxRelError.toFixed(3));
-              }
-              if (Number.isFinite(debug.maxForce)) {
-                parts.push('max force ' + debug.maxForce.toExponential(2));
-              }
-              if (Number.isFinite(progress.maxMove)) {
-                parts.push('max move ' + progress.maxMove.toExponential(2));
-              }
-              if (Number.isFinite(debug.acceptedCount)) {
-                parts.push('accepted ' + debug.acceptedCount);
-              }
-              if (Number.isFinite(debug.plateauWindowImprovementAbs) &&
-                  Number.isFinite(debug.plateauWindow)) {
-                parts.push('dErr[' + debug.plateauWindow + '] ' + debug.plateauWindowImprovementAbs.toExponential(2));
-              }
-              if (Number.isFinite(debug.boundedFaceCount)) {
-                parts.push('faces ' + debug.boundedFaceCount);
-              }
-              setStatus(parts.join(' | '), false);
-            }
-          });
-        }
-      },
-      cleanair: {
-        disabledMessage: 'CleanAir layout requires a planar graph',
-        getModule: function () { return global.PlanarVibeCleanAir; },
-        methodName: 'applyLayout',
-        buildMethodOptions: function () {
-          return sharedLayoutMethodOptions({
-            onIteration: function (progress) {
-              if (!progress) return;
-              var debug = progressDebug(progress);
-              var parts = [];
-              parts.push('CleanAir sweep ' + progress.iter + '/' + progress.maxIters);
               if (Number.isFinite(progress.maxRelError)) {
                 parts.push('face err ' + progress.maxRelError.toFixed(3));
               }

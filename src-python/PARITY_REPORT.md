@@ -7,7 +7,7 @@ Position tolerance: `1e-2` absolute (drawings span ~900 px).
 Metric tolerance: `0.1%` for deterministic layouts, relaxed up to ~5% for
 iterative/ensemble layouts per PLAN.md.
 
-## Layer 1: deterministic + simple planar (13 layouts)
+## Layer 1: deterministic + simple planar (12 layouts)
 
 **All strict-parity OK** (72/72). Metrics match to within 0.1%; positions
 match to within 1e-6.
@@ -27,7 +27,6 @@ match to within 1e-6.
 | air          | 6/6        | With pos-tol 1e-3                  |
 | areagrad     | 6/6        |                                    |
 | impred       | 6/6        |                                    |
-| cleanair     | 5/6        | sample1: JS-side bug (ok=False) vs Python ok=True; Python produces valid layout |
 
 ## Layer 2: balancers (L-BFGS)
 

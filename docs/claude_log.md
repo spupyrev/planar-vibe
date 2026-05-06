@@ -33,7 +33,7 @@ Biggest weak spots of the best current baseline: **convexity (0.20)**, **edgeRat
  
 **Goal:** Identify per-metric champions.
  
-**Method:** Run every algorithm (tutte, air, cleanair, areagrad, facebalancer, edgebalancer, anglebalancer, fabalancer, reweight, forcedir, impred, fpp, schnyder, ceg_bfs, ceg_xy) on `planar_train.dot` with 10s timeout.
+**Method:** Run every algorithm (tutte, air, areagrad, facebalancer, edgebalancer, anglebalancer, fabalancer, reweight, forcedir, impred, fpp, schnyder, ceg_bfs, ceg_xy) on `planar_train.dot` with 10s timeout.
  
 **Results — total score, ranked:**
  
@@ -53,7 +53,6 @@ Biggest weak spots of the best current baseline: **convexity (0.20)**, **edgeRat
 | ceg_bfs | 0.526 | angularResolution (0.675), very strong |
 | schnyder | 0.480 | **alignment (0.853)** |
 | fpp | 0.462 | **alignment (0.736)** |
-| cleanair | 0.000 | 492/499 failed (not viable) |
  
 **Per-metric champions:**
  

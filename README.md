@@ -1,87 +1,76 @@
 # PlanarVibe
 
-PlanarVibe is a browser app for experimenting with planar graph drawings.
+PlanarVibe is a standalone implementation of graph drawing algorithms, focused on planar graph layouts and drawing-quality metrics.
 
-Live app: open `index.html` locally or deploy with GitHub Pages.
+It is available in JavaScript, either through a static browser page or Node.js command-line scripts, and in Python for command-line layout runs and scripting.
 
 ## Features
 
-- Paste an edge list or load built-in samples
-- Samples `sample1..sample5` include embedded vertex coordinates
-- Run layouts:
-  - `Random`
-  - `Circular`
-  - `Force-Dir`
-  - `Tutte`
-  - `ImPrEd`
-  - `CEG-bfs`
-  - `CEG-xy`
-  - `Reweight`
-  - `P3T`
-  - `FPP`
-- Graph stats:
-  - vertices, edges
-  - planar, bipartite, planar 3-tree
-- Drawing stats:
-  - plane (`yes/no`, based on crossings in the current drawing)
-  - `Angle Resolution Score`
-  - `Face Areas Score`
-  - `Edge Length Score`
-  - `Edge-Length Ratio`
-  - `Spacing-Uniformity`
-  - `Edge Horizontality`
-  - `Axis Alignment`
-  - clickable metric rows to show/hide each distribution plot
-- Interactive/static mode switch (static mode is lower CPU)
-- Vertex size and edge width sliders (persisted)
-- SVG export
+- Broad collection of theoretical, force-directed, and optimization-based graph drawing algorithms
+- Drawing-quality metrics for planarity, angular resolution, aspect ratio, convexity, edge lengths, face areas, node distribution, alignment, and spacing
+- A collection of planar graph instances for benchmarking
+- Command-line layout runners for batch experiments and scripting
+- Interactive browser view with drawing inspection and SVG export
 
-## Input format
+## Input Format
 
-You can provide:
-
-1. Vertex coordinates:
-
-```text
-v id x y
-```
-
-2. Undirected edges:
+Use one undirected edge per line:
 
 ```text
 u v
 ```
 
-- Blank lines are ignored
-- Lines starting with `#` are ignored
-- Duplicate edges are ignored
-- If coordinates are provided, they are used as the initial drawing
+Optional vertex coordinates can be provided with:
 
-## Local run
-
-This is a static frontend app. Open `index.html` in a browser, or serve the folder with any static server.
-
-## Tests
-
-```bash
-npm test
+```text
+v id x y
 ```
 
-Requires Node.js 18+.
+Blank lines and lines starting with `#` are ignored. Duplicate edges are ignored. If coordinates are provided, they are used as the initial drawing.
 
-## Benchmark report
+## JavaScript Usage
 
-Cached benchmark data:
-
-```bash
-npm run report:data
-```
-
-Build `report.html` from the cached CSV without recomputing:
+Run the app by opening `index.html`, or serve the repository:
 
 ```bash
-npm run report
+python3 -m http.server 8000
 ```
+
+Then open `http://localhost:8000`.
+
+Run a JS layout from the command line:
+
+```bash
+./scripts/apply_layout benchmark/named.dot sample1 --algorithm tutte --timeout 30
+```
+
+Run multiple JS layouts with a glob:
+
+```bash
+./scripts/apply_layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
+```
+
+## Python Usage
+
+Install the Python package in editable mode:
+
+```bash
+python3 -m pip install -e src-python
+```
+
+Run a Python layout and print JSON:
+
+```bash
+python3 src-python/scripts/apply_layout.py benchmark/named.dot sample1 tutte
+```
+
+Write the Python result to a file:
+
+```bash
+python3 src-python/scripts/apply_layout.py benchmark/named.dot sample1 tutte --out /tmp/sample1-tutte.json
+```
+
+Requires Node.js 18+ and Python 3.10+.
 
 ## License
 

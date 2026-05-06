@@ -57,7 +57,28 @@ def extract_faces_from_rotation_map(rotation: dict[str, list[str]]) -> list[list
     def half_edge_key(u: str, v: str) -> str:
         return f"{u}|{v}"
 
-    vertices = list(rotation.keys()) if rotation else []
+    def js_object_keys(mapping: dict) -> list[str]:
+        # JavaScript Object.keys visits array-index keys first in numeric order,
+        # then the remaining string keys in insertion order. Several benchmark
+        # graphs use numeric string vertex ids, so matching this order is
+        # required for byte-level face traversal parity with the JS layouts.
+        indexed: list[tuple[int, str]] = []
+        rest: list[str] = []
+        for key in mapping.keys():
+            s = str(key)
+            try:
+                n = int(s, 10)
+            except ValueError:
+                rest.append(s)
+                continue
+            if s == str(n) and 0 <= n < 4294967295:
+                indexed.append((n, s))
+            else:
+                rest.append(s)
+        indexed.sort(key=lambda item: item[0])
+        return [s for _, s in indexed] + rest
+
+    vertices = js_object_keys(rotation) if rotation else []
     for u_raw in vertices:
         u = str(u_raw)
         row = rotation.get(u, [])

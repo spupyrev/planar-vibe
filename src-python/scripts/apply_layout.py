@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import time
 from pathlib import Path
@@ -18,7 +19,56 @@ sys.path.insert(0, str(REPO_ROOT / "src-python"))
 
 from planarvibe import benchmarks, geometry, metrics
 from planarvibe.graph import create_graph
-from planarvibe.layouts import random_layout, tutte, fpp, schnyder, p3t, reweight, ceg, forcedir, air, areagrad, impred, cleanair, facebalancer, edgebalancer, anglebalancer, fabalancer, gpt, claude
+from planarvibe.layouts import random_layout, tutte, fpp, schnyder, p3t, reweight, ceg, forcedir, air, areagrad, impred, facebalancer, edgebalancer, anglebalancer, fabalancer, gpt, claude
+
+
+def _hash_string_to_seed(text: str) -> int:
+    h = 2166136261
+    for ch in str(text or ""):
+        h ^= ord(ch)
+        h = (h * 16777619) & 0xFFFFFFFF
+    return h
+
+
+def _seeded_rng(seed: int):
+    state = (int(seed) & 0xFFFFFFFF) or 1
+
+    def next_value() -> float:
+        nonlocal state
+        state = (state * 1664525 + 1013904223) & 0xFFFFFFFF
+        return state / 4294967296.0
+
+    return next_value
+
+
+def _is_finite_pair(value) -> bool:
+    if not isinstance(value, (list, tuple)) or len(value) < 2:
+        return False
+    return math.isfinite(float(value[0])) and math.isfinite(float(value[1]))
+
+
+def _initialize_mock_positions(node_ids: list[str], seed_key: str, explicit_positions: dict | None) -> dict:
+    """Mirror report-shared.mjs initializeMockCyPositions for JS parity."""
+    rng = _seeded_rng(_hash_string_to_seed(seed_key))
+    span = max(400.0, 30.0 * math.sqrt(max(1, len(node_ids))) * 10.0)
+    raw_positions: dict[str, tuple[float, float]] = {}
+    for i, nid0 in enumerate(node_ids):
+        nid = str(nid0)
+        jitter = i * 1e-4
+        raw_positions[nid] = (span * rng() + jitter, span * rng() + jitter)
+
+    has_explicit_input = False
+    for nid0 in node_ids:
+        nid = str(nid0)
+        p = explicit_positions.get(nid) if explicit_positions else None
+        if not _is_finite_pair(p):
+            continue
+        raw_positions[nid] = (float(p[0]), float(p[1]))
+        has_explicit_input = True
+
+    if has_explicit_input:
+        return geometry.normalize_position_map_to_viewport(raw_positions)
+    return raw_positions
 
 def _input_layout(graph, initial_positions: dict, options: dict | None = None) -> dict:
     """Pseudo-algorithm that just returns the caller-provided positions,
@@ -60,7 +110,6 @@ LAYOUT_REGISTRY = {
     "air": air.apply_layout,
     "areagrad": areagrad.apply_layout,
     "impred": impred.apply_layout,
-    "cleanair": cleanair.apply_layout,
     "facebalancer": facebalancer.apply_layout,
     "edgebalancer": edgebalancer.apply_layout,
     "anglebalancer": anglebalancer.apply_layout,
@@ -137,7 +186,13 @@ def main() -> int:
         print(f"Layout not yet ported: {args.algorithm}", file=sys.stderr)
         return 2
 
-    initial_positions = dict(parsed.positions_by_id) if parsed.positions_by_id else None
+    explicit_positions = dict(parsed.positions_by_id) if parsed.positions_by_id else None
+    initial_positions = (explicit_positions if args.algorithm == "input"
+                         else _initialize_mock_positions(
+                             parsed.node_ids,
+                             f"{bench.dataset}:{args.graph_name}",
+                             explicit_positions,
+                         ))
     t0 = time.perf_counter()
     result = LAYOUT_REGISTRY[args.algorithm](graph, initial_positions=initial_positions)
     runtime_ms = (time.perf_counter() - t0) * 1000.0

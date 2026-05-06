@@ -50,10 +50,7 @@ ALL_ALGORITHMS = [
     "gpt", "claude",
 ]
 
-NODE_BIN = os.environ.get(
-    "NODE_BIN",
-    "/local/home/spupyrev/opt/node-v16.20.2-linux-x64/bin/node",
-)
+NODE_BIN = os.environ.get("NODE_BIN", "node")
 
 
 def _load_json(path: Path) -> dict:

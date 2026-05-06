@@ -306,9 +306,9 @@ Result: discarded. The 30-node capped full train run stayed valid with 499/499 o
 
 ## Stage 41: Public Algorithm Tail Sweep
 
-Goal: before inventing another custom candidate, check whether any exported algorithm not currently used as a default GPT seed has strong raw layouts on the remaining bottom tail. Run CleanAir, AreaGrad, ForceDir, ImPrEd, FPP, Schnyder, CEG-bfs, and CEG-xy on the lowest 50 Stage 38 rows and compare row scores against GPT.
+Goal: before inventing another custom candidate, check whether any exported algorithm not currently used as a default GPT seed has strong raw layouts on the remaining bottom tail. Run AreaGrad, ForceDir, ImPrEd, FPP, Schnyder, CEG-bfs, and CEG-xy on the lowest 50 Stage 38 rows and compare row scores against GPT.
 
-Result: discarded as default seed material. CleanAir failed on all 50 focused rows; AreaGrad, ForceDir, ImPrEd, CEG-bfs, and CEG-xy also had failures or timeouts. FPP and Schnyder were stable but much lower scoring. Among successful runs, no non-GPT algorithm beat GPT on any of the 50 rows. The per-algorithm average row-score deltas versus GPT were all strongly negative, so there is no obvious exported raw seed to add.
+Result: discarded as default seed material. AreaGrad, ForceDir, ImPrEd, CEG-bfs, and CEG-xy had failures or timeouts. FPP and Schnyder were stable but much lower scoring. Among successful runs, no non-GPT algorithm beat GPT on any of the 50 rows. The per-algorithm average row-score deltas versus GPT were all strongly negative, so there is no obvious exported raw seed to add.
 
 ## Stage 42: Balanced Selector Weights
 

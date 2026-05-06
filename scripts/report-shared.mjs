@@ -33,7 +33,6 @@ function sharedLayoutMethodOptions(layoutName, overrides) {
   if (key === 'ceg_xy') key = 'ceg-xy';
   let base = {};
   if (key === 'air' ||
-      key === 'cleanair' ||
       key === 'areagrad' ||
       key === 'facebalancer' ||
       key === 'edgebalancer' ||
@@ -63,11 +62,6 @@ export function createAlgorithmSpecs(windowObj) {
       key: 'air',
       label: 'Air',
       run: (cy) => windowObj.PlanarVibeAir.applyLayout(cy, sharedLayoutMethodOptions('air'))
-    },
-    {
-      key: 'cleanair',
-      label: 'CleanAir',
-      run: (cy) => windowObj.PlanarVibeCleanAir.applyLayout(cy, sharedLayoutMethodOptions('cleanair'))
     },
     {
       key: 'areagrad',
@@ -357,7 +351,6 @@ export function loadBrowserModules() {
     'static/js/layout-tutte.js',
     'static/js/layout-random.js',
     'static/js/layout-air.js',
-    'static/js/layout-cleanair.js',
     'static/js/layout-areagrad.js',
     'static/js/layout-facebalancer.js',
     'static/js/layout-edgebalancer.js',
