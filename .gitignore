@@ -5,3 +5,11 @@ cpp_examples
 layout-table*
 evaluation_data
 .codex
+
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+.claude/
+src-python/benchmarks_work/
+src-python/tests/golden/
