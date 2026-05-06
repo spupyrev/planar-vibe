@@ -1,12 +1,16 @@
 # PlanarVibe
 
-PlanarVibe is a standalone implementation of graph drawing algorithms, focused on planar graph layouts and drawing-quality metrics.
+<p align="center">
+  <img src="static/img/logo2.png" alt="PlanarVibe logo" width="360">
+</p>
 
-It is available in JavaScript, either through a static browser page or Node.js command-line scripts, and in Python for command-line layout runs and scripting.
+PlanarVibe is a self-contained toolkit for drawing planar graphs and evaluating drawing quality.
+
+It is available in **JavaScript** (either through a static browser page or Node.js command-line scripts) and in **Python** for command-line scripting.
 
 ## Features
 
-- Broad collection of theoretical, force-directed, and optimization-based graph drawing algorithms
+- Broad collection of theoretical, force-directed, and optimization-based planar graph drawing algorithms
 - Drawing-quality metrics for planarity, angular resolution, aspect ratio, convexity, edge lengths, face areas, node distribution, alignment, and spacing
 - A collection of planar graph instances for benchmarking
 - Command-line layout runners for batch experiments and scripting
