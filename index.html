@@ -129,20 +129,20 @@
               <div class="stats-scroll-body">
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Whether the current drawing is plane (no edge crossings)">Plane:</span>
-                  <span id="stat-is-plane" title="Yes if no edge crossings are present in the current drawing; otherwise no">--</span>
+                  <span title="Reports whether the current drawing has no edge crossings">Plane:</span>
+                  <span id="stat-is-plane" title="Reports whether the current drawing has no edge crossings">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Average of the 10 drawing metric scores below. Computed for plane drawings only">Mean Score:</span>
-                  <span id="stats-overall-score" title="Average of Angular Resolution, Aspect Ratio, Convexity, Edge-Length Deviation, Edge-Length Ratio, Edge Orthogonality, Face-Area Uniformity, Node Uniformity, Axis Alignment, and Spacing Uniformity">--</span>
+                  <span title="Average of the ten drawing-quality metrics, shown only for plane drawings">Mean Score:</span>
+                  <span id="stats-overall-score" title="Average of the ten drawing-quality metrics, shown only for plane drawings">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <a href="#" class="drawing-metric-link" data-target="stats-angle-plot-wrap" title="Angular Resolution averages, over vertices of degree at least 2, the smallest incident angle divided by the ideal angle 2pi/deg(v). Score is from 0 to 1, where 0 is worst and 1 is best">Angular Resolution:</a>
-                  <span id="stats-angle-quality" title="Angular Resolution averages, over vertices of degree at least 2, the smallest incident angle divided by the ideal angle 2pi/deg(v). Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <a href="#" class="drawing-metric-link" data-target="stats-angle-plot-wrap" title="Measures the smallest incident angle at each vertex relative to the ideal angle 2pi/deg(v), higher is better">Angular Resolution:</a>
+                  <span id="stats-angle-quality" title="Measures the smallest incident angle at each vertex relative to the ideal angle 2pi/deg(v), higher is better">--</span>
                 </div>
               </div>
               <div id="stats-angle-plot-wrap" class="stats-plot-wrap stats-plot-wrap-standalone is-hidden">
@@ -150,44 +150,44 @@
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Bounding-box aspect-ratio score in [0,1]. 1 is perfectly balanced">Aspect Ratio:</span>
-                  <span id="stats-aspect-ratio" title="Bounding-box aspect-ratio score in [0,1]. 1 is perfectly balanced">--</span>
+                  <span title="Measures how balanced the drawing bounding box is, higher is better">Aspect Ratio:</span>
+                  <span id="stats-aspect-ratio" title="Measures how balanced the drawing bounding box is, higher is better">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">Axis Alignment:</span>
-                  <span id="stats-axis-alignment" title="Internal axis-alignment score in [0,1]. High when many points reuse the same x and y coordinate lines, up to tolerance">--</span>
+                  <span title="Measures how many vertices reuse common horizontal and vertical coordinate lines, higher is better">Axis Alignment:</span>
+                  <span id="stats-axis-alignment" title="Measures how many vertices reuse common horizontal and vertical coordinate lines, higher is better">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Fraction of bounded faces that are convex. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">Convexity:</span>
-                  <span id="stats-convexity" title="Fraction of bounded faces that are convex. Computed for plane drawings only. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <span title="Measures the fraction of bounded faces that are convex, higher is better">Convexity:</span>
+                  <span id="stats-convexity" title="Measures the fraction of bounded faces that are convex, higher is better">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Score in [0,1] based on the mean relative absolute deviation of edge lengths from their average. 1 is best">Edge-Length Deviation:</span>
-                  <span id="stats-edge-deviation" title="Score in [0,1] based on the mean relative absolute deviation of edge lengths from their average. 1 is best">--</span>
+                  <span title="Measures how close edge lengths are to their average length, higher is better">Edge-Length Deviation:</span>
+                  <span id="stats-edge-deviation" title="Measures how close edge lengths are to their average length, higher is better">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Shortest edge length divided by longest edge length in the current drawing">Edge-Length Ratio:</span>
-                  <span id="stats-edge-ratio" title="Shortest edge length divided by longest edge length in the current drawing">--</span>
+                  <span title="Measures shortest edge length divided by longest edge length, higher is better">Edge-Length Ratio:</span>
+                  <span id="stats-edge-ratio" title="Measures shortest edge length divided by longest edge length, higher is better">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Score in [0,1] that rewards edges being close to horizontal or vertical">Edge Orthogonality:</span>
-                  <span id="stats-edge-orthogonality" title="Score in [0,1] that rewards edges being close to horizontal or vertical">--</span>
+                  <span title="Measures how close edges are to horizontal or vertical directions, higher is better">Edge Orthogonality:</span>
+                  <span id="stats-edge-orthogonality" title="Measures how close edges are to horizontal or vertical directions, higher is better">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <a href="#" class="drawing-metric-link" data-target="stats-face-plot-wrap" title="Face-Area Uniformity compares bounded face areas against the ideal weighted area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">Face-Area Uniformity:</a>
-                  <span id="stats-face-quality" title="Face-Area Uniformity compares bounded face areas against the ideal weighted area distribution. Score is from 0 to 1, where 0 is worst and 1 is best">--</span>
+                  <a href="#" class="drawing-metric-link" data-target="stats-face-plot-wrap" title="Measures how close bounded face areas are to their target area distribution, higher is better">Face-Area Uniformity:</a>
+                  <span id="stats-face-quality" title="Measures how close bounded face areas are to their target area distribution, higher is better">--</span>
                 </div>
               </div>
               <div id="stats-face-plot-wrap" class="stats-plot-wrap stats-plot-wrap-standalone is-hidden">
@@ -195,14 +195,14 @@
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Grid-based node-uniformity score in [0,1]. 1 is perfectly even occupancy">Node Uniformity:</span>
-                  <span id="stats-node-uniformity" title="Grid-based node-uniformity score in [0,1]. 1 is perfectly even occupancy">--</span>
+                  <span title="Measures how evenly vertices occupy a grid over the drawing box, higher is better">Node Uniformity:</span>
+                  <span id="stats-node-uniformity" title="Measures how evenly vertices occupy a grid over the drawing box, higher is better">--</span>
                 </div>
               </div>
               <div class="stats-row-inline">
                 <div class="stats-value-item stats-value-item-right">
-                  <span title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">Spacing Uniformity:</span>
-                  <span id="stats-spacing-uniformity" title="Nearest-neighbor regularity score in [0,1]. 1 is perfectly uniform spacing, 0 is very uneven">--</span>
+                  <span title="Measures how uniform nearest-neighbor vertex distances are, higher is better">Spacing Uniformity:</span>
+                  <span id="stats-spacing-uniformity" title="Measures how uniform nearest-neighbor vertex distances are, higher is better">--</span>
                 </div>
               </div>
               </div>
@@ -256,30 +256,30 @@
             <div class="layout-group layout-group-planar">
               <div class="layout-group-title">Generic</div>
               <div class="layout-group-buttons">
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="random" title="Deterministic random coordinates by node id">Random</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" title="Place vertices evenly on a circle">Circular</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" title="Force-directed COSE layout">Force-Dir</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="random" title="Deterministic pseudo-random coordinates seeded by vertex ids">Random</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="circle" title="Places vertices evenly on a circle">Circular</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="cose" title="Force-directed COSE layout from Cytoscape.js">Force-Dir</button>
               </div>
             </div>
             <div class="layout-group">
               <div class="layout-group-title">Planar</div>
               <div class="layout-group-buttons planar-layout-buttons">
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="tutte" title="How to Draw a Graph (Tutte, 1963)">Tutte</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="reweight" title="Reweight for planar graphs (planned)">Reweight</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="air" title="Air pressure layout with equal bounded face areas">Air</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="facebalancer" title="Barycentric equal-face optimization with positive softmax weights">FaceBalancer</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="edgebalancer" title="Barycentric edge-length balancing with positive softmax weights">EdgeBalancer</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="anglebalancer" title="Angle-resolution balancing with fixed outer face">AngleBalancer</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fabalancer" title="FABalancer staged face-angle balancing with staged selection">FABalancer</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="forcedir" title="ForceDir for planar graphs">ForceDir</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="reweight" title="Arrangements of Pseudocircles: Triangles and Drawings (Felsner and Scheucher, 2021)">Reweight</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="air" title="Drawing Planar Graphs with Prescribed Face Areas (Kleist, 2018)">Air</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="facebalancer" title="Optimizes barycentric weights to balance bounded face areas">FaceBalancer</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="edgebalancer" title="Optimizes barycentric weights to make original edge lengths more uniform">EdgeBalancer</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="anglebalancer" title="Optimizes barycentric weights to improve angular resolution around vertices">AngleBalancer</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fabalancer" title="Optimizes barycentric weights to improve face areas and angular resolution">FABalancer</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="forcedir" title="A Force-Directed Algorithm that Preserves Edge-Crossing Properties (Bertault, 2000)">ForceDir</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="impred" title="ImPrEd: An Improved Force-Directed Algorithm that Prevents Nodes from Crossing Edges (Simonetto, Archambault, Auber, Bourqui, 2011)">ImPrEd</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" title="Straight-line grid drawings of planar 3-trees with face-proportional areas (Biedl, de Fraysseix, Rote, 2012)">P3T</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="p3t" title="Drawing Planar 3-Trees with Given Face Areas (Biedl and Ruiz Velázquez, 2013)">P3T</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="fpp" title="How to Draw a Planar Graph on a Grid (de Fraysseix, Pach, Pollack, 1990)">FPP</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="schnyder" title="Embedding Planar Graphs on the Grid (Schnyder, 1990)">Schnyder</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="ceg-bfs" title="Manipulating Weights to Improve Stress-Graph Drawings of 3-Connected Planar Graphs (Chiu, Eppstein, Goodrich, 2023)">CEG-bfs</button>
                 <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="ceg-xy" title="Manipulating Weights to Improve Stress-Graph Drawings of 3-Connected Planar Graphs (Chiu, Eppstein, Goodrich, 2023)">CEG-xy</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="gpt" title="GPT ensemble layout with scoring, transforms, and polish">GPT</button>
-                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="claude" title="Claude ensemble layout with local scoring polish">Claude</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="gpt" title="Ensemble layout optimizing 10 aesthetics (generated by GPT)">GPT</button>
+                <button type="button" class="btn btn-outline-secondary btn-sm layout-btn" data-layout="claude" title="Ensemble layout optimizing 10 aesthetics (generated by Claude)">Claude</button>
               </div>
             </div>
           </div>
