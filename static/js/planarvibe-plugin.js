@@ -170,12 +170,11 @@
     var PREF_EDGE_WIDTH_KEY = 'planarvibe_edge_width';
     var PREF_INTERACTIVE_KEY = 'planarvibe_interactive_mode';
     var PREF_STATUS_COLLAPSED_KEY = 'planarvibe_status_collapsed';
-    var PREF_OUTER_CYCLE_AUGMENTATION_KEY = 'planarvibe_outer_cycle_augmentation';
 
     function sharedLayoutMethodOptions(overrides) {
       return Object.assign(
         {},
-        useOuterCycleAugmentation ? { augmentationMethod: 'outer-cycle' } : {},
+        { augmentationMethod: 'outer-cycle' },
         overrides || {}
       );
     }
@@ -215,7 +214,6 @@
     };
     var isInteractive = readStorage(PREF_INTERACTIVE_KEY) !== '0';
     var isStatusCollapsed = readStorage(PREF_STATUS_COLLAPSED_KEY) === '1';
-    var useOuterCycleAugmentation = readStorage(PREF_OUTER_CYCLE_AUGMENTATION_KEY) !== '0';
     var currentPositionsCache = {};
     var savedViewport = null;
     var currentVisualizedInput = null;
@@ -1458,7 +1456,6 @@
         .attr('aria-pressed', isInteractive ? 'true' : 'false')
         .toggleClass('is-inactive', !isInteractive);
       global.$('#show-augmentation-toggle').prop('checked', showDebugAugmentation);
-      global.$('#outer-cycle-augmentation-toggle').prop('checked', useOuterCycleAugmentation);
       global.$('#cy').toggle(isInteractive);
       global.$('#cy-static-wrap').toggle(!isInteractive);
       global.$('.layout-toolbar').show();
@@ -1486,25 +1483,6 @@
         } else {
           setStatus('Hiding augmentation debug overlay', false);
         }
-      }
-    }
-
-    function setOuterCycleAugmentationEnabled(enabled, persistPreference, suppressStatus) {
-      if (persistPreference === undefined) {
-        persistPreference = true;
-      }
-      if (suppressStatus === undefined) {
-        suppressStatus = false;
-      }
-      useOuterCycleAugmentation = !!enabled;
-      global.$('#outer-cycle-augmentation-toggle').prop('checked', useOuterCycleAugmentation);
-      if (persistPreference) {
-        writeStorage(PREF_OUTER_CYCLE_AUGMENTATION_KEY, useOuterCycleAugmentation ? '1' : '0');
-      }
-      if (!suppressStatus) {
-        setStatus(useOuterCycleAugmentation
-          ? 'Outer-cycle augmentation enabled'
-          : 'Outer-cycle augmentation disabled', false);
       }
     }
 
@@ -1671,6 +1649,7 @@
       try {
         currentParsed = global.PlanarVibePlugin.parseEdgeList(global.$('#dotfile').val());
         clearCurrentDebugState();
+        clearSelectedLayoutButton();
 
         function applyParsedPositionsIfAny() {
           if (!currentParsed || !currentParsed.hasExplicitPositions) {
@@ -1713,7 +1692,7 @@
           saveViewportState(null);
           updateStatistics(currentParsed);
           if (!applyParsedPositionsIfAny()) {
-            applyLayout('random');
+            applyLayout('random', { suppressActiveSelection: true });
           }
           setInteractiveMode(false, false, true);
           markCurrentInputAsVisualized();
@@ -1726,7 +1705,7 @@
         saveViewportState(null);
         updateStatistics(currentParsed);
         if (!applyParsedPositionsIfAny()) {
-          applyLayout('random');
+          applyLayout('random', { suppressActiveSelection: true });
         }
         markCurrentInputAsVisualized();
         var drawnMessage = 'Drawn ' + currentParsed.nodeCount + ' nodes and ' + currentParsed.edgeCount + ' edges';
@@ -2056,12 +2035,18 @@
       fpp: {
         disabledMessage: 'FPP layout requires a planar graph',
         getModule: function () { return global.PlanarVibeFPP; },
-        methodName: 'applyLayout'
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions();
+        }
       },
       schnyder: {
         disabledMessage: 'Schnyder layout requires a planar graph',
         getModule: function () { return global.PlanarVibeSchnyder; },
-        methodName: 'applyLayout'
+        methodName: 'applyLayout',
+        buildMethodOptions: function () {
+          return sharedLayoutMethodOptions();
+        }
       },
       reweight: {
         disabledMessage: 'Reweight layout requires a planar graph',
@@ -2138,13 +2123,15 @@
           return;
         }
         setInteractiveMode(true, false, true);
-        applyLayout(layoutName, { temporaryStaticRun: true });
+        applyLayout(layoutName, Object.assign({}, opts, { temporaryStaticRun: true }));
         return;
       }
       if (cy.nodes().length === 0) {
         return;
       }
-      setSelectedLayoutButton(layoutName);
+      if (!opts.suppressActiveSelection) {
+        setSelectedLayoutButton(layoutName);
+      }
       clearCurrentDebugState();
 
       function afterLayoutDone() {
@@ -2242,6 +2229,10 @@
     function setSelectedLayoutButton(layoutName) {
       global.$('.layout-btn').removeClass('is-active');
       global.$('.layout-btn[data-layout="' + layoutName + '"]').addClass('is-active');
+    }
+
+    function clearSelectedLayoutButton() {
+      global.$('.layout-btn').removeClass('is-active');
     }
 
 	    function enterLayoutBusy(activeLayoutName) {
@@ -2495,10 +2486,6 @@
 
       global.$('#show-augmentation-toggle').on('change', function () {
         setDebugAugmentationVisible(global.$(this).is(':checked'));
-      });
-
-      global.$('#outer-cycle-augmentation-toggle').on('change', function () {
-        setOuterCycleAugmentationEnabled(global.$(this).is(':checked'));
       });
 
       global.$('#interactive-toggle-btn').on('click', function () {

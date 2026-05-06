@@ -680,6 +680,22 @@ test('prepareGraphData defaults to outer-cycle triangulation', () => {
   assert.equal((prepared.augmented.dummyCount || 0) > 0, true);
 });
 
+test('prepareGraphData still supports face-stellation augmentation for non-UI callers', () => {
+  const text = Generator.getSample('randomplanar4');
+  const graph = parseEdgeListText(text);
+  const prepared = LayoutPreprocessing.prepareGraphData(graph, {
+    failureLabel: 'Face-stellation augmentation method test',
+    augmentationMethod: 'face-stellation',
+    augmentationOptions: { triangulateOuterFace: true }
+  });
+
+  assert.equal(prepared && prepared.ok, true, prepared && prepared.message ? prepared.message : 'prepareGraphData failed');
+  assert.equal((prepared.augmented.dummyCount || 0) > 0, true);
+  for (const face of prepared.augmented.embedding.faces) {
+    assert.equal(face.length, 3);
+  }
+});
+
 test('prepareGraphData can use the outer-cycle augmentation on a drawing with repeated outer-face vertices', () => {
   const graph = {
     nodeIds: ['a', 'b', 'c', 'd', 'e'],

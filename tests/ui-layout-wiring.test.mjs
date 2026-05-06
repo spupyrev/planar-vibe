@@ -69,3 +69,42 @@ test('Reweight uses the simple layout key and API name', () => {
   assert.doesNotMatch(indexHtml, new RegExp('data-layout="' + oldKey + '"'), 'old Reweight key should not appear in the toolbar');
   assert.match(pluginJs, /reweight: \{[\s\S]*?getModule: function \(\) \{ return global\.PlanarVibeReweight; \}[\s\S]*?methodName: 'applyLayout'/, 'plugin should call the common Reweight method');
 });
+
+test('UI layouts always request outer-cycle augmentation without exposing an augmentation-mode toggle', () => {
+  assert.doesNotMatch(indexHtml, /outer-cycle-augmentation-toggle/, 'augmentation mode checkbox should not be rendered');
+  assert.doesNotMatch(indexHtml, /Aug\+/, 'Aug+ mode label should not be rendered');
+  assert.doesNotMatch(pluginJs, /PREF_OUTER_CYCLE_AUGMENTATION_KEY|useOuterCycleAugmentation|setOuterCycleAugmentationEnabled/, 'plugin should not keep UI augmentation-mode state');
+  assert.match(
+    pluginJs,
+    /function sharedLayoutMethodOptions\(overrides\) \{[\s\S]*?\{ augmentationMethod: 'outer-cycle' \}[\s\S]*?overrides \|\| \{\}/,
+    'shared UI layout options should always pass outer-cycle while preserving other overrides'
+  );
+  assert.match(
+    pluginJs,
+    /fpp: \{[\s\S]*?methodName: 'applyLayout'[\s\S]*?buildMethodOptions: function \(\) \{[\s\S]*?return sharedLayoutMethodOptions\(\);/,
+    'FPP should use the shared UI layout options'
+  );
+  assert.match(
+    pluginJs,
+    /schnyder: \{[\s\S]*?methodName: 'applyLayout'[\s\S]*?buildMethodOptions: function \(\) \{[\s\S]*?return sharedLayoutMethodOptions\(\);/,
+    'Schnyder should use the shared UI layout options'
+  );
+});
+
+test('Loading a graph clears the active layout button and seed layouts do not mark one active', () => {
+  assert.match(
+    pluginJs,
+    /function drawGraph\(\) \{[\s\S]*?currentParsed = global\.PlanarVibePlugin\.parseEdgeList[\s\S]*?clearCurrentDebugState\(\);[\s\S]*?clearSelectedLayoutButton\(\);/,
+    'drawGraph should clear the selected layout when replacing the graph'
+  );
+  assert.match(
+    pluginJs,
+    /applyLayout\('random', \{ suppressActiveSelection: true \}\);/,
+    'automatic random seed placement should not select the Random button'
+  );
+  assert.match(
+    pluginJs,
+    /if \(!opts\.suppressActiveSelection\) \{[\s\S]*?setSelectedLayoutButton\(layoutName\);[\s\S]*?\}/,
+    'applyLayout should only mark active for explicit layout requests'
+  );
+});

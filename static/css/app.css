@@ -399,38 +399,11 @@ body {
   user-select: none;
 }
 
-.augmentation-mode-toggle {
-  position: absolute;
-  top: 10px;
-  left: 114px;
-  z-index: 5;
-  height: 36px;
-  padding: 2px 8px;
-  margin: 0;
-  border: 1px solid #9fb4cf;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.9);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.82rem;
-  color: var(--pv-ink);
-  user-select: none;
-}
-
 .debug-augmentation-toggle input {
   margin: 0;
 }
 
-.augmentation-mode-toggle input {
-  margin: 0;
-}
-
 .debug-augmentation-toggle span {
-  font-weight: 600;
-}
-
-.augmentation-mode-toggle span {
   font-weight: 600;
 }
 
@@ -887,7 +860,6 @@ body {
   }
 
   .save-svg-btn,
-  .augmentation-mode-toggle,
   .debug-augmentation-toggle,
   .reset-zoom-btn,
   .rotate-graph-btn,
@@ -902,12 +874,6 @@ body {
 
   .debug-augmentation-toggle {
     left: 48px;
-    padding: 2px 6px;
-    font-size: 0.78rem;
-  }
-
-  .augmentation-mode-toggle {
-    left: 102px;
     padding: 2px 6px;
     font-size: 0.78rem;
   }
