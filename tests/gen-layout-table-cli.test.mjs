@@ -145,6 +145,58 @@ test('gen_layout_table can render html from a cached layout table payload', asyn
   }
 });
 
+test('gen_layout_table_cache update mode preserves cached algorithm results', async () => {
+  const cachePath = path.join(process.cwd(), 'tmp-layout-table-update-cache-test.json');
+  if (fs.existsSync(cachePath)) {
+    fs.unlinkSync(cachePath);
+  }
+
+  try {
+    await runCli(
+      [
+        'benchmark/sample_graphs_coords.dot',
+        'sample1',
+        '--algorithms', 'input',
+        '--timeout', '30',
+        '--cache-only',
+        '--output', cachePath
+      ],
+      {
+        stdout: { write() {} },
+        stderr: { write() {} }
+      }
+    );
+
+    await runCli(
+      [
+        'benchmark/sample_graphs_coords.dot',
+        'sample1',
+        '--algorithms', 'tutte',
+        '--timeout', '30',
+        '--concurrency', '2',
+        '--cache-only',
+        '--update-cache',
+        '--output', cachePath
+      ],
+      {
+        stdout: { write() {} },
+        stderr: { write() {} }
+      }
+    );
+
+    const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    assert.deepEqual(cache.algorithms.map((alg) => alg.key), ['input', 'tutte']);
+    assert.equal(cache.rows.length, 1);
+    assert.deepEqual(cache.rows[0].results.map((result) => result.algorithm), ['input', 'tutte']);
+    assert.ok(cache.rows[0].results[0].positions);
+    assert.ok(cache.rows[0].results[1].positions);
+  } finally {
+    if (fs.existsSync(cachePath)) {
+      fs.unlinkSync(cachePath);
+    }
+  }
+});
+
 test('gen_layout_table still renders non-plane input drawings when positions are available', async () => {
   const datasetPath = path.join(process.cwd(), 'tmp-nonplane-input.dot');
   const outputPath = path.join(process.cwd(), 'tmp-layout-table-nonplane-test.html');

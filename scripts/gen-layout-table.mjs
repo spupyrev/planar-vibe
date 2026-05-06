@@ -16,6 +16,7 @@ import {
 } from './apply-layout.mjs';
 
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
+const DEFAULT_CONCURRENCY = 1;
 const DEFAULT_OUTPUT = 'layout-table.html';
 const DEFAULT_CACHE_OUTPUT = path.join('evaluation_data', 'layout-table-cache.json');
 const CACHE_SCHEMA = 'planarvibe-layout-table-cache';
@@ -41,7 +42,7 @@ export function usage(message, io) {
   out.stderr.write(
     'Usage: ./scripts/gen_layout_table <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--output layout-table.html] [--cache-output evaluation_data/layout-table-cache.json]\n' +
     '       ./scripts/gen_layout_table --from-cache evaluation_data/layout-table-cache.json [--output layout-table.html]\n' +
-    '       ./scripts/gen_layout_table_cache <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--output evaluation_data/layout-table-cache.json]\n' +
+    '       ./scripts/gen_layout_table_cache <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--concurrency 1] [--update-cache] [--checkpoint-interval 0] [--output evaluation_data/layout-table-cache.json]\n' +
     'Example: ./scripts/gen_layout_table benchmark/sample_graphs_coords.dot "sample*" --algorithms input,tutte,*balancer* --output layout-table.html\n' +
     'Example: ./scripts/gen_layout_table_cache benchmark/sample_graphs_coords.dot "sample*" --algorithms input,tutte,*balancer* --output evaluation_data/sample-layout-table-cache.json\n' +
     'Example: ./scripts/gen_layout_table --from-cache evaluation_data/sample-layout-table-cache.json --output layout-table.html\n'
@@ -58,16 +59,23 @@ function parseArgs(argv) {
   const opts = {
     algorithms: null,
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    concurrency: DEFAULT_CONCURRENCY,
     outputPath: null,
     cacheOutputPath: null,
     cacheOnly: false,
-    fromCachePath: null
+    fromCachePath: null,
+    updateCache: false,
+    checkpointInterval: 0
   };
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--cache-only') {
       opts.cacheOnly = true;
+      continue;
+    }
+    if (arg === '--update-cache') {
+      opts.updateCache = true;
       continue;
     }
     if (arg === '--from-cache' && i + 1 < argv.length) {
@@ -90,6 +98,16 @@ function parseArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === '--concurrency' && i + 1 < argv.length) {
+      opts.concurrency = Math.max(1, Math.floor(Number(argv[i + 1]) || DEFAULT_CONCURRENCY));
+      i += 1;
+      continue;
+    }
+    if (arg === '--checkpoint-interval' && i + 1 < argv.length) {
+      opts.checkpointInterval = Math.max(0, Math.floor(Number(argv[i + 1]) || 0));
+      i += 1;
+      continue;
+    }
     if (arg === '--output' && i + 1 < argv.length) {
       opts.outputPath = String(argv[i + 1]);
       i += 1;
@@ -109,6 +127,10 @@ function parseArgs(argv) {
     }
     if (opts.cacheOnly) {
       usage('--cache-only cannot be combined with --from-cache.');
+      process.exit(1);
+    }
+    if (opts.updateCache) {
+      usage('--update-cache cannot be combined with --from-cache.');
       process.exit(1);
     }
     if (opts.algorithms) {
@@ -389,37 +411,149 @@ function readCacheRecord(cachePath) {
   return cache;
 }
 
-async function buildRows(dataset, graphPattern, selectedAlgorithms, timeoutMs, out) {
+function mergeAlgorithmSpecs(existingAlgorithms, selectedAlgorithms) {
+  const merged = [];
+  const seen = new Set();
+  for (const algorithm of [...(existingAlgorithms || []), ...selectedAlgorithms]) {
+    if (!algorithm || !algorithm.key || seen.has(algorithm.key)) {
+      continue;
+    }
+    seen.add(algorithm.key);
+    merged.push(algorithm);
+  }
+  return merged;
+}
+
+function findCacheResult(row, algorithmKey) {
+  return row && Array.isArray(row.results)
+    ? row.results.find((result) => result && result.algorithm === algorithmKey)
+    : null;
+}
+
+function sortRowResults(row, algorithms) {
+  const order = new Map(algorithms.map((algorithm, index) => [algorithm.key, index]));
+  row.results.sort((a, b) => {
+    const ai = order.has(a.algorithm) ? order.get(a.algorithm) : Number.MAX_SAFE_INTEGER;
+    const bi = order.has(b.algorithm) ? order.get(b.algorithm) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) {
+      return ai - bi;
+    }
+    return String(a.algorithm || '').localeCompare(String(b.algorithm || ''));
+  });
+}
+
+function readExistingCacheForUpdate(cachePath, dataset, out) {
+  const absPath = path.resolve(process.cwd(), cachePath);
+  if (!fs.existsSync(absPath)) {
+    return null;
+  }
+  const cache = readCacheRecord(cachePath);
+  if (!cache.dataset || cache.dataset.filePath !== dataset.filePath) {
+    throw new Error(
+      `Refusing to update ${cachePath}: cached dataset is ${cache.dataset && cache.dataset.filePath ? cache.dataset.filePath : 'unknown'}, ` +
+      `but requested ${dataset.filePath}.`
+    );
+  }
+  out.stdout.write(`Read ${path.relative(process.cwd(), absPath)}\n`);
+  return cache;
+}
+
+async function runMissingJobs(jobs, workerPath, timeoutMs, concurrency, out, onJobComplete) {
+  if (jobs.length === 0) {
+    out.stdout.write('All selected algorithm results were already cached.\n');
+    return;
+  }
+
+  let nextIndex = 0;
+  let completed = 0;
+  async function workerLoop() {
+    while (true) {
+      const index = nextIndex;
+      if (index >= jobs.length) {
+        return;
+      }
+      nextIndex += 1;
+      const job = jobs[index];
+      const rec = await runOne(
+        workerPath,
+        job.algorithm.key,
+        timeoutMs,
+        job.dataset.dataset,
+        job.graph.graphName,
+        job.graph.parsed,
+        true
+      );
+      job.row.results.push(rec);
+      completed += 1;
+      if (onJobComplete) {
+        onJobComplete(completed);
+      }
+      out.stdout.write(`[${completed}/${jobs.length}] ${job.graph.graphName} :: ${job.algorithm.label}\n`);
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, jobs.length) }, () => workerLoop()));
+}
+
+async function buildRows(dataset, graphPattern, selectedAlgorithms, timeoutMs, out, opts = {}) {
   const matchedGraphs = dataset.graphs.filter((graph) => matchesGlob(graph.graphName, graphPattern));
   if (matchedGraphs.length === 0) {
     throw new Error(`No graphs in ${dataset.filePath} matched "${graphPattern}".`);
   }
 
+  const existingRowsByName = new Map();
+  if (opts.existingCache) {
+    for (const row of opts.existingCache.rows) {
+      existingRowsByName.set(row.graphName, row);
+    }
+  }
+
+  const rows = matchedGraphs.map((graph) => {
+    const existingRow = existingRowsByName.get(graph.graphName);
+    if (!existingRow) {
+      return {
+        graphName: graph.graphName,
+        parsed: graph.parsed,
+        results: []
+      };
+    }
+    return {
+      ...existingRow,
+      parsed: existingRow.parsed || graph.parsed,
+      results: Array.isArray(existingRow.results) ? existingRow.results.slice() : []
+    };
+  });
+
   const workerPath = getWorkerPath();
-  const rows = [];
+  const jobs = [];
   for (let i = 0; i < matchedGraphs.length; i += 1) {
     const graph = matchedGraphs[i];
-    out.stdout.write(`[${i + 1}/${matchedGraphs.length}] ${graph.graphName}\n`);
-    const results = [];
+    const row = rows[i];
     for (let j = 0; j < selectedAlgorithms.length; j += 1) {
       const algorithm = selectedAlgorithms[j];
-      out.stdout.write(`  - ${algorithm.label}\n`);
-      const rec = await runOne(
-        workerPath,
-        algorithm.key,
-        timeoutMs,
-        dataset.dataset,
-        graph.graphName,
-        graph.parsed,
-        true
-      );
-      results.push(rec);
+      if (opts.existingCache && findCacheResult(row, algorithm.key)) {
+        continue;
+      }
+      jobs.push({ dataset, graph, row, algorithm });
     }
-    rows.push({
-      graphName: graph.graphName,
-      parsed: graph.parsed,
-      results
-    });
+  }
+  const algorithmsForSort = opts.algorithmsForSort || selectedAlgorithms;
+  const sortAllRows = () => {
+    for (const row of rows) {
+      sortRowResults(row, algorithmsForSort);
+    }
+  };
+  await runMissingJobs(jobs, workerPath, timeoutMs, opts.concurrency || DEFAULT_CONCURRENCY, out, (completed) => {
+    if (!opts.onCheckpoint || !opts.checkpointInterval || completed % opts.checkpointInterval !== 0) {
+      return;
+    }
+    sortAllRows();
+    opts.onCheckpoint(rows, completed, jobs.length);
+  });
+
+  sortAllRows();
+  if (opts.onCheckpoint && jobs.length > 0) {
+    opts.onCheckpoint(rows, jobs.length, jobs.length);
   }
   return rows;
 }
@@ -445,11 +579,29 @@ export async function runCli(argv = process.argv.slice(2), io) {
 
   const availableAlgorithms = getAvailableAlgorithmSpecs();
   const selectedAlgorithms = resolveAlgorithmPatterns(availableAlgorithms, opts.algorithms);
-  const rows = await buildRows(dataset, opts.graphPattern, selectedAlgorithms, opts.timeoutMs, out);
-  const cache = buildCacheRecord(dataset, opts.graphPattern, selectedAlgorithms, rows);
+  const cacheOutputPath = opts.cacheOutputPath || opts.outputPath;
+  const existingCache = opts.updateCache && opts.cacheOnly
+    ? readExistingCacheForUpdate(cacheOutputPath, dataset, out)
+    : null;
+  const algorithms = mergeAlgorithmSpecs(existingCache ? existingCache.algorithms : [], selectedAlgorithms);
+  const writeCheckpoint = opts.cacheOnly && opts.updateCache && opts.checkpointInterval > 0
+    ? (rows, completed, total) => {
+        const checkpointCache = buildCacheRecord(dataset, opts.graphPattern, algorithms, rows);
+        const absCheckpointPath = writeJsonFile(cacheOutputPath, checkpointCache);
+        out.stdout.write(`Checkpoint ${completed}/${total}: wrote ${path.relative(process.cwd(), absCheckpointPath)}\n`);
+      }
+    : null;
+  const rows = await buildRows(dataset, opts.graphPattern, selectedAlgorithms, opts.timeoutMs, out, {
+    existingCache,
+    concurrency: opts.concurrency,
+    algorithmsForSort: algorithms,
+    checkpointInterval: opts.checkpointInterval,
+    onCheckpoint: writeCheckpoint
+  });
+  const cache = buildCacheRecord(dataset, opts.graphPattern, algorithms, rows);
 
   if (opts.cacheOnly) {
-    const absCachePath = writeJsonFile(opts.cacheOutputPath || opts.outputPath, cache);
+    const absCachePath = writeJsonFile(cacheOutputPath, cache);
     out.stdout.write(`Wrote ${path.relative(process.cwd(), absCachePath)}\n`);
     return;
   }
