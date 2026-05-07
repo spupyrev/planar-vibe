@@ -18,7 +18,6 @@
     if (!(range > 0)) {
       return 0;
     }
-
     var gaps = GeometryUtils.collectPositiveGaps(sorted, range);
     var quantile = GeometryUtils.computeQuantile(gaps, opts.quantile);
     var scale = Number.isFinite(opts.toleranceScale) ? opts.toleranceScale : 2;

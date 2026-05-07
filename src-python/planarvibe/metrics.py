@@ -19,6 +19,11 @@ from typing import Sequence
 from . import geometry as geo
 
 
+USE_SIMPLE_AXIS_ALIGNMENT = True
+SIMPLE_AXIS_ALIGNMENT_EPSILON = 1e-5
+USE_SQUARE_NODE_UNIFORMITY_GRID = True
+
+
 def uniform_ideal_distribution(n: int) -> list[float]:
     if not (n > 0):
         return []
@@ -107,6 +112,21 @@ def _cluster_sorted_values(sorted_values: Sequence[float], tolerance: float) -> 
     return sizes
 
 
+def _cluster_sorted_values_by_span(sorted_values: Sequence[float], tolerance: float) -> list[int]:
+    if not sorted_values or len(sorted_values) == 0:
+        return []
+    eps = max(0.0, tolerance) if _finite(tolerance) else 0.0
+    sizes = [1]
+    cluster_start = sorted_values[0]
+    for i in range(1, len(sorted_values)):
+        if sorted_values[i] - cluster_start > eps:
+            sizes.append(1)
+            cluster_start = sorted_values[i]
+        else:
+            sizes[-1] += 1
+    return sizes
+
+
 def _compute_effective_line_count(cluster_sizes: Sequence[int], total_count: int) -> float | None:
     if not cluster_sizes or len(cluster_sizes) == 0 or not (total_count > 0):
         return None
@@ -166,6 +186,34 @@ def _compute_axis_clustering(values: Sequence[float], options: dict | None = Non
     }
 
 
+def _compute_simple_axis_clustering(values: Sequence[float]) -> dict | None:
+    if not values or len(values) == 0:
+        return None
+    sorted_vals = sorted(values)
+    vmin = sorted_vals[0]
+    vmax = sorted_vals[-1]
+    rng = vmax - vmin
+    if rng > 0:
+        normalized = [(v - vmin) / rng for v in sorted_vals]
+    else:
+        normalized = [0.0] * len(sorted_vals)
+
+    tolerance = SIMPLE_AXIS_ALIGNMENT_EPSILON if rng > 0 else 0.0
+    cluster_sizes = _cluster_sorted_values_by_span(normalized, tolerance)
+    effective_line_count = _compute_effective_line_count(cluster_sizes, len(sorted_vals))
+    return {
+        "sortedValues": sorted_vals,
+        "normalizedValues": normalized,
+        "clusterSizes": cluster_sizes,
+        "lineCount": len(cluster_sizes),
+        "effectiveLineCount": effective_line_count,
+        "tolerance": tolerance,
+        "rawTolerance": tolerance,
+        "toleranceSource": "normalized-fixed" if rng > 0 else "range-zero",
+        "range": rng,
+    }
+
+
 def compute_axis_alignment_score(node_ids: Sequence[str], pos_by_id: dict, options: dict | None = None) -> dict:
     if not node_ids or len(node_ids) == 0:
         return {"ok": False, "reason": "No nodes"}
@@ -184,24 +232,27 @@ def compute_axis_alignment_score(node_ids: Sequence[str], pos_by_id: dict, optio
     if len(xs) < 2:
         return {"ok": False, "reason": "Not enough positioned nodes"}
 
-    shared_tolerance = opts["tolerance"] if _finite(opts.get("tolerance")) else None
-
-    x_axis = _compute_axis_clustering(xs, {
-        "tolerance": opts["toleranceX"] if _finite(opts.get("toleranceX")) else shared_tolerance,
-        "quantile": opts.get("quantile"),
-        "toleranceScale": opts.get("toleranceScale"),
-        "toleranceCapFraction": opts.get("toleranceCapFraction"),
-        "minTolerance": opts.get("minToleranceX"),
-        "fallbackToleranceFraction": opts.get("fallbackToleranceFraction"),
-    })
-    y_axis = _compute_axis_clustering(ys, {
-        "tolerance": opts["toleranceY"] if _finite(opts.get("toleranceY")) else shared_tolerance,
-        "quantile": opts.get("quantile"),
-        "toleranceScale": opts.get("toleranceScale"),
-        "toleranceCapFraction": opts.get("toleranceCapFraction"),
-        "minTolerance": opts.get("minToleranceY"),
-        "fallbackToleranceFraction": opts.get("fallbackToleranceFraction"),
-    })
+    if USE_SIMPLE_AXIS_ALIGNMENT:
+        x_axis = _compute_simple_axis_clustering(xs)
+        y_axis = _compute_simple_axis_clustering(ys)
+    else:
+        shared_tolerance = opts["tolerance"] if _finite(opts.get("tolerance")) else None
+        x_axis = _compute_axis_clustering(xs, {
+            "tolerance": opts["toleranceX"] if _finite(opts.get("toleranceX")) else shared_tolerance,
+            "quantile": opts.get("quantile"),
+            "toleranceScale": opts.get("toleranceScale"),
+            "toleranceCapFraction": opts.get("toleranceCapFraction"),
+            "minTolerance": opts.get("minToleranceX"),
+            "fallbackToleranceFraction": opts.get("fallbackToleranceFraction"),
+        })
+        y_axis = _compute_axis_clustering(ys, {
+            "tolerance": opts["toleranceY"] if _finite(opts.get("toleranceY")) else shared_tolerance,
+            "quantile": opts.get("quantile"),
+            "toleranceScale": opts.get("toleranceScale"),
+            "toleranceCapFraction": opts.get("toleranceCapFraction"),
+            "minTolerance": opts.get("minToleranceY"),
+            "fallbackToleranceFraction": opts.get("fallbackToleranceFraction"),
+        })
     if (x_axis is None or y_axis is None
             or not _finite(x_axis["effectiveLineCount"])
             or not _finite(y_axis["effectiveLineCount"])):
@@ -403,7 +454,7 @@ def compute_node_uniformity_score(node_ids: Sequence[str], pos_by_id: dict) -> d
     width = max_x - min_x
     height = max_y - min_y
     rows = max(1, int(math.floor(math.sqrt(n))))
-    cols = max(1, int(math.ceil(n / rows)))
+    cols = rows if USE_SQUARE_NODE_UNIFORMITY_GRID else max(1, int(math.ceil(n / rows)))
     cell_count = rows * cols
     counts = [0] * cell_count
     for p in points:

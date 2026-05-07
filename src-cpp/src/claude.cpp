@@ -44,6 +44,32 @@ struct Variant {
     std::unordered_map<std::string, double> scores;
 };
 
+struct RotAlignResult {
+    std::string label_suffix;
+    pg::PosByStr positions;
+    std::unordered_map<std::string, double> scores;
+};
+
+pg::PosByStr rotate_positions(const pg::PosByStr& pos, double theta) {
+    if (pos.empty()) return {};
+    double cx = 0, cy = 0;
+    for (const auto& kv : pos) {
+        cx += kv.second[0];
+        cy += kv.second[1];
+    }
+    cx /= pos.size();
+    cy /= pos.size();
+    double c = std::cos(theta);
+    double s = std::sin(theta);
+    pg::PosByStr out;
+    for (const auto& kv : pos) {
+        double dx = kv.second[0] - cx;
+        double dy = kv.second[1] - cy;
+        out[kv.first] = {cx + dx * c - dy * s, cy + dx * s + dy * c};
+    }
+    return out;
+}
+
 pg::PosByStr lr_to_pos(const Graph& g, const LayoutResult& lr) {
     pg::PosByStr p;
     if (!lr.ok) return p;
@@ -91,6 +117,32 @@ CandResult run_internal_candidate(pg::PosByStr positions,
     return R;
 }
 
+std::optional<RotAlignResult> find_best_rotation_and_alignment(
+    const ensemble::GraphRef& gr,
+    const std::vector<std::string>& node_ids,
+    const std::vector<std::pair<std::string,std::string>>& edge_pairs,
+    const pg::PosByStr& pos,
+    const std::optional<planarity::StringEmbedding>& embedding) {
+    std::optional<RotAlignResult> best;
+    for (int i = 0; i < 19; ++i) {
+        double theta = (i / 18.0) * (M_PI / 2);
+        pg::PosByStr rotated = (i == 0) ? pos : rotate_positions(pos, theta);
+        auto rotated_scores = ensemble::compute_scores_claude(gr, node_ids, edge_pairs, rotated, embedding);
+        if (!best || rotated_scores.at("total") > best->scores.at("total")) {
+            best = RotAlignResult{"+rot", rotated, rotated_scores};
+        }
+
+        auto aligned = alignment::align_to_axis_greedy(node_ids, edge_pairs, rotated);
+        if (aligned.ok) {
+            auto aligned_scores = ensemble::compute_scores_claude(gr, node_ids, edge_pairs, aligned.positions, embedding);
+            if (!best || aligned_scores.at("total") > best->scores.at("total")) {
+                best = RotAlignResult{"+rot+align", aligned.positions, aligned_scores};
+            }
+        }
+    }
+    return best;
+}
+
 std::vector<Variant> expand_variants(const std::string& label,
                                      const pg::PosByStr& pos,
                                      const std::optional<planarity::StringEmbedding>& embedding,
@@ -102,14 +154,12 @@ std::vector<Variant> expand_variants(const std::string& label,
     Variant base{label + ":base", pos, embedding, ensemble::compute_scores_claude(gr, node_ids, edge_pairs, pos, embedding)};
     out.push_back(base);
     if (time_left && time_left() < 1000) return out;
-    auto rot = ensemble::find_best_rotation_claude(gr, node_ids, edge_pairs, pos, embedding);
-    out.push_back({label + ":rot", rot.positions, embedding, rot.scores});
-    if (!time_left || time_left() > 500) {
-        auto a1 = alignment::align_to_axis_greedy(node_ids, edge_pairs, rot.positions);
-        if (a1.ok) {
-            auto sc = ensemble::compute_scores_claude(gr, node_ids, edge_pairs, a1.positions, embedding);
-            out.push_back({label + ":rot+align", a1.positions, embedding, sc});
-        }
+    auto rot_align = find_best_rotation_and_alignment(gr, node_ids, edge_pairs, pos, embedding);
+    if (rot_align) {
+        out.push_back({label + ":" + rot_align->label_suffix.substr(1),
+                       rot_align->positions,
+                       embedding,
+                       rot_align->scores});
     }
     return out;
 }
@@ -126,12 +176,12 @@ Variant try_align(const Variant& best, const ensemble::GraphRef& gr,
     return best;
 }
 
-Variant try_rot(const Variant& best, const ensemble::GraphRef& gr,
-                const std::vector<std::string>& node_ids,
-                const std::vector<std::pair<std::string,std::string>>& edge_pairs) {
-    auto r = ensemble::find_best_rotation_claude(gr, node_ids, edge_pairs, best.positions, best.embedding);
-    if (r.scores.at("total") > best.scores.at("total")) {
-        return {best.label + "+rot", r.positions, best.embedding, r.scores};
+Variant try_rot_align(const Variant& best, const ensemble::GraphRef& gr,
+                      const std::vector<std::string>& node_ids,
+                      const std::vector<std::pair<std::string,std::string>>& edge_pairs) {
+    auto r = find_best_rotation_and_alignment(gr, node_ids, edge_pairs, best.positions, best.embedding);
+    if (r && r->scores.at("total") > best.scores.at("total")) {
+        return {best.label + r->label_suffix, r->positions, best.embedding, r->scores};
     }
     return best;
 }
@@ -245,8 +295,7 @@ LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
             }
         }
 
-        best = try_rot(best, gr, node_ids, edge_pairs);
-        best = try_align(best, gr, node_ids, edge_pairs);
+        best = try_rot_align(best, gr, node_ids, edge_pairs);
 
         if (n <= 75 && time_left() > 1000) {
             ensemble::ClaudePolishOptions o;
@@ -318,8 +367,7 @@ LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
         for (int it = 0; it < outer_iters; ++it) {
             if (time_left() < 800) break;
             double before = best.scores.at("total");
-            best = try_rot(best, gr, node_ids, edge_pairs);
-            best = try_align(best, gr, node_ids, edge_pairs);
+            best = try_rot_align(best, gr, node_ids, edge_pairs);
             if (time_left() > 800) {
                 ensemble::ClaudePolishOptions o;
                 o.max_passes = 3;

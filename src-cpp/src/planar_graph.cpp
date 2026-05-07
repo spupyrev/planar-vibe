@@ -25,7 +25,7 @@ struct NeighborCmp {
         if (ia == pos->end() || ib == pos->end()) return a < b;
         double aa = std::atan2(ia->second[1] - pu[1], ia->second[0] - pu[0]);
         double ab = std::atan2(ib->second[1] - pu[1], ib->second[0] - pu[0]);
-        if (std::abs(aa - ab) > 1e-12) return aa < ab;
+        if (std::abs(aa - ab) > 1e-12) return aa > ab;
         double da = (ia->second[0] - pu[0]) * (ia->second[0] - pu[0])
                    + (ia->second[1] - pu[1]) * (ia->second[1] - pu[1]);
         double db = (ib->second[0] - pu[0]) * (ib->second[0] - pu[0])

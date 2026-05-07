@@ -173,7 +173,7 @@ def _compare_neighbors(a: str, b: str, pu: tuple, pos_by_id: dict) -> int:
     angle_a = math.atan2(pa[1] - pu[1], pa[0] - pu[0])
     angle_b = math.atan2(pb[1] - pu[1], pb[0] - pu[0])
     if abs(angle_a - angle_b) > 1e-12:
-        return -1 if angle_a < angle_b else 1
+        return -1 if angle_a > angle_b else 1
     dist_a = (pa[0] - pu[0]) ** 2 + (pa[1] - pu[1]) ** 2
     dist_b = (pb[0] - pu[0]) ** 2 + (pb[1] - pu[1]) ** 2
     if abs(dist_a - dist_b) > 1e-12:

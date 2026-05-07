@@ -118,6 +118,35 @@ bool move_would_cross(const std::string& v, Point oldP, Point newP,
     return false;
 }
 
+bool has_position_crossings_by_name(const pg::PosByStr& pos,
+                                    const std::vector<std::pair<std::string,std::string>>& edges) {
+    std::unordered_map<std::string, int> idx;
+    std::vector<std::string> ids;
+    auto add_id = [&](const std::string& id) {
+        if (idx.count(id)) return;
+        idx[id] = (int)ids.size();
+        ids.push_back(id);
+    };
+    for (const auto& [u, v] : edges) {
+        add_id(u);
+        add_id(v);
+    }
+    for (const auto& [id, _] : pos) add_id(id);
+
+    PositionMap pm;
+    pm.resize((int)ids.size());
+    for (int i = 0; i < (int)ids.size(); ++i) {
+        auto it = pos.find(ids[i]);
+        if (it != pos.end() && std::isfinite(it->second[0]) && std::isfinite(it->second[1])) {
+            pm.put(i, it->second[0], it->second[1]);
+        }
+    }
+    std::vector<std::pair<int,int>> indexed_edges;
+    indexed_edges.reserve(edges.size());
+    for (const auto& [u, v] : edges) indexed_edges.emplace_back(idx[u], idx[v]);
+    return geo::has_position_crossings(pm, indexed_edges);
+}
+
 struct ForceOpts {
     double delta;
     double cNodeRep, cEdgeAttr, cNodeEdgeRep;
@@ -318,11 +347,7 @@ LayoutResult impred(const Graph& g, const pg::PosByStr* initial_positions) {
     for (const auto& id : node_ids) adjacency[id] = {};
     for (const auto& [u, v] : edges) { adjacency[u].push_back(v); adjacency[v].push_back(u); }
 
-    pg::PosByStr pos;
-    for (const auto& id : node_ids) {
-        auto it = prep.pos_by_id.find(id);
-        if (it != prep.pos_by_id.end()) pos[id] = it->second;
-    }
+    pg::PosByStr pos = prep.pos_by_id;
     std::unordered_set<std::string> fixed_outer(prep.outer_face.begin(), prep.outer_face.end());
 
     double delta = estimate_delta(edges, pos);
@@ -403,17 +428,7 @@ LayoutResult impred(const Graph& g, const pg::PosByStr* initial_positions) {
         }
 
         // Crossings check.
-        std::vector<std::pair<int,int>> iedges;
-        std::unordered_map<std::string,int> idx;
-        for (size_t i = 0; i < node_ids.size(); ++i) idx[node_ids[i]] = (int)i;
-        PositionMap pm;
-        pm.resize((int)node_ids.size());
-        for (size_t i = 0; i < node_ids.size(); ++i) {
-            auto it = pos.find(node_ids[i]);
-            if (it != pos.end()) pm.put((int)i, it->second[0], it->second[1]);
-        }
-        for (const auto& [u, v] : edges) iedges.emplace_back(idx[u], idx[v]);
-        bool has_cross = geo::has_position_crossings(pm, iedges);
+        bool has_cross = has_position_crossings_by_name(pos, edges);
         if (has_cross) {
             auto rr = resolve_crossings_by_vertex_rollback(pos, prevPos, edges, fixed_outer);
             if (!rr.resolved) {
@@ -430,13 +445,7 @@ LayoutResult impred(const Graph& g, const pg::PosByStr* initial_positions) {
                     }
                 }
                 // Re-check.
-                PositionMap pm2;
-                pm2.resize((int)node_ids.size());
-                for (size_t i = 0; i < node_ids.size(); ++i) {
-                    auto it = pos.find(node_ids[i]);
-                    if (it != pos.end()) pm2.put((int)i, it->second[0], it->second[1]);
-                }
-                if (geo::has_position_crossings(pm2, iedges)) {
+                if (has_position_crossings_by_name(pos, edges)) {
                     pos = prevPos;
                     for (const auto& vid : node_ids) {
                         velocity[vid][0] *= cfg.fullRollbackVelocityDamp;

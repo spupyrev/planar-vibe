@@ -10,6 +10,10 @@ namespace {
 
 bool is_finite(double x) { return std::isfinite(x); }
 
+constexpr bool USE_SIMPLE_AXIS_ALIGNMENT = true;
+constexpr double SIMPLE_AXIS_ALIGNMENT_EPSILON = 1e-5;
+constexpr bool USE_SQUARE_NODE_UNIFORMITY_GRID = true;
+
 // --- axis-alignment helpers ---
 
 std::vector<int> cluster_sorted_values(const std::vector<double>& sv, double tolerance) {
@@ -21,6 +25,23 @@ std::vector<int> cluster_sorted_values(const std::vector<double>& sv, double tol
         double g = sv[i] - sv[i - 1];
         if (g > eps) sizes.push_back(1);
         else ++sizes.back();
+    }
+    return sizes;
+}
+
+std::vector<int> cluster_sorted_values_by_span(const std::vector<double>& sv, double tolerance) {
+    std::vector<int> sizes;
+    if (sv.empty()) return sizes;
+    double eps = std::max(0.0, is_finite(tolerance) ? tolerance : 0.0);
+    sizes.push_back(1);
+    double cluster_start = sv[0];
+    for (size_t i = 1; i < sv.size(); ++i) {
+        if (sv[i] - cluster_start > eps) {
+            sizes.push_back(1);
+            cluster_start = sv[i];
+        } else {
+            ++sizes.back();
+        }
     }
     return sizes;
 }
@@ -63,6 +84,26 @@ std::optional<AxisClustering> compute_axis_clustering(std::vector<double> values
     }
     AxisClustering out;
     out.cluster_sizes = cluster_sorted_values(values, tolerance);
+    out.line_count = (int)out.cluster_sizes.size();
+    out.effective_line_count = compute_effective_line_count(out.cluster_sizes, (int)values.size());
+    return out;
+}
+
+std::optional<AxisClustering> compute_simple_axis_clustering(std::vector<double> values) {
+    if (values.empty()) return std::nullopt;
+    std::sort(values.begin(), values.end());
+    double rng = values.back() - values.front();
+    std::vector<double> normalized;
+    normalized.reserve(values.size());
+    if (rng > 0) {
+        double mn = values.front();
+        for (double v : values) normalized.push_back((v - mn) / rng);
+    } else {
+        normalized.assign(values.size(), 0.0);
+    }
+    double tolerance = rng > 0 ? SIMPLE_AXIS_ALIGNMENT_EPSILON : 0.0;
+    AxisClustering out;
+    out.cluster_sizes = cluster_sorted_values_by_span(normalized, tolerance);
     out.line_count = (int)out.cluster_sizes.size();
     out.effective_line_count = compute_effective_line_count(out.cluster_sizes, (int)values.size());
     return out;
@@ -136,8 +177,8 @@ MetricResult compute_axis_alignment_score(int n, const PositionMap& pos) {
     std::vector<double> xs, ys;
     xs.reserve(pts.size()); ys.reserve(pts.size());
     for (const auto& p : pts) { xs.push_back(p.x); ys.push_back(p.y); }
-    auto ax = compute_axis_clustering(xs);
-    auto ay = compute_axis_clustering(ys);
+    auto ax = USE_SIMPLE_AXIS_ALIGNMENT ? compute_simple_axis_clustering(xs) : compute_axis_clustering(xs);
+    auto ay = USE_SIMPLE_AXIS_ALIGNMENT ? compute_simple_axis_clustering(ys) : compute_axis_clustering(ys);
     if (!ax || !ay || !is_finite(ax->effective_line_count) || !is_finite(ay->effective_line_count)) {
         return {false, "Invalid axis clustering", {}, {}, {}};
     }
@@ -173,7 +214,9 @@ MetricResult compute_node_uniformity_score(int n, const PositionMap& pos) {
     }
     double w = mx_x - mn_x, h = mx_y - mn_y;
     int rows = std::max(1, (int)std::floor(std::sqrt((double)k)));
-    int cols = std::max(1, (int)std::ceil((double)k / rows));
+    int cols = USE_SQUARE_NODE_UNIFORMITY_GRID
+        ? rows
+        : std::max(1, (int)std::ceil((double)k / rows));
     int cell_count = rows * cols;
     std::vector<int> counts(cell_count, 0);
     for (const auto& p : pts) {

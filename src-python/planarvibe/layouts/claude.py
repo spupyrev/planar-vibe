@@ -120,6 +120,31 @@ def _find_best_rotation(node_ids, edge_pairs, pos_by_id, embedding):
     return {"posById": best_pos, "scores": best_score}
 
 
+def _find_best_rotation_and_alignment(node_ids, edge_pairs, pos_by_id, embedding):
+    best = None
+    for i in range(19):
+        theta = (i / 18) * (math.pi / 2)
+        rotated = pos_by_id if i == 0 else _rotate_positions(pos_by_id, theta)
+        rotated_scores = _compute_scores(node_ids, edge_pairs, rotated, embedding)
+        if best is None or rotated_scores["total"] > best["scores"]["total"]:
+            best = {
+                "labelSuffix": "+rot",
+                "posById": rotated,
+                "scores": rotated_scores,
+            }
+
+        aligned = alignment.align_to_axis_greedy(node_ids, edge_pairs, rotated, {})
+        if aligned.get("ok"):
+            aligned_scores = _compute_scores(node_ids, edge_pairs, aligned["positions"], embedding)
+            if best is None or aligned_scores["total"] > best["scores"]["total"]:
+                best = {
+                    "labelSuffix": "+rot+align",
+                    "posById": aligned["positions"],
+                    "scores": aligned_scores,
+                }
+    return best
+
+
 def _build_adj_index(node_ids, edge_pairs):
     id_index = {str(nid): i for i, nid in enumerate(node_ids)}
     n = len(node_ids)
@@ -1262,13 +1287,12 @@ def _expand_variants(label, pos_by_id, embedding, node_ids, edge_pairs, time_lef
                  "scores": _compute_scores(node_ids, edge_pairs, pos_by_id, embedding)}]
     if time_left and time_left() < 1000:
         return variants
-    rot = _find_best_rotation(node_ids, edge_pairs, pos_by_id, embedding)
-    variants.append({"label": f"{label}:rot", "posById": rot["posById"], "embedding": embedding, "scores": rot["scores"]})
-    if not time_left or time_left() > 500:
-        a1 = alignment.align_to_axis_greedy(node_ids, edge_pairs, rot["posById"], {})
-        if a1.get("ok"):
-            variants.append({"label": f"{label}:rot+align", "posById": a1["positions"], "embedding": embedding,
-                             "scores": _compute_scores(node_ids, edge_pairs, a1["positions"], embedding)})
+    rot_align = _find_best_rotation_and_alignment(node_ids, edge_pairs, pos_by_id, embedding)
+    if rot_align:
+        variants.append({"label": f"{label}:{rot_align['labelSuffix'][1:]}",
+                         "posById": rot_align["posById"],
+                         "embedding": embedding,
+                         "scores": rot_align["scores"]})
     return variants
 
 
@@ -1286,6 +1310,16 @@ def _try_rot(node_ids, edge_pairs, best):
     r = _find_best_rotation(node_ids, edge_pairs, best["posById"], best["embedding"])
     if r["scores"]["total"] > best["scores"]["total"]:
         return {"label": best["label"] + "+rot", "posById": r["posById"], "embedding": best["embedding"], "scores": r["scores"]}
+    return best
+
+
+def _try_rot_align(node_ids, edge_pairs, best):
+    r = _find_best_rotation_and_alignment(node_ids, edge_pairs, best["posById"], best["embedding"])
+    if r and r["scores"]["total"] > best["scores"]["total"]:
+        return {"label": best["label"] + r["labelSuffix"],
+                "posById": r["posById"],
+                "embedding": best["embedding"],
+                "scores": r["scores"]}
     return best
 
 
@@ -1350,8 +1384,7 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
                         "embedding": start_var["embedding"],
                         "scores": polished["scores"]}
 
-        best = _try_rot(node_ids, edge_pairs, best)
-        best = _try_align(node_ids, edge_pairs, best)
+        best = _try_rot_align(node_ids, edge_pairs, best)
 
         if n <= 75 and time_left() > 1000:
             best = _try_polish(node_ids, edge_pairs, best, {
@@ -1411,8 +1444,7 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
             if time_left() < 800:
                 break
             before = best["scores"]["total"]
-            best = _try_rot(node_ids, edge_pairs, best)
-            best = _try_align(node_ids, edge_pairs, best)
+            best = _try_rot_align(node_ids, edge_pairs, best)
             if time_left() > 800:
                 best = _try_polish(node_ids, edge_pairs, best, {
                     "maxPasses": 3, "stepScale": 0.006, "minStepScale": 0.0003,
