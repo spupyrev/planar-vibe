@@ -1271,15 +1271,15 @@ def _compute_polished_positions(graph, seed_positions, seed_score, options, dead
     return best
 
 
-def _run_candidate(name, graph, compute_options):
+def _run_candidate(name, graph, compute_options, initial_positions=None):
     if name == "tutte":
-        return tutte_layout.apply_layout(graph, options=compute_options)
+        return tutte_layout.apply_layout(graph, initial_positions=initial_positions, options=compute_options)
     if name == "edgebalancer":
-        return edgebalancer_layout.apply_layout(graph, options=compute_options)
+        return edgebalancer_layout.apply_layout(graph, initial_positions=initial_positions, options=compute_options)
     if name == "fabalancer":
-        return fabalancer_layout.apply_layout(graph, options=compute_options)
+        return fabalancer_layout.apply_layout(graph, initial_positions=initial_positions, options=compute_options)
     if name == "air":
-        return air_layout.apply_layout(graph, options=compute_options)
+        return air_layout.apply_layout(graph, initial_positions=initial_positions, options=compute_options)
     if name == "tree":
         return _compute_tree_positions(graph)
     if name == "radialtree":
@@ -1345,7 +1345,7 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
         if best is not None and isinstance(budget, (int, float)) and math.isfinite(budget) and _now_ms() - started_at >= budget:
             break
         try:
-            result = _run_candidate(name, graph, {})
+            result = _run_candidate(name, graph, opts, initial_positions)
         except Exception as err:
             failures.append(f"{name}: {err}")
             continue

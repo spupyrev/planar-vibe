@@ -482,6 +482,14 @@ LayoutResult impred(const Graph& g, const pg::PosByStr* initial_positions) {
             pm.put(i, it->second[0], it->second[1]);
         }
     }
+    if (geo::has_position_crossings(pm, g.edges)) {
+        r.ok = false;
+        r.positions = pm;
+        r.message = "ImPrEd produced a non-plane drawing";
+        r.stop_reason = stop_reason;
+        r.iters = iter + 1;
+        return r;
+    }
     r.ok = true;
     r.positions = pm;
     r.message = "ImPrEd layout";

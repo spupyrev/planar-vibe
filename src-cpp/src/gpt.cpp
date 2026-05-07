@@ -86,7 +86,8 @@ bool is_leaf_spread_source(const std::string& name) {
 pg::PosByStr run_candidate(const std::string& name, const Graph& g,
                            const std::vector<std::string>& node_ids,
                            const std::vector<std::pair<std::string,std::string>>& edge_pairs,
-                           bool& ok, const ensemble::TwoCoreInfo& core_info_cache) {
+                           bool& ok, const ensemble::TwoCoreInfo& core_info_cache,
+                           const pg::PosByStr* initial_positions) {
     ok = false;
     pg::PosByStr out;
     auto lr_to_pos = [&](const LayoutResult& lr) -> pg::PosByStr {
@@ -97,10 +98,10 @@ pg::PosByStr run_candidate(const std::string& name, const Graph& g,
         }
         return p;
     };
-    if (name == "tutte") { auto lr = tutte(g); ok = lr.ok; return lr_to_pos(lr); }
-    if (name == "edgebalancer") { auto lr = edgebalancer(g); ok = lr.ok; return lr_to_pos(lr); }
-    if (name == "fabalancer") { auto lr = fabalancer(g); ok = lr.ok; return lr_to_pos(lr); }
-    if (name == "air") { auto lr = air(g); ok = lr.ok; return lr_to_pos(lr); }
+    if (name == "tutte") { auto lr = tutte(g, initial_positions); ok = lr.ok; return lr_to_pos(lr); }
+    if (name == "edgebalancer") { auto lr = edgebalancer(g, initial_positions); ok = lr.ok; return lr_to_pos(lr); }
+    if (name == "fabalancer") { auto lr = fabalancer(g, initial_positions); ok = lr.ok; return lr_to_pos(lr); }
+    if (name == "air") { auto lr = air(g, initial_positions); ok = lr.ok; return lr_to_pos(lr); }
     if (name == "p3t") { auto lr = p3t(g); ok = lr.ok; return lr_to_pos(lr); }
     if (name == "tree") {
         auto r = ensemble::compute_tree_positions(node_ids, edge_pairs);
@@ -163,7 +164,7 @@ std::vector<std::string> build_candidate_specs(
 
 } // anon
 
-LayoutResult gpt(const Graph& g, const pg::PosByStr* /*initial_positions*/) {
+LayoutResult gpt(const Graph& g, const pg::PosByStr* initial_positions) {
     LayoutResult r;
     Options opts;
 
@@ -203,7 +204,7 @@ LayoutResult gpt(const Graph& g, const pg::PosByStr* /*initial_positions*/) {
     for (const auto& name : specs) {
         if (best.ok && std::isfinite(opts.budgetMs) && ensemble::now_ms() - started_at >= opts.budgetMs) break;
         bool cand_ok = false;
-        pg::PosByStr cand_pos = run_candidate(name, g, node_ids, edge_pairs, cand_ok, core_info);
+        pg::PosByStr cand_pos = run_candidate(name, g, node_ids, edge_pairs, cand_ok, core_info, initial_positions);
         if (!cand_ok || cand_pos.empty()) continue;
         auto ev = ensemble::best_transform_for_candidate(gr, node_ids, edge_pairs, cand_pos,
                                                          opts.rotationSamples, stretch_factors, deadline_ms);

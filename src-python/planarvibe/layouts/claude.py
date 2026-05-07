@@ -1197,7 +1197,7 @@ def _extract_candidate_embedding(graph, pos_by_id):
 
 
 def _run_module_candidate(apply_fn, graph, runtime):
-    result = apply_fn(graph, options=runtime)
+    result = apply_fn(graph, initial_positions=runtime.get("currentPositions"), options=runtime)
     positions = result.get("positions") if result else None
     embedding = _extract_candidate_embedding(graph, positions) if positions else None
     return {"ok": bool(result and result.get("ok") and embedding), "posById": positions, "embedding": embedding}

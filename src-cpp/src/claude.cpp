@@ -149,7 +149,7 @@ Variant try_polish(const Variant& best, const ensemble::GraphRef& gr,
 
 } // anon
 
-LayoutResult claude(const Graph& g, const pg::PosByStr* /*initial_positions*/) {
+LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
     LayoutResult r;
     CustomLimits limits;
     std::vector<std::string> node_ids = g.node_names;
@@ -198,15 +198,15 @@ LayoutResult claude(const Graph& g, const pg::PosByStr* /*initial_positions*/) {
             }});
         }
     }
-    runners.push_back({"EdgeBalancer", [&]() { return run_module_candidate([&]() { return edgebalancer(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"FABalancer", [&]() { return run_module_candidate([&]() { return fabalancer(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"AngleBalancer", [&]() { return run_module_candidate([&]() { return anglebalancer(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"AreaGrad", [&]() { return run_module_candidate([&]() { return areagrad(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"FaceBalancer", [&]() { return run_module_candidate([&]() { return facebalancer(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"Reweight", [&]() { return run_module_candidate([&]() { return reweight(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"Schnyder", [&]() { return run_module_candidate([&]() { return schnyder(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"CEGBfs", [&]() { return run_module_candidate([&]() { return ceg_bfs(g); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"Tutte", [&]() { return run_module_candidate([&]() { return tutte(g); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"EdgeBalancer", [&]() { return run_module_candidate([&]() { return edgebalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"FABalancer", [&]() { return run_module_candidate([&]() { return fabalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"AngleBalancer", [&]() { return run_module_candidate([&]() { return anglebalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"AreaGrad", [&]() { return run_module_candidate([&]() { return areagrad(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"FaceBalancer", [&]() { return run_module_candidate([&]() { return facebalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"Reweight", [&]() { return run_module_candidate([&]() { return reweight(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"Schnyder", [&]() { return run_module_candidate([&]() { return schnyder(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"CEGBfs", [&]() { return run_module_candidate([&]() { return ceg_bfs(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    runners.push_back({"Tutte", [&]() { return run_module_candidate([&]() { return tutte(g, initial_positions); }, g, node_ids, edge_pairs); }});
 
     std::vector<Variant> variants;
     for (size_t i = 0; i < runners.size(); ++i) {
