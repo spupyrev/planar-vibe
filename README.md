@@ -43,7 +43,7 @@ python3 -m http.server 8000
 
 Then open `http://localhost:8000`.
 
-Run one or more JS layouts:
+Run one or more layouts using JS implementation:
 
 ```bash
 ./scripts/apply_layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
@@ -53,7 +53,7 @@ Requires Node.js 18+.
 
 ## Python Usage
 
-Run a Python layout:
+Run a layout using Python implementation:
 
 ```bash
 python3 src-python/scripts/apply_layout.py benchmark/named.dot sample1 fpp --out /tmp/sample1-fpp.json
