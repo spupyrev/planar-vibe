@@ -94,6 +94,24 @@ def _run_python(algorithm: str, dot_file: Path, graph_name: str, out_path: Path,
         return None
 
 
+def _run_cpp(cpp_bin: str, algorithm: str, dot_file: Path, graph_name: str,
+             out_path: Path, timeout: float = 180) -> dict | None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.run(
+            [cpp_bin, str(dot_file), graph_name, algorithm, "--out", str(out_path)],
+            cwd=str(REPO_ROOT), capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": f"TLE ({int(timeout)}s)", "timed_out": True}
+    if proc.returncode != 0:
+        return None
+    try:
+        return json.loads(out_path.read_text())
+    except (json.JSONDecodeError, FileNotFoundError):
+        return None
+
+
 def _extract_metrics(record: dict) -> dict:
     """JS golden stores metrics under 'metrics' with JS key names; so does Python."""
     m = record.get("metrics") if record else None
@@ -116,6 +134,10 @@ def main() -> int:
     ap.add_argument("--out", help="Path for raw CSV dump")
     ap.add_argument("--workers", type=int, default=min(16, os.cpu_count() or 1),
                     help="Parallel worker threads (each runs a JS/Py subprocess)")
+    ap.add_argument("--impl", choices=["python", "cpp"], default="python",
+                    help="Which reference implementation to compare against JS")
+    ap.add_argument("--cpp-bin", default=str(REPO_ROOT / "src-cpp" / "build" / "apply_layout"),
+                    help="Path to the C++ apply_layout binary (used with --impl cpp)")
     args = ap.parse_args()
 
     bench_path = (REPO_ROOT / args.benchmark).resolve()
@@ -144,9 +166,12 @@ def main() -> int:
             js_rec = _freeze_js(algorithm, bench_path, graph_name, golden)
         else:
             js_rec = _load_json(golden)
-        py_out = Path(f"/tmp/cmp_py_{algorithm}_{graph_name}.json")
-        py_rec = _run_python(algorithm, bench_path, graph_name, py_out)
-        return (algorithm, graph_name, js_rec, py_rec)
+        impl_out = Path(f"/tmp/cmp_{args.impl}_{algorithm}_{graph_name}.json")
+        if args.impl == "cpp":
+            impl_rec = _run_cpp(args.cpp_bin, algorithm, bench_path, graph_name, impl_out)
+        else:
+            impl_rec = _run_python(algorithm, bench_path, graph_name, impl_out)
+        return (algorithm, graph_name, js_rec, impl_rec)
 
     tasks = [(alg, entry) for entry in graphs for alg in algorithms]
     total = len(tasks)
@@ -155,7 +180,7 @@ def main() -> int:
     with ThreadPoolExecutor(max_workers=args.workers) as ex:
         futures = {ex.submit(_run_one, alg, entry): (alg, entry) for (alg, entry) in tasks}
         for fut in as_completed(futures):
-            algorithm, graph_name, js_rec, py_rec = fut.result()
+            algorithm, graph_name, js_rec, py_rec = fut.result()  # py_rec = impl (python or cpp)
             done_count += 1
             if done_count % 50 == 0 or done_count == total:
                 elapsed = time.monotonic() - start
