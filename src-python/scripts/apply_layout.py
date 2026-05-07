@@ -1,15 +1,17 @@
 """Python CLI mirroring scripts/apply-layout.mjs.
 
 Usage:
-  python src-python/scripts/apply_layout.py <benchmark.dot> <graph-name> <algorithm>
-       [--out PATH]
+  python src-python/scripts/apply_layout.py <benchmark.dot> <graph-name> <algorithm> [--out PATH]
+  python src-python/scripts/apply_layout.py <benchmark.dot> <graph-name> --algorithms input,tutte,*balancer* [--out PATH]
 """
 
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import math
+import re
 import sys
 import time
 from pathlib import Path
@@ -118,6 +120,77 @@ LAYOUT_REGISTRY = {
     "claude": claude.apply_layout,
 }
 
+LAYOUT_LABELS = {
+    "input": "Input",
+    "random": "Random",
+    "tutte": "Tutte",
+    "fpp": "FPP",
+    "schnyder": "Schnyder",
+    "p3t": "Planar 3-tree",
+    "reweight": "Reweight",
+    "ceg_bfs": "CEG BFS",
+    "ceg_xy": "CEG XY",
+    "forcedir": "ForceDir",
+    "air": "Air",
+    "areagrad": "AreaGrad",
+    "impred": "ImPrEd",
+    "facebalancer": "FaceBalancer",
+    "edgebalancer": "EdgeBalancer",
+    "anglebalancer": "AngleBalancer",
+    "fabalancer": "FABalancer",
+    "gpt": "GPT",
+    "claude": "Claude",
+}
+
+
+def _normalize_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def _normalize_glob_pattern(value: str) -> str:
+    return re.sub(r"[^a-z0-9*]+", "", str(value or "").lower())
+
+
+def _algorithm_candidates(name: str) -> list[str]:
+    label = LAYOUT_LABELS.get(name, name)
+    return [
+        _normalize_name(name),
+        _normalize_name(label),
+        _normalize_name(name.replace("_", "-")),
+        _normalize_name(label.replace("_", "-")),
+    ]
+
+
+def _resolve_algorithm_patterns(patterns: list[str]) -> list[str]:
+    if not patterns:
+        return []
+    selected: list[str] = []
+    seen: set[str] = set()
+    for raw in patterns:
+        pattern = str(raw or "").strip()
+        if not pattern:
+            continue
+        if "*" in pattern:
+            normalized = _normalize_glob_pattern(pattern)
+            matches = [
+                name for name in LAYOUT_REGISTRY
+                if any(fnmatch.fnmatchcase(candidate, normalized)
+                       for candidate in _algorithm_candidates(name))
+            ]
+        else:
+            requested = _normalize_name(pattern)
+            matches = [
+                name for name in LAYOUT_REGISTRY
+                if any(candidate == requested for candidate in _algorithm_candidates(name))
+            ][:1]
+        if not matches:
+            raise ValueError(f'No algorithms matched "{pattern}".')
+        for name in matches:
+            if name not in seen:
+                seen.add(name)
+                selected.append(name)
+    return selected
+
 
 def compute_all_metrics(graph, edge_pairs, pos_by_id) -> dict:
     """Compute the 10 drawing metrics + plane flag, mirroring run-dataset-algorithm-batch-worker.mjs."""
@@ -165,42 +238,23 @@ def compute_all_metrics(graph, edge_pairs, pos_by_id) -> dict:
     }
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("benchmark")
-    ap.add_argument("graph_name")
-    ap.add_argument("algorithm")
-    ap.add_argument("--out", help="Write JSON result to PATH instead of stdout.")
-    args = ap.parse_args()
-
-    bench = benchmarks.load_benchmark(args.benchmark)
-    graph_entry = next((g for g in bench.graphs if g.graph_name == args.graph_name), None)
-    if graph_entry is None:
-        print(f"No graph named {args.graph_name} in {args.benchmark}", file=sys.stderr)
-        return 2
-
+def _run_one_algorithm(bench, graph_entry, graph, algorithm: str) -> dict:
     parsed = graph_entry.parsed
-    graph = create_graph(parsed.node_ids, parsed.edge_pairs)
-
-    if args.algorithm not in LAYOUT_REGISTRY:
-        print(f"Layout not yet ported: {args.algorithm}", file=sys.stderr)
-        return 2
-
     explicit_positions = dict(parsed.positions_by_id) if parsed.positions_by_id else None
-    initial_positions = (explicit_positions if args.algorithm == "input"
+    initial_positions = (explicit_positions if algorithm == "input"
                          else _initialize_mock_positions(
                              parsed.node_ids,
-                             f"{bench.dataset}:{args.graph_name}",
+                             f"{bench.dataset}:{graph_entry.graph_name}",
                              explicit_positions,
                          ))
     t0 = time.perf_counter()
-    result = LAYOUT_REGISTRY[args.algorithm](graph, initial_positions=initial_positions)
+    result = LAYOUT_REGISTRY[algorithm](graph, initial_positions=initial_positions)
     runtime_ms = (time.perf_counter() - t0) * 1000.0
 
     record: dict = {
         "dataset": bench.dataset,
-        "graph": args.graph_name,
-        "algorithm": args.algorithm,
+        "graph": graph_entry.graph_name,
+        "algorithm": algorithm,
         "n": len(parsed.node_ids),
         "m": len(parsed.edge_pairs),
         "runtime_ms": runtime_ms,
@@ -213,8 +267,48 @@ def main() -> int:
         pos_by_id = result["positions"]
         record["positions"] = {nid: [p[0], p[1]] for nid, p in pos_by_id.items()}
         record["metrics"] = compute_all_metrics(graph, parsed.edge_pairs, pos_by_id)
+    return record
 
-    out_json = json.dumps(record, indent=2)
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("benchmark")
+    ap.add_argument("graph_name")
+    ap.add_argument("algorithm", nargs="?", help="Single layout algorithm, kept for backwards compatibility.")
+    ap.add_argument("--algorithm", dest="algorithm_flags", action="append",
+                    help="Layout algorithm name or glob pattern.")
+    ap.add_argument("--algorithms", dest="algorithm_flags", action="append",
+                    help="Comma-separated layout algorithm names or glob patterns.")
+    ap.add_argument("--out", help="Write JSON result to PATH instead of stdout.")
+    args = ap.parse_args()
+
+    bench = benchmarks.load_benchmark(args.benchmark)
+    graph_entry = next((g for g in bench.graphs if g.graph_name == args.graph_name), None)
+    if graph_entry is None:
+        print(f"No graph named {args.graph_name} in {args.benchmark}", file=sys.stderr)
+        return 2
+
+    parsed = graph_entry.parsed
+    graph = create_graph(parsed.node_ids, parsed.edge_pairs)
+
+    raw_patterns: list[str] = []
+    if args.algorithm:
+        raw_patterns.append(args.algorithm)
+    for value in args.algorithm_flags or []:
+        raw_patterns.extend(s.strip() for s in str(value).split(",") if s.strip())
+    try:
+        algorithms = _resolve_algorithm_patterns(raw_patterns)
+    except ValueError as err:
+        print(str(err), file=sys.stderr)
+        return 2
+    if not algorithms:
+        print("Missing required algorithm or --algorithms parameter.", file=sys.stderr)
+        return 2
+
+    records = [_run_one_algorithm(bench, graph_entry, graph, algorithm) for algorithm in algorithms]
+    payload = records[0] if len(records) == 1 else records
+
+    out_json = json.dumps(payload, indent=2)
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(out_json + "\n", encoding="utf-8")

@@ -23,11 +23,11 @@ clang ≥ 5). No CMake, Eigen, or Boost.
 
 ```
 apply_layout <benchmark.dot> <graph-name> <algorithm> [--out PATH]
+apply_layout <benchmark.dot> <graph-name> --algorithms input,tutte,*balancer* [--out PATH]
 ```
 
-Emits one JSON record to stdout (or the `--out` path) matching the schema the
-Python port uses — compatible with `src-python/scripts/compare_metrics.py`
-via `--impl cpp`.
+Emits one JSON record for one algorithm, or a JSON array for multiple algorithms,
+to stdout or `--out`. The schema matches the Python runner.
 
 Supported algorithms (all 18): `random`, `tutte`, `fpp`, `schnyder`, `p3t`,
 `reweight`, `ceg_bfs`, `ceg_xy`, `forcedir`, `air`, `areagrad`, `impred`,

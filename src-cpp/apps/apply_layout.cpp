@@ -2,6 +2,7 @@
 // schema the Python version emits, so compare_metrics.py reads both.
 //
 // Usage: apply_layout <benchmark.dot> <graph-name> <algorithm> [--out PATH]
+//        apply_layout <benchmark.dot> <graph-name> --algorithms input,tutte,*balancer* [--out PATH]
 
 #include "dot.hpp"
 #include "geometry.hpp"
@@ -29,11 +30,15 @@
 #include "layouts/tutte.hpp"
 
 #include <chrono>
+#include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <regex>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 using namespace planarvibe;
 
@@ -111,8 +116,154 @@ std::string basename_stem(const std::string& path) {
     return (dot == std::string::npos) ? fname : fname.substr(0, dot);
 }
 
+struct AlgorithmSpec {
+    std::string key;
+    std::string label;
+};
+
+const std::vector<AlgorithmSpec>& available_algorithms() {
+    static const std::vector<AlgorithmSpec> algs = {
+        {"input", "Input"},
+        {"random", "Random"},
+        {"tutte", "Tutte"},
+        {"fpp", "FPP"},
+        {"schnyder", "Schnyder"},
+        {"p3t", "Planar 3-tree"},
+        {"reweight", "Reweight"},
+        {"ceg_bfs", "CEG BFS"},
+        {"ceg_xy", "CEG XY"},
+        {"forcedir", "ForceDir"},
+        {"air", "Air"},
+        {"areagrad", "AreaGrad"},
+        {"impred", "ImPrEd"},
+        {"facebalancer", "FaceBalancer"},
+        {"edgebalancer", "EdgeBalancer"},
+        {"anglebalancer", "AngleBalancer"},
+        {"fabalancer", "FABalancer"},
+        {"gpt", "GPT"},
+        {"claude", "Claude"},
+    };
+    return algs;
+}
+
+std::string normalize_name(const std::string& value, bool keep_star = false) {
+    std::string out;
+    for (unsigned char ch : value) {
+        char c = (char)std::tolower(ch);
+        if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || (keep_star && c == '*')) {
+            out.push_back(c);
+        }
+    }
+    return out;
+}
+
+std::string replace_underscores_with_hyphens(std::string value) {
+    std::replace(value.begin(), value.end(), '_', '-');
+    return value;
+}
+
+std::vector<std::string> algorithm_candidates(const AlgorithmSpec& spec) {
+    return {
+        normalize_name(spec.key),
+        normalize_name(spec.label),
+        normalize_name(replace_underscores_with_hyphens(spec.key)),
+        normalize_name(replace_underscores_with_hyphens(spec.label)),
+    };
+}
+
+std::regex glob_to_regex(const std::string& pattern) {
+    std::string s = "^";
+    for (char c : pattern) {
+        if (c == '*') {
+            s += ".*";
+        } else {
+            if (std::string(".+?^${}()|[]\\").find(c) != std::string::npos) s.push_back('\\');
+            s.push_back(c);
+        }
+    }
+    s += "$";
+    return std::regex(s, std::regex::icase);
+}
+
+bool resolve_algorithm_patterns(const std::vector<std::string>& patterns,
+                                std::vector<std::string>& out,
+                                std::string& error) {
+    std::unordered_set<std::string> seen;
+    const auto& algs = available_algorithms();
+    for (const auto& raw : patterns) {
+        if (raw.empty()) continue;
+        std::vector<std::string> matches;
+        if (raw.find('*') != std::string::npos) {
+            auto matcher = glob_to_regex(normalize_name(raw, true));
+            for (const auto& alg : algs) {
+                auto candidates = algorithm_candidates(alg);
+                bool ok = std::any_of(candidates.begin(), candidates.end(),
+                                      [&](const std::string& c) { return std::regex_match(c, matcher); });
+                if (ok) matches.push_back(alg.key);
+            }
+        } else {
+            std::string requested = normalize_name(raw);
+            for (const auto& alg : algs) {
+                auto candidates = algorithm_candidates(alg);
+                bool ok = std::any_of(candidates.begin(), candidates.end(),
+                                      [&](const std::string& c) { return c == requested; });
+                if (ok) {
+                    matches.push_back(alg.key);
+                    break;
+                }
+            }
+        }
+        if (matches.empty()) {
+            error = "No algorithms matched \"" + raw + "\".";
+            return false;
+        }
+        for (const auto& key : matches) {
+            if (seen.insert(key).second) out.push_back(key);
+        }
+    }
+    return true;
+}
+
+std::vector<std::string> split_algorithm_patterns(const std::string& value) {
+    std::vector<std::string> out;
+    std::stringstream ss(value);
+    std::string item;
+    while (std::getline(ss, item, ',')) {
+        size_t begin = item.find_first_not_of(" \t\r\n");
+        size_t end = item.find_last_not_of(" \t\r\n");
+        if (begin != std::string::npos) out.push_back(item.substr(begin, end - begin + 1));
+    }
+    return out;
+}
+
+LayoutResult input_layout(const Graph& g, const pg::PosByStr* initial_positions) {
+    LayoutResult r;
+    if (!initial_positions) {
+        r.ok = false;
+        r.message = "Input coordinates are missing or invalid for one or more vertices";
+        return r;
+    }
+    PositionMap pm;
+    pm.resize(g.n);
+    for (int i = 0; i < g.n; ++i) {
+        auto it = initial_positions->find(g.node_names[i]);
+        if (it == initial_positions->end() ||
+            !std::isfinite(it->second[0]) || !std::isfinite(it->second[1])) {
+            r.ok = false;
+            r.message = "Input coordinates are missing or invalid for one or more vertices";
+            return r;
+        }
+        pm.put(i, it->second[0], it->second[1]);
+    }
+    r.ok = true;
+    r.message = "Used input coordinates";
+    r.positions = geo::normalize_position_map_to_viewport(pm);
+    return r;
+}
+
 LayoutResult dispatch(const std::string& algorithm, const Graph& g,
                       const pg::PosByStr* initial_positions) {
+    if (algorithm == "input") return input_layout(g, initial_positions);
     if (algorithm == "random") return layouts::random_layout(g);
     if (algorithm == "tutte") return layouts::tutte(g, initial_positions);
     if (algorithm == "reweight") return layouts::reweight(g, initial_positions);
@@ -252,21 +403,83 @@ void write_json(std::ostream& os, const std::string& dataset,
     os << "}\n";
 }
 
+struct RunRecord {
+    std::string algorithm;
+    double runtime_ms = 0;
+    LayoutResult result;
+};
+
+RunRecord run_one_algorithm(const std::string& algorithm, const std::string& dataset,
+                            const std::string& graph_name,
+                            const dot::ParsedGraph& parsed,
+                            const pg::PosByStr& explicit_positions) {
+    pg::PosByStr initial_positions = (algorithm == "input")
+        ? explicit_positions
+        : initialize_mock_positions(parsed.graph.node_names,
+                                     dataset + ":" + graph_name,
+                                     explicit_positions.empty() ? nullptr : &explicit_positions);
+
+    auto t0 = std::chrono::steady_clock::now();
+    LayoutResult r = dispatch(algorithm, parsed.graph,
+                              initial_positions.empty() ? nullptr : &initial_positions);
+    auto t1 = std::chrono::steady_clock::now();
+    double runtime_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+    if (r.ok) compute_all_metrics(parsed.graph, r.positions, r);
+    return {algorithm, runtime_ms, std::move(r)};
+}
+
+void usage() {
+    std::cerr << "usage: apply_layout <benchmark.dot> <graph-name> <algorithm> [--out PATH]\n"
+              << "       apply_layout <benchmark.dot> <graph-name> --algorithms input,tutte,*balancer* [--out PATH]\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc < 4) {
-        std::cerr << "usage: apply_layout <benchmark.dot> <graph-name> <algorithm> [--out PATH]\n";
+    std::vector<std::string> positionals;
+    std::vector<std::string> raw_patterns;
+    std::string out_path;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if ((arg == "--algorithm" || arg == "--algorithms") && i + 1 < argc) {
+            auto parts = split_algorithm_patterns(argv[++i]);
+            raw_patterns.insert(raw_patterns.end(), parts.begin(), parts.end());
+            continue;
+        }
+        if (arg == "--out" && i + 1 < argc) {
+            out_path = argv[++i];
+            continue;
+        }
+        if (arg == "--help" || arg == "-h") {
+            usage();
+            return 0;
+        }
+        if (!arg.empty() && arg.rfind("--", 0) == 0) {
+            usage();
+            std::cerr << "unknown option: " << arg << "\n";
+            return 2;
+        }
+        positionals.push_back(arg);
+    }
+
+    if (positionals.size() != 2 && positionals.size() != 3) {
+        usage();
         return 2;
     }
-    std::string bench_path = argv[1];
-    std::string graph_name = argv[2];
-    std::string algorithm  = argv[3];
-    std::string out_path;
-    for (int i = 4; i < argc; ++i) {
-        if (std::strcmp(argv[i], "--out") == 0 && i + 1 < argc) {
-            out_path = argv[++i];
-        }
+    std::string bench_path = positionals[0];
+    std::string graph_name = positionals[1];
+    if (positionals.size() == 3) raw_patterns.push_back(positionals[2]);
+    std::vector<std::string> algorithms;
+    std::string alg_error;
+    if (!resolve_algorithm_patterns(raw_patterns, algorithms, alg_error)) {
+        std::cerr << alg_error << "\n";
+        return 2;
+    }
+    if (algorithms.empty()) {
+        usage();
+        std::cerr << "missing required algorithm or --algorithms parameter\n";
+        return 2;
     }
 
     std::vector<dot::ParsedGraph> parsed;
@@ -294,20 +507,10 @@ int main(int argc, char** argv) {
         }
     }
     std::string dataset = basename_stem(bench_path);
-    // For 'input' layout, pass explicit positions directly (not mock).
-    pg::PosByStr initial_positions = (algorithm == "input")
-        ? explicit_positions
-        : initialize_mock_positions(found->graph.node_names,
-                                     dataset + ":" + graph_name,
-                                     explicit_positions.empty() ? nullptr : &explicit_positions);
-
-    auto t0 = std::chrono::steady_clock::now();
-    LayoutResult r = dispatch(algorithm, found->graph,
-                              initial_positions.empty() ? nullptr : &initial_positions);
-    auto t1 = std::chrono::steady_clock::now();
-    double runtime_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-    if (r.ok) compute_all_metrics(found->graph, r.positions, r);
+    std::vector<RunRecord> records;
+    for (const auto& algorithm : algorithms) {
+        records.push_back(run_one_algorithm(algorithm, dataset, graph_name, *found, explicit_positions));
+    }
 
     if (!out_path.empty()) {
         std::ofstream f(out_path);
@@ -315,9 +518,31 @@ int main(int argc, char** argv) {
             std::cerr << "cannot write " << out_path << "\n";
             return 2;
         }
-        write_json(f, dataset, graph_name, algorithm, found->graph, runtime_ms, r);
+        if (records.size() == 1) {
+            const auto& rec = records[0];
+            write_json(f, dataset, graph_name, rec.algorithm, found->graph, rec.runtime_ms, rec.result);
+        } else {
+            f << "[\n";
+            for (size_t i = 0; i < records.size(); ++i) {
+                const auto& rec = records[i];
+                write_json(f, dataset, graph_name, rec.algorithm, found->graph, rec.runtime_ms, rec.result);
+                if (i + 1 < records.size()) f << ",";
+            }
+            f << "]\n";
+        }
     } else {
-        write_json(std::cout, dataset, graph_name, algorithm, found->graph, runtime_ms, r);
+        if (records.size() == 1) {
+            const auto& rec = records[0];
+            write_json(std::cout, dataset, graph_name, rec.algorithm, found->graph, rec.runtime_ms, rec.result);
+        } else {
+            std::cout << "[\n";
+            for (size_t i = 0; i < records.size(); ++i) {
+                const auto& rec = records[i];
+                write_json(std::cout, dataset, graph_name, rec.algorithm, found->graph, rec.runtime_ms, rec.result);
+                if (i + 1 < records.size()) std::cout << ",";
+            }
+            std::cout << "]\n";
+        }
     }
     return 0;
 }
