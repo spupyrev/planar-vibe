@@ -108,6 +108,35 @@
     return { posById: bestPos, scores: bestScore };
   }
 
+  function findBestRotationAndAlignment(nodeIds, edgePairs, posById, embedding) {
+    var best = null;
+    for (var i = 0; i <= 18; i += 1) {
+      var theta = (i / 18) * (Math.PI / 2);
+      var rotated = i === 0 ? posById : rotatePositions(posById, theta);
+      var rotatedScores = computeScores(nodeIds, edgePairs, rotated, embedding);
+      if (!best || rotatedScores.total > best.scores.total) {
+        best = {
+          labelSuffix: '+rot',
+          posById: rotated,
+          scores: rotatedScores
+        };
+      }
+
+      var aligned = Alignment.alignToAxisGreedy(nodeIds, edgePairs, rotated, {});
+      if (aligned.ok) {
+        var alignedScores = computeScores(nodeIds, edgePairs, aligned.positions, embedding);
+        if (!best || alignedScores.total > best.scores.total) {
+          best = {
+            labelSuffix: '+rot+align',
+            posById: aligned.positions,
+            scores: alignedScores
+          };
+        }
+      }
+    }
+    return best;
+  }
+
   // Build node index and incident-edge lists for fast planarity checks.
   function buildAdjIndex(nodeIds, edgePairs) {
     var idIndex = {};
@@ -1447,19 +1476,14 @@
     // valid fallback. Rotation sweep does 19 computeScores calls, each O(n+m).
     if (timeLeft && timeLeft() < 1000) return variants;
 
-    var rot = findBestRotation(nodeIds, edgePairs, posById, embedding);
-    variants.push({ label: label + ':rot', posById: rot.posById, embedding: embedding, scores: rot.scores });
-
-    if (!timeLeft || timeLeft() > 500) {
-      var a1 = Alignment.alignToAxisGreedy(nodeIds, edgePairs, rot.posById, {});
-      if (a1.ok) {
-        variants.push({
-          label: label + ':rot+align',
-          posById: a1.positions,
-          embedding: embedding,
-          scores: computeScores(nodeIds, edgePairs, a1.positions, embedding)
-        });
-      }
+    var rotAlign = findBestRotationAndAlignment(nodeIds, edgePairs, posById, embedding);
+    if (rotAlign) {
+      variants.push({
+        label: label + ':' + rotAlign.labelSuffix.slice(1),
+        posById: rotAlign.posById,
+        embedding: embedding,
+        scores: rotAlign.scores
+      });
     }
     return variants;
   }
@@ -1478,6 +1502,19 @@
     var r = findBestRotation(nodeIds, edgePairs, best.posById, best.embedding);
     if (r.scores.total > best.scores.total) {
       return { label: best.label + '+rot', posById: r.posById, embedding: best.embedding, scores: r.scores };
+    }
+    return best;
+  }
+
+  function tryRotAlign(nodeIds, edgePairs, best) {
+    var r = findBestRotationAndAlignment(nodeIds, edgePairs, best.posById, best.embedding);
+    if (r && r.scores.total > best.scores.total) {
+      return {
+        label: best.label + r.labelSuffix,
+        posById: r.posById,
+        embedding: best.embedding,
+        scores: r.scores
+      };
     }
     return best;
   }
@@ -1552,8 +1589,7 @@
       }
 
       // Re-rotate + re-align after coarse polish.
-      best = tryRot(nodeIds, edgePairs, best);
-      best = tryAlign(nodeIds, edgePairs, best);
+      best = tryRotAlign(nodeIds, edgePairs, best);
 
       // 3. Fine then micro polish. Re-align after.
       if (n <= 75 && timeLeft() > 1000) {
@@ -1636,8 +1672,7 @@
       for (var oi = 0; oi < outerIters; oi += 1) {
         if (timeLeft() < 800) break;
         var before = best.scores.total;
-        best = tryRot(nodeIds, edgePairs, best);
-        best = tryAlign(nodeIds, edgePairs, best);
+        best = tryRotAlign(nodeIds, edgePairs, best);
         if (timeLeft() > 800) {
           best = tryPolish(nodeIds, edgePairs, best, {
             maxPasses: 3, stepScale: 0.006, minStepScale: 0.0003,

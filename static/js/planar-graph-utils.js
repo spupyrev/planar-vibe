@@ -131,7 +131,7 @@
         var angleA = Math.atan2(pa.y - pu.y, pa.x - pu.x);
         var angleB = Math.atan2(pb.y - pu.y, pb.x - pu.x);
         if (Math.abs(angleA - angleB) > 1e-12) {
-          return angleA - angleB;
+          return angleB - angleA;
         }
         var distA = (pa.x - pu.x) * (pa.x - pu.x) + (pa.y - pu.y) * (pa.y - pu.y);
         var distB = (pb.x - pu.x) * (pb.x - pu.x) + (pb.y - pu.y) * (pb.y - pu.y);
@@ -706,7 +706,7 @@
   PlanarEmbedding.fromDrawing = function (graph, posById) {
     var ids = graph.nodeIds.slice();
     var pairs = global.GraphUtils.cloneEdgePairs(graph.edgePairs);
-    var rotationById = buildRotationFromPositions(ids, pairs, posById || {});
+    var rotationById = buildRotationFromPositions(ids, pairs, posById);
     if (!rotationById) {
       return null;
     }
@@ -719,7 +719,7 @@
       edgePairs: pairs,
       rotationById: rotationById,
       faces: faces,
-      outerFace: largestAreaFace(faces, posById || {})
+      outerFace: largestAreaFace(faces, posById)
     });
   };
 
