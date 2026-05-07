@@ -750,29 +750,31 @@ test('computeAxisAlignmentScore gives 0.5 when all points share one x-line but a
   assert.equal(result.score, 0.5);
 });
 
-test('computeAxisAlignmentScore auto-clusters jittered coordinates into reused axis lines', () => {
+test('computeAxisAlignmentScore clusters only tiny normalized jitter into reused axis lines', () => {
   const nodeIds = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
   const posById = {
-    '1': { x: 0.00, y: 0 },
-    '2': { x: 0.01, y: 1 },
-    '3': { x: 0.02, y: 2 },
+    '1': { x: 0.000000, y: 0 },
+    '2': { x: 0.000001, y: 1 },
+    '3': { x: 0.000002, y: 2 },
     '4': { x: 1.00, y: 3 },
-    '5': { x: 1.01, y: 4 },
-    '6': { x: 1.02, y: 5 },
-    '7': { x: 2.00, y: 6 },
-    '8': { x: 2.01, y: 7 },
-    '9': { x: 2.02, y: 8 }
+    '5': { x: 1.000001, y: 4 },
+    '6': { x: 1.000002, y: 5 },
+    '7': { x: 2.000000, y: 6 },
+    '8': { x: 2.000001, y: 7 },
+    '9': { x: 2.000002, y: 8 }
   };
   const result = Metrics.computeAxisAlignmentScore(nodeIds, posById);
   assert.equal(result.ok, true);
   assert.deepEqual(Array.from(result.clusterSizesX), [3, 3, 3]);
   assert.deepEqual(Array.from(result.clusterSizesY), [1, 1, 1, 1, 1, 1, 1, 1, 1]);
+  assert.equal(result.toleranceSourceX, 'normalized-fixed');
+  assert.equal(result.toleranceX, 1e-5);
   assert.ok(Math.abs(result.scoreX - 0.75) < 1e-9);
   assert.ok(Math.abs(result.scoreY - 0) < 1e-9);
   assert.ok(Math.abs(result.score - 0.375) < 1e-9);
 });
 
-test('computeAxisAlignmentScore ignores zero gaps when estimating tolerance', () => {
+test('computeAxisAlignmentScore uses bounded normalized span instead of bridging coordinate chains', () => {
   const nodeIds = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
   const posById = {
     '1': { x: 0.0, y: 0 },
@@ -787,9 +789,9 @@ test('computeAxisAlignmentScore ignores zero gaps when estimating tolerance', ()
   };
   const result = Metrics.computeAxisAlignmentScore(nodeIds, posById);
   assert.equal(result.ok, true);
-  assert.deepEqual(Array.from(result.clusterSizesX), [3, 3, 3]);
-  assert.ok(result.toleranceX > 0.19);
-  assert.equal(result.toleranceSourceX, 'quantile');
+  assert.deepEqual(Array.from(result.clusterSizesX), [3, 1, 1, 1, 3]);
+  assert.equal(result.toleranceX, 1e-5);
+  assert.equal(result.toleranceSourceX, 'normalized-fixed');
 });
 
 test('computeAxisAlignmentScore treats one heavy line plus one outlier as more aligned than a balanced two-line split', () => {

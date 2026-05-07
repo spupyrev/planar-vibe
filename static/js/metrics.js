@@ -1,6 +1,10 @@
 (function (global) {
   'use strict';
 
+  var USE_SQUARE_NODE_UNIFORMITY_GRID = true;
+  var USE_SIMPLE_AXIS_ALIGNMENT = true;
+  var SIMPLE_AXIS_ALIGNMENT_EPSILON = 1e-5;
+
   function uniformIdealDistribution(n) {
     var ideal = [];
     if (!(n > 0)) {
@@ -115,6 +119,24 @@
     return sizes;
   }
 
+  function clusterSortedValuesBySpan(sortedValues, tolerance) {
+    if (!sortedValues || sortedValues.length === 0) {
+      return [];
+    }
+    var eps = Number.isFinite(tolerance) ? Math.max(0, tolerance) : 0;
+    var sizes = [1];
+    var clusterStart = sortedValues[0];
+    for (var i = 1; i < sortedValues.length; i += 1) {
+      if (sortedValues[i] - clusterStart > eps) {
+        sizes.push(1);
+        clusterStart = sortedValues[i];
+      } else {
+        sizes[sizes.length - 1] += 1;
+      }
+    }
+    return sizes;
+  }
+
   function computeEffectiveLineCount(clusterSizes, totalCount) {
     if (!clusterSizes || clusterSizes.length === 0 || !(totalCount > 0)) {
       return null;
@@ -189,6 +211,42 @@
     };
   }
 
+  function computeSimpleAxisClustering(values) {
+    if (!values || values.length === 0) {
+      return null;
+    }
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var min = sorted[0];
+    var max = sorted[sorted.length - 1];
+    var range = max - min;
+    var normalized = [];
+    var i;
+    if (range > 0) {
+      for (i = 0; i < sorted.length; i += 1) {
+        normalized.push((sorted[i] - min) / range);
+      }
+    } else {
+      for (i = 0; i < sorted.length; i += 1) {
+        normalized.push(0);
+      }
+    }
+
+    var tolerance = range > 0 ? SIMPLE_AXIS_ALIGNMENT_EPSILON : 0;
+    var clusterSizes = clusterSortedValuesBySpan(normalized, tolerance);
+    var effectiveLineCount = computeEffectiveLineCount(clusterSizes, sorted.length);
+    return {
+      sortedValues: sorted,
+      normalizedValues: normalized,
+      clusterSizes: clusterSizes,
+      lineCount: clusterSizes.length,
+      effectiveLineCount: effectiveLineCount,
+      tolerance: tolerance,
+      rawTolerance: tolerance,
+      toleranceSource: range > 0 ? 'normalized-fixed' : 'range-zero',
+      range: range
+    };
+  }
+
   function computeAxisAlignmentScore(nodeIds, posById, options) {
     if (!nodeIds || nodeIds.length === 0) {
       return { ok: false, reason: 'No nodes' };
@@ -212,23 +270,30 @@
       return { ok: false, reason: 'Not enough positioned nodes' };
     }
 
-    var sharedTolerance = Number.isFinite(opts.tolerance) ? opts.tolerance : null;
-    var xAxis = computeAxisClustering(xs, {
-      tolerance: Number.isFinite(opts.toleranceX) ? opts.toleranceX : sharedTolerance,
-      quantile: opts.quantile,
-      toleranceScale: opts.toleranceScale,
-      toleranceCapFraction: opts.toleranceCapFraction,
-      minTolerance: opts.minToleranceX,
-      fallbackToleranceFraction: opts.fallbackToleranceFraction
-    });
-    var yAxis = computeAxisClustering(ys, {
-      tolerance: Number.isFinite(opts.toleranceY) ? opts.toleranceY : sharedTolerance,
-      quantile: opts.quantile,
-      toleranceScale: opts.toleranceScale,
-      toleranceCapFraction: opts.toleranceCapFraction,
-      minTolerance: opts.minToleranceY,
-      fallbackToleranceFraction: opts.fallbackToleranceFraction
-    });
+    var xAxis;
+    var yAxis;
+    if (USE_SIMPLE_AXIS_ALIGNMENT) {
+      xAxis = computeSimpleAxisClustering(xs);
+      yAxis = computeSimpleAxisClustering(ys);
+    } else {
+      var sharedTolerance = Number.isFinite(opts.tolerance) ? opts.tolerance : null;
+      xAxis = computeAxisClustering(xs, {
+        tolerance: Number.isFinite(opts.toleranceX) ? opts.toleranceX : sharedTolerance,
+        quantile: opts.quantile,
+        toleranceScale: opts.toleranceScale,
+        toleranceCapFraction: opts.toleranceCapFraction,
+        minTolerance: opts.minToleranceX,
+        fallbackToleranceFraction: opts.fallbackToleranceFraction
+      });
+      yAxis = computeAxisClustering(ys, {
+        tolerance: Number.isFinite(opts.toleranceY) ? opts.toleranceY : sharedTolerance,
+        quantile: opts.quantile,
+        toleranceScale: opts.toleranceScale,
+        toleranceCapFraction: opts.toleranceCapFraction,
+        minTolerance: opts.minToleranceY,
+        fallbackToleranceFraction: opts.fallbackToleranceFraction
+      });
+    }
     if (!xAxis || !yAxis || !Number.isFinite(xAxis.effectiveLineCount) || !Number.isFinite(yAxis.effectiveLineCount)) {
       return { ok: false, reason: 'Invalid axis clustering' };
     }
@@ -488,7 +553,9 @@
     var width = maxX - minX;
     var height = maxY - minY;
     var rows = Math.max(1, Math.floor(Math.sqrt(n)));
-    var cols = Math.max(1, Math.ceil(n / rows));
+    var cols = USE_SQUARE_NODE_UNIFORMITY_GRID
+      ? rows
+      : Math.max(1, Math.ceil(n / rows));
     var cellCount = rows * cols;
     var counts = [];
     for (i = 0; i < cellCount; i += 1) {
