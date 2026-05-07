@@ -4,7 +4,8 @@
   <img src="static/img/logo2.png" alt="PlanarVibe logo" width="360">
 </p>
 
-PlanarVibe is a self-contained toolkit for drawing planar graphs and evaluating drawing quality.
+PlanarVibe is a self-contained toolkit for drawing planar graphs and evaluating drawing quality
+with an [interactive playground](https://spupyrev.github.io/planar-vibe/).
 
 It is available in **JavaScript** (either through a static browser page or Node.js command-line scripts) and in **Python** for command-line scripting.
 
@@ -42,39 +43,23 @@ python3 -m http.server 8000
 
 Then open `http://localhost:8000`.
 
-Run a JS layout from the command line:
-
-```bash
-./scripts/apply_layout benchmark/named.dot sample1 --algorithm tutte --timeout 30
-```
-
-Run multiple JS layouts with a glob:
+Run one or more JS layouts:
 
 ```bash
 ./scripts/apply_layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
 ```
 
+Requires Node.js 18+.
+
 ## Python Usage
 
-Install the Python package in editable mode:
+Run a Python layout:
 
 ```bash
-python3 -m pip install -e src-python
+python3 src-python/scripts/apply_layout.py benchmark/named.dot sample1 fpp --out /tmp/sample1-fpp.json
 ```
 
-Run a Python layout and print JSON:
-
-```bash
-python3 src-python/scripts/apply_layout.py benchmark/named.dot sample1 tutte
-```
-
-Write the Python result to a file:
-
-```bash
-python3 src-python/scripts/apply_layout.py benchmark/named.dot sample1 tutte --out /tmp/sample1-tutte.json
-```
-
-Requires Node.js 18+ and Python 3.10+.
+Requires Python 3.10+.
 
 ## License
 
