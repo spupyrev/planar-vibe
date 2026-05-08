@@ -8,7 +8,6 @@ convexity repair, and restarts. Picks the best-scoring plane drawing.
 from __future__ import annotations
 
 import math
-import time
 from typing import Sequence
 
 from .. import alignment
@@ -17,8 +16,8 @@ from .. import graph as gu
 from .. import metrics as metric_mod
 from .. import planar_graph as pg
 from .. import planarity
+from .. import preprocessing
 from . import anglebalancer as anglebalancer_layout
-from . import areagrad as areagrad_layout
 from . import ceg as ceg_layout
 from . import edgebalancer as edgebalancer_layout
 from . import fabalancer as fabalancer_layout
@@ -47,10 +46,8 @@ CUSTOM_LIMITS = {
     "coreTreeMaxCoreNodes": 70,
 }
 BALANCER_MAX_INTERIOR_AUG_VERTICES = 400
-
-
-def _now_ms():
-    return time.monotonic() * 1000.0
+HEAVY_BALANCER_AUG_EDGE_LIMIT = 1500
+LATE_FALLBACK_SKIP_MIN_GRAPH_SIZE = 150
 
 
 _shared_ctx = {"graph": None}
@@ -216,23 +213,12 @@ def _polish_scaffold(node_ids, edge_pairs, pos_by_id):
         return {str(node_ids[k]): (pos_arr[k][0], pos_arr[k][1]) for k in range(n)}
 
     return {"adjIndex": adj_index, "posArr": pos_arr, "n": n, "diag": diag, "snapshot": snapshot}
-
-
-def _make_time_guard(start_time_ms, budget_ms):
-    def time_up():
-        if not start_time_ms or not budget_ms:
-            return False
-        return _now_ms() - start_time_ms > budget_ms
-    return time_up
-
-
 def _polish_by_local_moves(node_ids, edge_pairs, pos_by_id, opts=None):
     opts = opts or {}
     embedding = opts.get("embedding")
     max_passes = opts.get("maxPasses", 2)
     step_scale = opts.get("stepScale", 0.08)
     min_step_scale = opts.get("minStepScale", 0.005)
-    time_up = _make_time_guard(opts.get("startTimeMs"), opts.get("budgetMs"))
 
     ctx = _polish_scaffold(node_ids, edge_pairs, pos_by_id)
     pos_arr = ctx["posArr"]; n = ctx["n"]; diag = ctx["diag"]; adj_index = ctx["adjIndex"]
@@ -241,15 +227,11 @@ def _polish_by_local_moves(node_ids, edge_pairs, pos_by_id, opts=None):
 
     scale = step_scale
     for pass_ in range(max_passes):
-        if time_up():
-            break
         step = scale * diag
         if step < min_step_scale * diag:
             break
         improved = False
         for vi in range(n):
-            if time_up():
-                break
             px = pos_arr[vi][0]; py = pos_arr[vi][1]
             best_dx = 0.0; best_dy = 0.0
             for dx_unit, dy_unit in DIRS8:
@@ -284,7 +266,6 @@ def _convexity_repair(node_ids, edge_pairs, pos_by_id, opts=None):
     opts = opts or {}
     embedding = opts.get("embedding")
     max_passes = opts.get("maxPasses", 3)
-    time_up = _make_time_guard(opts.get("startTimeMs"), opts.get("budgetMs"))
 
     ctx = _polish_scaffold(node_ids, edge_pairs, pos_by_id)
     pos_arr = ctx["posArr"]; n = ctx["n"]; diag = ctx["diag"]; adj_index = ctx["adjIndex"]
@@ -321,16 +302,12 @@ def _convexity_repair(node_ids, edge_pairs, pos_by_id, opts=None):
         return result
 
     for _ in range(max_passes):
-        if time_up():
-            break
         emb = embedding
         if not emb or not emb.get("ok"):
             break
         outer_idx = pg.find_outer_face_index(emb.get("faces") or [], emb.get("outerFace") or [])
         improved = False
         for fi, face in enumerate(emb.get("faces") or []):
-            if time_up():
-                break
             if fi == outer_idx:
                 continue
             if not isinstance(face, (list, tuple)) or len(face) < 4:
@@ -353,8 +330,6 @@ def _convexity_repair(node_ids, edge_pairs, pos_by_id, opts=None):
             cx /= m
             cy /= m
             for v_idx in reflex:
-                if time_up():
-                    break
                 px = pos_arr[v_idx][0]; py = pos_arr[v_idx][1]
                 dx = cx - px
                 dy = cy - py
@@ -438,8 +413,6 @@ def _restart_perturb_and_polish(node_ids, edge_pairs, pos_by_id, rng, opts=None)
         "maxPasses": opts.get("maxPasses", 3),
         "stepScale": opts.get("stepScale", 0.012),
         "minStepScale": 0.0005,
-        "startTimeMs": opts.get("startTimeMs"),
-        "budgetMs": opts.get("budgetMs"),
     })
 
 
@@ -1245,10 +1218,49 @@ def _balancer_interior_limit(options):
     return max(0, int(v)) if (isinstance(v, (int, float)) and math.isfinite(v)) else BALANCER_MAX_INTERIOR_AUG_VERTICES
 
 
+def _balancer_interior_aug_vertex_count(prepared):
+    if not prepared or not prepared.get("ok"):
+        return math.inf
+    augmented = prepared.get("augmented") or {}
+    aug_graph = augmented.get("graph")
+    if not aug_graph:
+        return math.inf
+    outer = {str(x) for x in (prepared.get("augmentedOuterFace") or [])}
+    return len(aug_graph.node_ids) - len(outer)
+
+
+def _balancer_aug_edge_count(prepared):
+    if not prepared or not prepared.get("ok"):
+        return math.inf
+    augmented = prepared.get("augmented") or {}
+    aug_graph = augmented.get("graph")
+    if not aug_graph:
+        return math.inf
+    return len(aug_graph.edge_pairs)
+
+
+def _is_heavy_balancer_candidate(label):
+    return label in ("FABalancer", "AngleBalancer")
+
+
 def _build_candidate_runners(graph, options, runtime):
     opts = options
     n = len(graph.node_ids)
     runners = []
+    balancer_prepared = None
+    balancer_prepared_ready = False
+
+    def get_balancer_prepared():
+        nonlocal balancer_prepared, balancer_prepared_ready
+        if not balancer_prepared_ready:
+            balancer_prepared_ready = True
+            balancer_prepared = preprocessing.prepare_graph_data(graph, {
+                "failureLabel": "Claude balancer setup",
+                "augmentationMethod": opts.get("augmentationMethod"),
+                "augmentationOptions": dict(opts["augmentationOptions"]) if isinstance(opts.get("augmentationOptions"), dict) else None,
+                "currentPositions": runtime.get("currentPositions") or {},
+            })
+        return balancer_prepared
 
     if n <= _custom_limit(opts, "treeMaxNodes") and _is_tree_graph(graph):
         runners.append(("Tree", lambda: _run_internal_candidate(_compute_tree_positions, graph)))
@@ -1263,30 +1275,37 @@ def _build_candidate_runners(graph, options, runtime):
     if n <= _custom_limit(opts, "coreTreeMaxNodes") and _should_try_core_tree(graph, opts):
         runners.append(("CoreTree", lambda: _run_internal_candidate(_compute_core_tree_positions, graph, opts)))
 
-    # Module candidates — JS adds per-module size limits via interior-aug-vertex counts,
-    # but since our balancer runs return an augmented graph, we can approximate by
-    # always trying them (port-fidelity: same order as JS).
     def run_apply(apply_fn):
         return lambda: _run_module_candidate(apply_fn, graph, runtime)
 
-    runners.append(("EdgeBalancer", run_apply(edgebalancer_layout.apply_layout)))
-    runners.append(("FABalancer", run_apply(fabalancer_layout.apply_layout)))
-    runners.append(("AngleBalancer", run_apply(anglebalancer_layout.apply_layout)))
-    runners.append(("AreaGrad", run_apply(areagrad_layout.apply_layout)))
-    runners.append(("FaceBalancer", run_apply(facebalancer_layout.apply_layout)))
+    def maybe_push_balancer(label, apply_fn):
+        prepared = get_balancer_prepared()
+        if _balancer_interior_aug_vertex_count(prepared) > _balancer_interior_limit(opts):
+            return
+        if _is_heavy_balancer_candidate(label) and _balancer_aug_edge_count(prepared) > HEAVY_BALANCER_AUG_EDGE_LIMIT:
+            return
+        runners.append((label, run_apply(apply_fn)))
+
+    def maybe_push_late_fallback(label, apply_fn):
+        if len(graph.node_ids) + len(graph.edge_pairs) >= LATE_FALLBACK_SKIP_MIN_GRAPH_SIZE and runners:
+            return
+        runners.append((label, run_apply(apply_fn)))
+
+    maybe_push_balancer("EdgeBalancer", edgebalancer_layout.apply_layout)
+    maybe_push_balancer("FABalancer", fabalancer_layout.apply_layout)
+    maybe_push_balancer("AngleBalancer", anglebalancer_layout.apply_layout)
+    maybe_push_balancer("FaceBalancer", facebalancer_layout.apply_layout)
     runners.append(("Reweight", run_apply(reweight_layout.apply_layout)))
-    runners.append(("Schnyder", run_apply(schnyder_layout.apply_layout)))
-    runners.append(("CEGBfs", run_apply(ceg_layout.apply_bfs)))
-    runners.append(("Tutte", run_apply(tutte_layout.apply_layout)))
+    maybe_push_late_fallback("Schnyder", schnyder_layout.apply_layout)
+    maybe_push_late_fallback("CEGBfs", ceg_layout.apply_bfs)
+    maybe_push_late_fallback("Tutte", tutte_layout.apply_layout)
 
     return runners
 
 
-def _expand_variants(label, pos_by_id, embedding, node_ids, edge_pairs, time_left):
+def _expand_variants(label, pos_by_id, embedding, node_ids, edge_pairs):
     variants = [{"label": f"{label}:base", "posById": pos_by_id, "embedding": embedding,
                  "scores": _compute_scores(node_ids, edge_pairs, pos_by_id, embedding)}]
-    if time_left and time_left() < 1000:
-        return variants
     rot_align = _find_best_rotation_and_alignment(node_ids, edge_pairs, pos_by_id, embedding)
     if rot_align:
         variants.append({"label": f"{label}:{rot_align['labelSuffix'][1:]}",
@@ -1333,12 +1352,6 @@ def _try_polish(node_ids, edge_pairs, best, opts, tag):
 
 def apply_layout(graph, initial_positions: dict | None = None, options: dict | None = None) -> dict:
     opts = options or {}
-    start_ms = _now_ms()
-    global_budget_ms = opts.get("claudeBudgetMs", 22000)
-
-    def time_left():
-        return global_budget_ms - (_now_ms() - start_ms)
-
     node_ids = list(graph.node_ids)
     edge_pairs = list(graph.edge_pairs)
     _shared_ctx["graph"] = graph
@@ -1348,14 +1361,12 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
 
     variants = []
     for i, (label, runner) in enumerate(runners):
-        if i > 0 and time_left() < 3000:
-            break
         try:
             out = runner()
         except Exception:
             continue
         if out.get("ok"):
-            for v in _expand_variants(label, out["posById"], out["embedding"], node_ids, edge_pairs, time_left):
+            for v in _expand_variants(label, out["posById"], out["embedding"], node_ids, edge_pairs):
                 variants.append(v)
 
     if not variants:
@@ -1367,16 +1378,13 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
     polish_passes = 2 if n > 80 else (3 if n > 60 else (4 if n > 40 else 5))
     polish_step = 0.03 if n > 80 else (0.04 if n > 60 else (0.05 if n > 40 else 0.06))
 
-    if n <= 150 and time_left() > 1500:
-        total_budget = min(7000 if n > 75 else (16000 if n > 50 else 22000), time_left() - 1500)
+    if n <= 150:
         num_starts = 1 if n > 75 else (2 if n > 50 else 3)
         top_k = variants[:min(num_starts, len(variants))]
-        per_variant = max(1500, total_budget // len(top_k))
         for start_var in top_k:
             polished = _polish_by_local_moves(node_ids, edge_pairs, start_var["posById"], {
                 "embedding": start_var["embedding"],
                 "maxPasses": polish_passes, "stepScale": polish_step,
-                "startTimeMs": _now_ms(), "budgetMs": per_variant,
             })
             if polished["scores"]["total"] > best["scores"]["total"]:
                 best = {"label": start_var["label"] + "+polish",
@@ -1386,70 +1394,52 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
 
         best = _try_rot_align(node_ids, edge_pairs, best)
 
-        if n <= 75 and time_left() > 1000:
+        if n <= 75:
             best = _try_polish(node_ids, edge_pairs, best, {
                 "maxPasses": 4, "stepScale": 0.015, "minStepScale": 0.001,
-                "startTimeMs": _now_ms(), "budgetMs": min(3500 if n > 50 else 5000, time_left() - 1000),
             }, "+fine")
 
-            if time_left() > 800:
-                best = _try_polish(node_ids, edge_pairs, best, {
-                    "maxPasses": 3, "stepScale": 0.004, "minStepScale": 0.0003,
-                    "startTimeMs": _now_ms(), "budgetMs": min(2000 if n > 50 else 3000, time_left() - 500),
-                }, "+micro")
-                best = _try_align(node_ids, edge_pairs, best)
+            best = _try_polish(node_ids, edge_pairs, best, {
+                "maxPasses": 3, "stepScale": 0.004, "minStepScale": 0.0003,
+            }, "+micro")
+            best = _try_align(node_ids, edge_pairs, best)
 
-            if time_left() > 600:
-                repaired = _convexity_repair(node_ids, edge_pairs, best["posById"], {
-                    "embedding": best["embedding"], "maxPasses": 3,
-                    "startTimeMs": _now_ms(), "budgetMs": min(2500 if n > 50 else 4000, time_left() - 500),
-                })
-                if repaired["scores"]["total"] > best["scores"]["total"]:
-                    best = {"label": best["label"] + "+cvx", "posById": repaired["positions"],
-                            "embedding": best["embedding"], "scores": repaired["scores"]}
-                if time_left() > 400:
-                    best = _try_polish(node_ids, edge_pairs, best, {
-                        "maxPasses": 2, "stepScale": 0.008, "minStepScale": 0.0005,
-                        "startTimeMs": _now_ms(), "budgetMs": min(1500, time_left() - 300),
-                    }, "+cvxpol")
+            repaired = _convexity_repair(node_ids, edge_pairs, best["posById"], {
+                "embedding": best["embedding"], "maxPasses": 3,
+            })
+            if repaired["scores"]["total"] > best["scores"]["total"]:
+                best = {"label": best["label"] + "+cvx", "posById": repaired["positions"],
+                        "embedding": best["embedding"], "scores": repaired["scores"]}
+            best = _try_polish(node_ids, edge_pairs, best, {
+                "maxPasses": 2, "stepScale": 0.008, "minStepScale": 0.0005,
+            }, "+cvxpol")
 
-            if n <= 50 and time_left() > 2000:
+            if n <= 50:
                 rng = _seeded_rng(node_ids, edge_pairs)
-                restart_budget = min(4000, time_left() - 1500)
                 num_restarts = 2 if n > 30 else 3
-                per_restart = restart_budget // num_restarts
                 perturb_scales = [0.015, 0.03, 0.06]
                 for ri in range(num_restarts):
-                    if time_left() < 800:
-                        break
                     res = _restart_perturb_and_polish(node_ids, edge_pairs, best["posById"], rng, {
                         "embedding": best["embedding"],
                         "perturbScale": perturb_scales[ri % len(perturb_scales)],
                         "maxPasses": 3, "stepScale": 0.012,
-                        "startTimeMs": _now_ms(), "budgetMs": per_restart,
                     })
                     if res["scores"]["total"] > best["scores"]["total"]:
                         best = {"label": best["label"] + f"+restart{ri}", "posById": res["positions"],
                                 "embedding": best["embedding"], "scores": res["scores"]}
 
-            if time_left() > 300:
-                best = _try_polish(node_ids, edge_pairs, best, {
-                    "maxPasses": 2, "stepScale": 0.003, "minStepScale": 0.0002,
-                    "startTimeMs": _now_ms(), "budgetMs": min(1500, time_left() - 200),
-                }, "+settle")
+            best = _try_polish(node_ids, edge_pairs, best, {
+                "maxPasses": 2, "stepScale": 0.003, "minStepScale": 0.0002,
+            }, "+settle")
 
-    if n <= 70 and time_left() > 1500:
+    if n <= 70:
         outer_iters = 2 if n > 40 else 3
         for _ in range(outer_iters):
-            if time_left() < 800:
-                break
             before = best["scores"]["total"]
             best = _try_rot_align(node_ids, edge_pairs, best)
-            if time_left() > 800:
-                best = _try_polish(node_ids, edge_pairs, best, {
-                    "maxPasses": 3, "stepScale": 0.006, "minStepScale": 0.0003,
-                    "startTimeMs": _now_ms(), "budgetMs": min(1800, time_left() - 500),
-                }, "+fineIter")
+            best = _try_polish(node_ids, edge_pairs, best, {
+                "maxPasses": 3, "stepScale": 0.006, "minStepScale": 0.0003,
+            }, "+fineIter")
             if best["scores"]["total"] <= before + 1e-6:
                 break
 

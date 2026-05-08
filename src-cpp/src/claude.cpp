@@ -6,7 +6,6 @@
 #include "geometry.hpp"
 #include "planar_graph.hpp"
 #include "layouts/anglebalancer.hpp"
-#include "layouts/areagrad.hpp"
 #include "layouts/ceg.hpp"
 #include "layouts/edgebalancer.hpp"
 #include "layouts/ensemble_helpers.hpp"
@@ -15,12 +14,14 @@
 #include "layouts/reweight.hpp"
 #include "layouts/schnyder.hpp"
 #include "layouts/tutte.hpp"
+#include "preprocessing.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <functional>
 #include <limits>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace planarvibe::layouts {
@@ -36,6 +37,10 @@ struct CustomLimits {
     int coreTreeMaxNodes = 110;
     int coreTreeMaxCoreNodes = 70;
 };
+
+constexpr int BALANCER_MAX_INTERIOR_AUG_VERTICES = 400;
+constexpr int HEAVY_BALANCER_AUG_EDGE_LIMIT = 1500;
+constexpr int LATE_FALLBACK_SKIP_MIN_GRAPH_SIZE = 150;
 
 struct Variant {
     std::string label;
@@ -148,12 +153,10 @@ std::vector<Variant> expand_variants(const std::string& label,
                                      const std::optional<planarity::StringEmbedding>& embedding,
                                      const ensemble::GraphRef& gr,
                                      const std::vector<std::string>& node_ids,
-                                     const std::vector<std::pair<std::string,std::string>>& edge_pairs,
-                                     std::function<double()> time_left) {
+                                     const std::vector<std::pair<std::string,std::string>>& edge_pairs) {
     std::vector<Variant> out;
     Variant base{label + ":base", pos, embedding, ensemble::compute_scores_claude(gr, node_ids, edge_pairs, pos, embedding)};
     out.push_back(base);
-    if (time_left && time_left() < 1000) return out;
     auto rot_align = find_best_rotation_and_alignment(gr, node_ids, edge_pairs, pos, embedding);
     if (rot_align) {
         out.push_back({label + ":" + rot_align->label_suffix.substr(1),
@@ -197,6 +200,21 @@ Variant try_polish(const Variant& best, const ensemble::GraphRef& gr,
     return best;
 }
 
+int balancer_interior_aug_vertex_count(const preprocessing::PreparedGraph& prepared) {
+    if (!prepared.ok) return std::numeric_limits<int>::max();
+    std::unordered_set<std::string> outer(prepared.augmented_outer_face.begin(), prepared.augmented_outer_face.end());
+    return (int)prepared.augmented_node_ids.size() - (int)outer.size();
+}
+
+int balancer_aug_edge_count(const preprocessing::PreparedGraph& prepared) {
+    if (!prepared.ok) return std::numeric_limits<int>::max();
+    return (int)prepared.augmented_edge_pairs.size();
+}
+
+bool is_heavy_balancer_candidate(const std::string& label) {
+    return label == "FABalancer" || label == "AngleBalancer";
+}
+
 } // anon
 
 LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
@@ -208,13 +226,20 @@ LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
     int n = (int)node_ids.size();
 
     ensemble::GraphRef gr(g);
-    double start_ms = ensemble::now_ms();
-    double global_budget_ms = 5000;
-    auto time_left = [&]() { return global_budget_ms - (ensemble::now_ms() - start_ms); };
 
     // Build candidates (same order as Python).
     struct Runner { std::string label; std::function<CandResult()> fn; };
     std::vector<Runner> runners;
+    std::optional<preprocessing::PreparedGraph> balancer_prepared;
+    auto get_balancer_prepared = [&]() -> const preprocessing::PreparedGraph& {
+        if (!balancer_prepared) {
+            preprocessing::PrepareConfig pcfg;
+            pcfg.failure_label = "Claude balancer setup";
+            pcfg.current_positions = initial_positions;
+            balancer_prepared = preprocessing::prepare_graph_data(g, pcfg);
+        }
+        return *balancer_prepared;
+    };
 
     if (n <= limits.treeMaxNodes && ensemble::is_tree_graph(node_ids, edge_pairs)) {
         runners.push_back({"Tree", [&]() { auto r = ensemble::compute_tree_positions(node_ids, edge_pairs); return run_internal_candidate(r.ok ? r.positions : pg::PosByStr{}, node_ids, edge_pairs); }});
@@ -248,22 +273,35 @@ LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
             }});
         }
     }
-    runners.push_back({"EdgeBalancer", [&]() { return run_module_candidate([&]() { return edgebalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"FABalancer", [&]() { return run_module_candidate([&]() { return fabalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"AngleBalancer", [&]() { return run_module_candidate([&]() { return anglebalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"AreaGrad", [&]() { return run_module_candidate([&]() { return areagrad(g, initial_positions); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"FaceBalancer", [&]() { return run_module_candidate([&]() { return facebalancer(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    auto maybe_push_balancer = [&](const std::string& label, std::function<LayoutResult()> fn) {
+        const auto& prepared = get_balancer_prepared();
+        if (balancer_interior_aug_vertex_count(prepared) > BALANCER_MAX_INTERIOR_AUG_VERTICES) return;
+        if (is_heavy_balancer_candidate(label) &&
+            balancer_aug_edge_count(prepared) > HEAVY_BALANCER_AUG_EDGE_LIMIT) return;
+        runners.push_back({label, [&, fn]() { return run_module_candidate(fn, g, node_ids, edge_pairs); }});
+    };
+    auto maybe_push_late_fallback = [&](const std::string& label, std::function<LayoutResult()> fn) {
+        if ((int)node_ids.size() + (int)edge_pairs.size() >= LATE_FALLBACK_SKIP_MIN_GRAPH_SIZE &&
+            !runners.empty()) {
+            return;
+        }
+        runners.push_back({label, [&, fn]() { return run_module_candidate(fn, g, node_ids, edge_pairs); }});
+    };
+
+    maybe_push_balancer("EdgeBalancer", [&]() { return edgebalancer(g, initial_positions); });
+    maybe_push_balancer("FABalancer", [&]() { return fabalancer(g, initial_positions); });
+    maybe_push_balancer("AngleBalancer", [&]() { return anglebalancer(g, initial_positions); });
+    maybe_push_balancer("FaceBalancer", [&]() { return facebalancer(g, initial_positions); });
     runners.push_back({"Reweight", [&]() { return run_module_candidate([&]() { return reweight(g, initial_positions); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"Schnyder", [&]() { return run_module_candidate([&]() { return schnyder(g, initial_positions); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"CEGBfs", [&]() { return run_module_candidate([&]() { return ceg_bfs(g, initial_positions); }, g, node_ids, edge_pairs); }});
-    runners.push_back({"Tutte", [&]() { return run_module_candidate([&]() { return tutte(g, initial_positions); }, g, node_ids, edge_pairs); }});
+    maybe_push_late_fallback("Schnyder", [&]() { return schnyder(g, initial_positions); });
+    maybe_push_late_fallback("CEGBfs", [&]() { return ceg_bfs(g, initial_positions); });
+    maybe_push_late_fallback("Tutte", [&]() { return tutte(g, initial_positions); });
 
     std::vector<Variant> variants;
     for (size_t i = 0; i < runners.size(); ++i) {
-        if (i > 0 && time_left() < 3000) break;
         auto out = runners[i].fn();
         if (out.ok) {
-            auto vs = expand_variants(runners[i].label, out.positions, out.embedding, gr, node_ids, edge_pairs, time_left);
+            auto vs = expand_variants(runners[i].label, out.positions, out.embedding, gr, node_ids, edge_pairs);
             for (auto& v : vs) variants.push_back(std::move(v));
         }
     }
@@ -276,19 +314,15 @@ LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
     int polish_passes = n > 80 ? 2 : (n > 60 ? 3 : (n > 40 ? 4 : 5));
     double polish_step = n > 80 ? 0.03 : (n > 60 ? 0.04 : (n > 40 ? 0.05 : 0.06));
 
-    if (n <= 150 && time_left() > 1500) {
-        double total_budget = std::min<double>(n > 75 ? 7000 : (n > 50 ? 16000 : 22000), time_left() - 1500);
+    if (n <= 150) {
         int num_starts = n > 75 ? 1 : (n > 50 ? 2 : 3);
         int top_k = std::min((int)num_starts, (int)variants.size());
-        double per_variant = std::max(1500.0, total_budget / top_k);
         for (int i = 0; i < top_k; ++i) {
             const auto& start_var = variants[i];
             ensemble::ClaudePolishOptions o;
             o.max_passes = polish_passes;
             o.step_scale = polish_step;
             o.min_step_scale = 0.005;
-            o.start_time_ms = ensemble::now_ms();
-            o.budget_ms = per_variant;
             auto polished = ensemble::polish_by_local_moves(gr, node_ids, edge_pairs, start_var.positions, start_var.embedding, o);
             if (polished.scores.at("total") > best.scores.at("total")) {
                 best = {start_var.label + "+polish", polished.positions, start_var.embedding, polished.scores};
@@ -297,86 +331,61 @@ LayoutResult claude(const Graph& g, const pg::PosByStr* initial_positions) {
 
         best = try_rot_align(best, gr, node_ids, edge_pairs);
 
-        if (n <= 75 && time_left() > 1000) {
+        if (n <= 75) {
             ensemble::ClaudePolishOptions o;
             o.max_passes = 4;
             o.step_scale = 0.015;
             o.min_step_scale = 0.001;
-            o.start_time_ms = ensemble::now_ms();
-            o.budget_ms = std::min<double>(n > 50 ? 3500 : 5000, time_left() - 1000);
             best = try_polish(best, gr, node_ids, edge_pairs, o, "+fine");
 
-            if (time_left() > 800) {
-                ensemble::ClaudePolishOptions o2;
-                o2.max_passes = 3;
-                o2.step_scale = 0.004;
-                o2.min_step_scale = 0.0003;
-                o2.start_time_ms = ensemble::now_ms();
-                o2.budget_ms = std::min<double>(n > 50 ? 2000 : 3000, time_left() - 500);
-                best = try_polish(best, gr, node_ids, edge_pairs, o2, "+micro");
-                best = try_align(best, gr, node_ids, edge_pairs);
-            }
+            ensemble::ClaudePolishOptions o2;
+            o2.max_passes = 3;
+            o2.step_scale = 0.004;
+            o2.min_step_scale = 0.0003;
+            best = try_polish(best, gr, node_ids, edge_pairs, o2, "+micro");
+            best = try_align(best, gr, node_ids, edge_pairs);
 
-            if (time_left() > 600) {
-                auto repaired = ensemble::convexity_repair(gr, node_ids, edge_pairs, best.positions, best.embedding, 3,
-                                                           ensemble::now_ms(), std::min<double>(n > 50 ? 2500 : 4000, time_left() - 500));
-                if (repaired.scores.at("total") > best.scores.at("total")) {
-                    best = {best.label + "+cvx", repaired.positions, best.embedding, repaired.scores};
-                }
-                if (time_left() > 400) {
-                    ensemble::ClaudePolishOptions o3;
-                    o3.max_passes = 2;
-                    o3.step_scale = 0.008;
-                    o3.min_step_scale = 0.0005;
-                    o3.start_time_ms = ensemble::now_ms();
-                    o3.budget_ms = std::min<double>(1500, time_left() - 300);
-                    best = try_polish(best, gr, node_ids, edge_pairs, o3, "+cvxpol");
-                }
+            auto repaired = ensemble::convexity_repair(gr, node_ids, edge_pairs, best.positions, best.embedding, 3);
+            if (repaired.scores.at("total") > best.scores.at("total")) {
+                best = {best.label + "+cvx", repaired.positions, best.embedding, repaired.scores};
             }
+            ensemble::ClaudePolishOptions o3;
+            o3.max_passes = 2;
+            o3.step_scale = 0.008;
+            o3.min_step_scale = 0.0005;
+            best = try_polish(best, gr, node_ids, edge_pairs, o3, "+cvxpol");
 
-            if (n <= 50 && time_left() > 2000) {
+            if (n <= 50) {
                 auto rng = ensemble::make_seeded_rng(node_ids, edge_pairs);
-                double restart_budget = std::min<double>(4000, time_left() - 1500);
                 int num_restarts = n > 30 ? 2 : 3;
-                double per_restart = restart_budget / num_restarts;
                 double perturb_scales[] = {0.015, 0.03, 0.06};
                 for (int ri = 0; ri < num_restarts; ++ri) {
-                    if (time_left() < 800) break;
                     auto res = ensemble::restart_perturb_and_polish(gr, node_ids, edge_pairs, best.positions, best.embedding,
-                        rng, perturb_scales[ri % 3], 3, 0.012, ensemble::now_ms(), per_restart);
+                        rng, perturb_scales[ri % 3], 3, 0.012);
                     if (res.scores.at("total") > best.scores.at("total")) {
                         best = {best.label + "+restart" + std::to_string(ri), res.positions, best.embedding, res.scores};
                     }
                 }
             }
 
-            if (time_left() > 300) {
-                ensemble::ClaudePolishOptions o4;
-                o4.max_passes = 2;
-                o4.step_scale = 0.003;
-                o4.min_step_scale = 0.0002;
-                o4.start_time_ms = ensemble::now_ms();
-                o4.budget_ms = std::min<double>(1500, time_left() - 200);
-                best = try_polish(best, gr, node_ids, edge_pairs, o4, "+settle");
-            }
+            ensemble::ClaudePolishOptions o4;
+            o4.max_passes = 2;
+            o4.step_scale = 0.003;
+            o4.min_step_scale = 0.0002;
+            best = try_polish(best, gr, node_ids, edge_pairs, o4, "+settle");
         }
     }
 
-    if (n <= 70 && time_left() > 1500) {
+    if (n <= 70) {
         int outer_iters = n > 40 ? 2 : 3;
         for (int it = 0; it < outer_iters; ++it) {
-            if (time_left() < 800) break;
             double before = best.scores.at("total");
             best = try_rot_align(best, gr, node_ids, edge_pairs);
-            if (time_left() > 800) {
-                ensemble::ClaudePolishOptions o;
-                o.max_passes = 3;
-                o.step_scale = 0.006;
-                o.min_step_scale = 0.0003;
-                o.start_time_ms = ensemble::now_ms();
-                o.budget_ms = std::min<double>(1800, time_left() - 500);
-                best = try_polish(best, gr, node_ids, edge_pairs, o, "+fineIter");
-            }
+            ensemble::ClaudePolishOptions o;
+            o.max_passes = 3;
+            o.step_scale = 0.006;
+            o.min_step_scale = 0.0003;
+            best = try_polish(best, gr, node_ids, edge_pairs, o, "+fineIter");
             if (best.scores.at("total") <= before + 1e-6) break;
         }
     }

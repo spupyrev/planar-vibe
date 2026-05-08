@@ -141,10 +141,7 @@ EvalResult best_transform_for_candidate(const GraphRef& graph,
                                          const std::vector<std::pair<std::string,std::string>>& edge_pairs,
                                          const pg::PosByStr& pos,
                                          int rotation_samples,
-                                         const std::vector<double>& stretch_factors,
-                                         double deadline_ms);
-
-double now_ms();
+                                         const std::vector<double>& stretch_factors);
 
 // gpt polish (direction-sweep local moves).
 struct PolishResult {
@@ -159,7 +156,7 @@ PolishResult compute_polished_positions_gpt(
     const std::vector<std::string>& node_ids,
     const std::vector<std::pair<std::string,std::string>>& edge_pairs,
     const pg::PosByStr& seed, double seed_score,
-    int max_evaluations, double deadline_ms);
+    int max_evaluations);
 
 // claude-specific scoring (returns all-per-metric dict including 'total').
 std::unordered_map<std::string, double> compute_scores_claude(
@@ -174,8 +171,6 @@ struct ClaudePolishOptions {
     int max_passes = 2;
     double step_scale = 0.08;
     double min_step_scale = 0.005;
-    double start_time_ms = 0;
-    double budget_ms = 0;  // 0 means no guard
 };
 struct ClaudePolishResult {
     pg::PosByStr positions;
@@ -197,7 +192,7 @@ ClaudePolishResult convexity_repair(
     const std::vector<std::pair<std::string,std::string>>& edge_pairs,
     const pg::PosByStr& pos,
     const std::optional<planarity::StringEmbedding>& embedding,
-    int max_passes, double start_time_ms, double budget_ms);
+    int max_passes);
 
 // Best-rotation search (claude): 19 samples in [0, pi/2].
 struct RotResult { pg::PosByStr positions; std::unordered_map<std::string,double> scores; };
@@ -227,7 +222,6 @@ ClaudePolishResult restart_perturb_and_polish(
     const std::vector<std::pair<std::string,std::string>>& edge_pairs,
     const pg::PosByStr& pos,
     const std::optional<planarity::StringEmbedding>& embedding,
-    LCGRng& rng, double perturb_scale, int max_passes, double step_scale,
-    double start_time_ms, double budget_ms);
+    LCGRng& rng, double perturb_scale, int max_passes, double step_scale);
 
 } // namespace planarvibe::ensemble

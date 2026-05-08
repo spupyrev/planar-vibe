@@ -9,7 +9,6 @@ best-scoring plane drawing.
 from __future__ import annotations
 
 import math
-import time
 from typing import Sequence
 
 from .. import geometry as geo
@@ -30,7 +29,6 @@ METRIC_KEYS = [
 ]
 
 DEFAULT_OPTIONS = {
-    "budgetMs": 22000,
     "edgeBalancerMaxNodes": 220,
     "fabalancerMaxNodes": 120,
     "airMaxNodes": 96,
@@ -52,15 +50,10 @@ DEFAULT_OPTIONS = {
     "polishMaxEvaluations": 450,
     "polishLargeNodeThreshold": 50,
     "polishLargeMaxEvaluations": 320,
-    "polishMinRemainingMs": 900,
     "rotationSamples": 96,
     "affineMaxNodes": 160,
     "affineStretchFactors": [1, 1.04, 1.1, 1.2],
 }
-
-
-def _now_ms():
-    return time.monotonic() * 1000.0
 
 
 def _copy_positions_for_nodes(pos_by_id, node_ids):
@@ -1159,7 +1152,7 @@ def _compute_leaf_spread_positions(graph, base_positions, options):
     return {"ok": False, "message": "LeafSpread could not keep drawing plane"}
 
 
-def _best_transform_for_candidate(graph, pos_by_id, options, deadline_ms):
+def _best_transform_for_candidate(graph, pos_by_id, options):
     opts = options or {}
     base = _copy_positions_for_nodes(pos_by_id, graph.node_ids)
     if base is None or geo.has_position_crossings(base, graph.edge_pairs):
@@ -1171,8 +1164,6 @@ def _best_transform_for_candidate(graph, pos_by_id, options, deadline_ms):
     period = math.pi
     for stretch in stretch_factors:
         for i in range(samples):
-            if best is not None and deadline_ms is not None and _now_ms() >= deadline_ms:
-                return best
             angle = period * i / samples
             transformed = _transform_positions(base, graph.node_ids, angle, stretch)
             evaluated = _evaluate_positions(graph, transformed, {**opts, "assumePlane": True})
@@ -1185,7 +1176,7 @@ def _best_transform_for_candidate(graph, pos_by_id, options, deadline_ms):
     return best
 
 
-def _should_try_polish(graph, evaluated, options, deadline_ms):
+def _should_try_polish(graph, evaluated, options):
     opts = options or {}
     if not evaluated or not evaluated.get("ok") or not evaluated.get("positions"):
         return False
@@ -1195,11 +1186,10 @@ def _should_try_polish(graph, evaluated, options, deadline_ms):
     max_score = opts.get("polishMaxScore", DEFAULT_OPTIONS["polishMaxScore"])
     if isinstance(max_score, (int, float)) and math.isfinite(max_score) and evaluated["score"] > max_score:
         return False
-    min_remaining = opts.get("polishMinRemainingMs", DEFAULT_OPTIONS["polishMinRemainingMs"])
-    return deadline_ms is None or _now_ms() + min_remaining < deadline_ms
+    return True
 
 
-def _compute_polished_positions(graph, seed_positions, seed_score, options, deadline_ms):
+def _compute_polished_positions(graph, seed_positions, seed_score, options):
     opts = options or {}
     positions = _copy_positions_for_nodes(seed_positions, graph.node_ids)
     if positions is None or geo.has_position_crossings(positions, graph.edge_pairs):
@@ -1222,16 +1212,13 @@ def _compute_polished_positions(graph, seed_positions, seed_score, options, dead
     evaluations = 0
     moves = 0
 
-    def past_deadline():
-        return deadline_ms is not None and _now_ms() >= deadline_ms
-
     for factor in step_factors:
         improved = True
         pass_no = 0
         while improved and pass_no < 2:
             improved = False
             for nid in ids:
-                if past_deadline() or evaluations >= max_evaluations:
+                if evaluations >= max_evaluations:
                     break
                 p = positions.get(nid)
                 if p is None:
@@ -1244,7 +1231,7 @@ def _compute_polished_positions(graph, seed_positions, seed_score, options, dead
                 local_best = best
                 local_positions = None
                 for d in local_directions:
-                    if past_deadline() or evaluations >= max_evaluations:
+                    if evaluations >= max_evaluations:
                         break
                     norm = math.sqrt(d[0] * d[0] + d[1] * d[1]) or 1
                     candidate = _copy_positions_for_nodes(positions, graph.node_ids)
@@ -1333,17 +1320,12 @@ def _build_candidate_specs(graph, options):
 def apply_layout(graph, initial_positions: dict | None = None, options: dict | None = None) -> dict:
     opts = {**DEFAULT_OPTIONS, **(options or {})}
     candidate_names = _build_candidate_specs(graph, opts)
-    started_at = _now_ms()
-    budget = opts.get("budgetMs")
-    deadline_ms = (started_at + budget) if (isinstance(budget, (int, float)) and math.isfinite(budget)) else None
     best = None
     leaf_spread_seed = None
     leaf_spread_eligible = _should_try_leaf_spread(graph, opts)
     failures = []
 
     for name in candidate_names:
-        if best is not None and isinstance(budget, (int, float)) and math.isfinite(budget) and _now_ms() - started_at >= budget:
-            break
         try:
             result = _run_candidate(name, graph, opts, initial_positions)
         except Exception as err:
@@ -1352,7 +1334,7 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
         if not result or not result.get("ok") or not result.get("positions"):
             failures.append(f"{name}: {(result or {}).get('message', 'failed')}")
             continue
-        evaluated = _best_transform_for_candidate(graph, result["positions"], opts, deadline_ms)
+        evaluated = _best_transform_for_candidate(graph, result["positions"], opts)
         if not evaluated or not evaluated.get("ok"):
             failures.append(f"{name}: invalid scored drawing")
             continue
@@ -1376,10 +1358,10 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
                 "positions": result["positions"],
             }
 
-    if leaf_spread_seed and (deadline_ms is None or _now_ms() < deadline_ms):
+    if leaf_spread_seed:
         spread_result = _compute_leaf_spread_positions(graph, leaf_spread_seed["positions"], opts)
         if spread_result and spread_result.get("ok") and spread_result.get("positions"):
-            spread_evaluated = _best_transform_for_candidate(graph, spread_result["positions"], opts, deadline_ms)
+            spread_evaluated = _best_transform_for_candidate(graph, spread_result["positions"], opts)
             if spread_evaluated and spread_evaluated.get("ok"):
                 max_drop = opts.get("leafSpreadMaxEdgeRatioDrop", DEFAULT_OPTIONS["leafSpreadMaxEdgeRatioDrop"])
                 seed_ratio = (leaf_spread_seed.get("metrics") or {}).get("edgeRatio")
@@ -1396,8 +1378,8 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
                     if best is None or spread_evaluated["score"] > best["score"]:
                         best = spread_evaluated
 
-    if best and _should_try_polish(graph, best, opts, deadline_ms):
-        polished = _compute_polished_positions(graph, best["positions"], best["score"], opts, deadline_ms)
+    if best and _should_try_polish(graph, best, opts):
+        polished = _compute_polished_positions(graph, best["positions"], best["score"], opts)
         if polished and polished.get("ok") and polished["score"] > best["score"]:
             polished["name"] = f"polish-{best['name']}"
             polished["result"] = {"ok": True, "positions": polished["positions"], "message": "Computed polished layout"}

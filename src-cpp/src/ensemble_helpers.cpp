@@ -10,7 +10,6 @@
 #include "layouts/edgebalancer.hpp"
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -1077,17 +1076,11 @@ pg::PosByStr transform_positions(const pg::PosByStr& pos,
     return out;
 }
 
-double now_ms() {
-    using namespace std::chrono;
-    return duration<double, std::milli>(steady_clock::now().time_since_epoch()).count();
-}
-
 EvalResult best_transform_for_candidate(const GraphRef& gr,
                                          const std::vector<std::string>& node_ids,
                                          const std::vector<std::pair<std::string,std::string>>& edge_pairs,
                                          const pg::PosByStr& pos, int rotation_samples,
-                                         const std::vector<double>& stretch_factors,
-                                         double deadline_ms) {
+                                         const std::vector<double>& stretch_factors) {
     EvalResult best;
     best.ok = false;
     pg::PosByStr base = copy_for_nodes(pos, node_ids);
@@ -1096,7 +1089,6 @@ EvalResult best_transform_for_candidate(const GraphRef& gr,
     double period = PI;
     for (double stretch : stretch_factors) {
         for (int i = 0; i < samples; ++i) {
-            if (best.ok && deadline_ms > 0 && now_ms() >= deadline_ms) return best;
             double angle = period * i / samples;
             pg::PosByStr t = transform_positions(base, node_ids, angle, stretch);
             auto e = evaluate_positions(gr, node_ids, edge_pairs, t, true);
@@ -1114,7 +1106,7 @@ PolishResult compute_polished_positions_gpt(
     const std::vector<std::string>& node_ids,
     const std::vector<std::pair<std::string,std::string>>& edge_pairs,
     const pg::PosByStr& seed, double seed_score,
-    int max_evaluations, double deadline_ms) {
+    int max_evaluations) {
     PolishResult R;
     pg::PosByStr positions = copy_for_nodes(seed, node_ids);
     if (positions.empty() || has_crossings(positions, edge_pairs)) return R;
@@ -1131,7 +1123,6 @@ PolishResult compute_polished_positions_gpt(
         {1,0},{-1,0},{0,1},{0,-1},{1,1},{1,-1},{-1,1},{-1,-1}
     };
     int evaluations = 0, moves = 0;
-    auto past_deadline = [&]() { return deadline_ms > 0 && now_ms() >= deadline_ms; };
 
     for (double factor : step_factors) {
         bool improved = true;
@@ -1139,7 +1130,7 @@ PolishResult compute_polished_positions_gpt(
         while (improved && pass_no < 2) {
             improved = false;
             for (const auto& nid : ids) {
-                if (past_deadline() || evaluations >= max_evaluations) break;
+                if (evaluations >= max_evaluations) break;
                 auto pit = positions.find(nid);
                 if (pit == positions.end()) continue;
                 Point p = pit->second;
@@ -1153,7 +1144,7 @@ PolishResult compute_polished_positions_gpt(
                 bool has_move = false;
                 pg::PosByStr local_positions;
                 for (auto d : local_dirs) {
-                    if (past_deadline() || evaluations >= max_evaluations) break;
+                    if (evaluations >= max_evaluations) break;
                     double norm = std::hypot(d.first, d.second);
                     if (norm == 0) norm = 1;
                     pg::PosByStr cand = copy_for_nodes(positions, node_ids);
@@ -1334,20 +1325,14 @@ ClaudePolishResult polish_by_local_moves(
         {0.707,0.707},{-0.707,0.707},{0.707,-0.707},{-0.707,-0.707}
     };
     Scaffold S = build_scaffold(node_ids, edge_pairs, pos);
-    auto time_up = [&]() {
-        if (!(opts.start_time_ms > 0) || !(opts.budget_ms > 0)) return false;
-        return now_ms() - opts.start_time_ms > opts.budget_ms;
-    };
     auto scores_now = [&]() { return compute_scores_claude(gr, node_ids, edge_pairs, snapshot(S), embedding); };
     double best_total = scores_now()["total"];
     double scale = opts.step_scale;
     for (int pass = 0; pass < opts.max_passes; ++pass) {
-        if (time_up()) break;
         double step = scale * S.diag;
         if (step < opts.min_step_scale * S.diag) break;
         bool improved = false;
         for (int vi = 0; vi < S.n; ++vi) {
-            if (time_up()) break;
             double px = S.pos_arr[vi][0], py = S.pos_arr[vi][1];
             double best_dx = 0, best_dy = 0;
             for (auto d : DIRS8) {
@@ -1381,12 +1366,8 @@ ClaudePolishResult convexity_repair(
     const std::vector<std::pair<std::string,std::string>>& edge_pairs,
     const pg::PosByStr& pos,
     const std::optional<planarity::StringEmbedding>& embedding,
-    int max_passes, double start_time_ms, double budget_ms) {
+    int max_passes) {
     Scaffold S = build_scaffold(node_ids, edge_pairs, pos);
-    auto time_up = [&]() {
-        if (!(start_time_ms > 0) || !(budget_ms > 0)) return false;
-        return now_ms() - start_time_ms > budget_ms;
-    };
     auto scores_now = [&]() { return compute_scores_claude(gr, node_ids, edge_pairs, snapshot(S), embedding); };
     double best_total = scores_now()["total"];
 
@@ -1419,12 +1400,10 @@ ClaudePolishResult convexity_repair(
     };
 
     for (int pass = 0; pass < max_passes; ++pass) {
-        if (time_up()) break;
         if (!embedding || !embedding->ok) break;
         int outer_idx = pg::find_outer_face_index(embedding->faces, embedding->outer_face);
         bool improved = false;
         for (size_t fi = 0; fi < embedding->faces.size(); ++fi) {
-            if (time_up()) break;
             if ((int)fi == outer_idx) continue;
             const auto& face = embedding->faces[fi];
             if (face.size() < 4) continue;
@@ -1443,7 +1422,6 @@ ClaudePolishResult convexity_repair(
             if (!valid || m == 0) continue;
             cx /= m; cy /= m;
             for (int v_idx : reflex) {
-                if (time_up()) break;
                 double px = S.pos_arr[v_idx][0], py = S.pos_arr[v_idx][1];
                 double ddx = cx - px, ddy = cy - py;
                 double dlen = std::hypot(ddx, ddy);
@@ -1546,8 +1524,7 @@ ClaudePolishResult restart_perturb_and_polish(
     const std::vector<std::pair<std::string,std::string>>& edge_pairs,
     const pg::PosByStr& pos,
     const std::optional<planarity::StringEmbedding>& embedding,
-    LCGRng& rng, double perturb_scale, int max_passes, double step_scale,
-    double start_time_ms, double budget_ms) {
+    LCGRng& rng, double perturb_scale, int max_passes, double step_scale) {
     double min_x = std::numeric_limits<double>::infinity();
     double min_y = std::numeric_limits<double>::infinity();
     double max_x = -min_x, max_y = -min_y;
@@ -1581,8 +1558,6 @@ ClaudePolishResult restart_perturb_and_polish(
     o.max_passes = max_passes;
     o.step_scale = step_scale;
     o.min_step_scale = 0.0005;
-    o.start_time_ms = start_time_ms;
-    o.budget_ms = budget_ms;
     return polish_by_local_moves(gr, node_ids, edge_pairs, perturbed, embedding, o);
 }
 

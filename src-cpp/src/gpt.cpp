@@ -20,7 +20,6 @@ namespace planarvibe::layouts {
 namespace {
 
 struct Options {
-    double budgetMs = 5000;
     int edgeBalancerMaxNodes = 220;
     int fabalancerMaxNodes = 120;
     int airMaxNodes = 96;
@@ -42,7 +41,6 @@ struct Options {
     int polishMaxEvaluations = 450;
     int polishLargeNodeThreshold = 50;
     int polishLargeMaxEvaluations = 320;
-    double polishMinRemainingMs = 900;
     int rotationSamples = 96;
     int affineMaxNodes = 160;
     std::vector<double> affineStretchFactors = {1, 1.04, 1.1, 1.2};
@@ -176,8 +174,6 @@ LayoutResult gpt(const Graph& g, const pg::PosByStr* initial_positions) {
         node_ids, edge_pairs, opts.coreTreeMaxNodes, opts.coreTreeMaxCoreNodes);
     auto specs = build_candidate_specs(node_ids, edge_pairs, opts, core_info);
 
-    double started_at = ensemble::now_ms();
-    double deadline_ms = (std::isfinite(opts.budgetMs)) ? started_at + opts.budgetMs : 0;
     ensemble::GraphRef gr(g);
 
     struct Best {
@@ -202,12 +198,11 @@ LayoutResult gpt(const Graph& g, const pg::PosByStr* initial_positions) {
     auto stretch_factors = normalize_stretch_factors(opts.affineStretchFactors, (int)node_ids.size(), opts.affineMaxNodes);
 
     for (const auto& name : specs) {
-        if (best.ok && std::isfinite(opts.budgetMs) && ensemble::now_ms() - started_at >= opts.budgetMs) break;
         bool cand_ok = false;
         pg::PosByStr cand_pos = run_candidate(name, g, node_ids, edge_pairs, cand_ok, core_info, initial_positions);
         if (!cand_ok || cand_pos.empty()) continue;
         auto ev = ensemble::best_transform_for_candidate(gr, node_ids, edge_pairs, cand_pos,
-                                                         opts.rotationSamples, stretch_factors, deadline_ms);
+                                                         opts.rotationSamples, stretch_factors);
         if (!ev.ok) continue;
         if (name == "air" && std::isfinite(opts.airMinEdgeRatio)) {
             auto it = ev.metrics.find("edgeRatio");
@@ -231,13 +226,13 @@ LayoutResult gpt(const Graph& g, const pg::PosByStr* initial_positions) {
         }
     }
 
-    if (leaf_seed.has && (deadline_ms == 0 || ensemble::now_ms() < deadline_ms)) {
+    if (leaf_seed.has) {
         ensemble::LeafSpreadOptions lso;
         lso.min_leaves = opts.leafSpreadMinLeaves;
         auto lsr = ensemble::compute_leaf_spread_positions(node_ids, edge_pairs, leaf_seed.positions, lso);
         if (lsr.ok) {
             auto ev = ensemble::best_transform_for_candidate(gr, node_ids, edge_pairs, lsr.positions,
-                                                             opts.rotationSamples, stretch_factors, deadline_ms);
+                                                             opts.rotationSamples, stretch_factors);
             if (ev.ok) {
                 double max_drop = opts.leafSpreadMaxEdgeRatioDrop;
                 double seed_ratio = 0, spread_ratio = 0;
@@ -264,14 +259,13 @@ LayoutResult gpt(const Graph& g, const pg::PosByStr* initial_positions) {
     }
 
     if (best.ok && (int)node_ids.size() <= opts.polishMaxNodes
-        && best.score <= opts.polishMaxScore
-        && (deadline_ms == 0 || ensemble::now_ms() + opts.polishMinRemainingMs < deadline_ms)) {
+        && best.score <= opts.polishMaxScore) {
         int max_eval = opts.polishMaxEvaluations;
         if ((int)node_ids.size() > opts.polishLargeNodeThreshold) {
             max_eval = std::min(max_eval, opts.polishLargeMaxEvaluations);
         }
         auto polished = ensemble::compute_polished_positions_gpt(
-            gr, node_ids, edge_pairs, best.positions, best.score, max_eval, deadline_ms);
+            gr, node_ids, edge_pairs, best.positions, best.score, max_eval);
         if (polished.ok && polished.score > best.score) {
             best.score = polished.score;
             best.positions = polished.positions;
