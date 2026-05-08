@@ -22,7 +22,6 @@
   ];
 
   var DEFAULT_OPTIONS = {
-    budgetMs: 22000,
     edgeBalancerMaxNodes: 220,
     fabalancerMaxNodes: 120,
     airMaxNodes: 96,
@@ -44,7 +43,6 @@
     polishMaxEvaluations: 450,
     polishLargeNodeThreshold: 50,
     polishLargeMaxEvaluations: 320,
-    polishMinRemainingMs: 900,
     rotationSamples: 96,
     affineMaxNodes: 160,
     affineStretchFactors: [1, 1.04, 1.1, 1.2]
@@ -1577,7 +1575,7 @@
     return { ok: false, message: 'LeafSpread could not keep drawing plane' };
   }
 
-  function bestTransformForCandidate(graph, posById, options, deadlineMs) {
+  function bestTransformForCandidate(graph, posById, options) {
     var opts = options || {};
     var base = copyPositionsForNodes(posById, graph.nodeIds);
     if (!base || GeometryUtils.hasPositionCrossings(base, graph.edgePairs)) {
@@ -1594,9 +1592,6 @@
     for (var f = 0; f < stretchFactors.length; f += 1) {
       var stretch = stretchFactors[f];
       for (var i = 0; i < samples; i += 1) {
-        if (best && Number.isFinite(deadlineMs) && Date.now() >= deadlineMs) {
-          return best;
-        }
         var angle = period * i / samples;
         var transformed = transformPositions(base, graph.nodeIds, angle, stretch);
         var evaluated = evaluatePositions(graph, transformed, Object.assign({}, opts, { assumePlane: true }));
@@ -1613,7 +1608,7 @@
     return best;
   }
 
-  function shouldTryPolish(graph, evaluated, options, deadlineMs) {
+  function shouldTryPolish(graph, evaluated, options) {
     var opts = options || {};
     if (!evaluated || !evaluated.ok || !evaluated.positions) {
       return false;
@@ -1630,13 +1625,10 @@
     if (Number.isFinite(maxScore) && evaluated.score > maxScore) {
       return false;
     }
-    var minRemainingMs = Number.isFinite(opts.polishMinRemainingMs)
-      ? opts.polishMinRemainingMs
-      : DEFAULT_OPTIONS.polishMinRemainingMs;
-    return !Number.isFinite(deadlineMs) || Date.now() + minRemainingMs < deadlineMs;
+    return true;
   }
 
-  function computePolishedPositions(graph, seedPositions, seedScore, options, deadlineMs) {
+  function computePolishedPositions(graph, seedPositions, seedScore, options) {
     var opts = options || {};
     var positions = copyPositionsForNodes(seedPositions, graph.nodeIds);
     if (!positions || GeometryUtils.hasPositionCrossings(positions, graph.edgePairs)) {
@@ -1674,17 +1666,13 @@
     var evaluations = 0;
     var moves = 0;
 
-    function pastDeadline() {
-      return Number.isFinite(deadlineMs) && Date.now() >= deadlineMs;
-    }
-
     for (var fi = 0; fi < stepFactors.length; fi += 1) {
       var factor = stepFactors[fi];
       var improved = true;
       for (var pass = 0; improved && pass < 2; pass += 1) {
         improved = false;
         for (var ii = 0; ii < ids.length; ii += 1) {
-          if (pastDeadline() || evaluations >= maxEvaluations) {
+          if (evaluations >= maxEvaluations) {
             break;
           }
           var id = ids[ii];
@@ -1703,7 +1691,7 @@
           var localBest = best;
           var localPositions = null;
           for (var di = 0; di < localDirections.length; di += 1) {
-            if (pastDeadline() || evaluations >= maxEvaluations) {
+            if (evaluations >= maxEvaluations) {
               break;
             }
             var dir = localDirections[di];
@@ -1746,7 +1734,6 @@
     var opts = Object.assign({}, baseOptions || {});
     opts.currentPositions = currentPositions;
     delete opts.candidates;
-    delete opts.budgetMs;
     delete opts.edgeBalancerMaxNodes;
     delete opts.fabalancerMaxNodes;
     delete opts.airMaxNodes;
@@ -1768,7 +1755,6 @@
     delete opts.polishMaxEvaluations;
     delete opts.polishLargeNodeThreshold;
     delete opts.polishLargeMaxEvaluations;
-    delete opts.polishMinRemainingMs;
     delete opts.rotationSamples;
     delete opts.affineMaxNodes;
     delete opts.affineStretchFactors;
@@ -1910,18 +1896,12 @@
     var graph = opts.graph;
     var currentPositions = opts.currentPositions;
     var candidateNames = buildCandidateSpecs(graph, opts);
-    var startedAt = Date.now();
-    var deadlineMs = Number.isFinite(opts.budgetMs) ? startedAt + opts.budgetMs : null;
     var best = null;
     var leafSpreadSeed = null;
     var leafSpreadEligible = shouldTryLeafSpreadGraph(graph, opts);
     var failures = [];
 
     for (var i = 0; i < candidateNames.length; i += 1) {
-      if (best && Date.now() - startedAt >= opts.budgetMs) {
-        break;
-      }
-
       var name = candidateNames[i];
       var result = null;
       try {
@@ -1936,7 +1916,7 @@
         continue;
       }
 
-      var evaluated = bestTransformForCandidate(graph, result.positions, opts, deadlineMs);
+      var evaluated = bestTransformForCandidate(graph, result.positions, opts);
       if (!evaluated || !evaluated.ok) {
         failures.push(name + ': invalid scored drawing');
         continue;
@@ -1966,10 +1946,10 @@
       }
     }
 
-    if (leafSpreadSeed && (!Number.isFinite(deadlineMs) || Date.now() < deadlineMs)) {
+    if (leafSpreadSeed) {
       var spreadResult = computeLeafSpreadPositions(graph, leafSpreadSeed.positions, opts);
       if (spreadResult && spreadResult.ok && spreadResult.positions) {
-        var spreadEvaluated = bestTransformForCandidate(graph, spreadResult.positions, opts, deadlineMs);
+        var spreadEvaluated = bestTransformForCandidate(graph, spreadResult.positions, opts);
         if (spreadEvaluated && spreadEvaluated.ok) {
           var maxEdgeRatioDrop = Number.isFinite(opts.leafSpreadMaxEdgeRatioDrop)
             ? opts.leafSpreadMaxEdgeRatioDrop
@@ -1992,8 +1972,8 @@
       }
     }
 
-    if (best && shouldTryPolish(graph, best, opts, deadlineMs)) {
-      var polished = computePolishedPositions(graph, best.positions, best.score, opts, deadlineMs);
+    if (best && shouldTryPolish(graph, best, opts)) {
+      var polished = computePolishedPositions(graph, best.positions, best.score, opts);
       if (polished && polished.ok && polished.score > best.score) {
         polished.name = 'polish-' + best.name;
         polished.result = {

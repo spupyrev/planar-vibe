@@ -29,6 +29,8 @@
     coreTreeMaxCoreNodes: 70
   };
   var BALANCER_MAX_INTERIOR_AUG_VERTICES = 400;
+  var HEAVY_BALANCER_AUG_EDGE_LIMIT = 1500;
+  var LATE_FALLBACK_SKIP_MIN_GRAPH_SIZE = 150;
 
   // Module-level cache: populated by computePositions at entry.
   // Holds graph-only context shared by all candidate scoring.
@@ -232,13 +234,6 @@
     return { adjIndex: adjIndex, posArr: posArr, n: n, diag: diag, snapshot: snapshot };
   }
 
-  function makeTimeGuard(startTimeMs, budgetMs) {
-    return function () {
-      if (!startTimeMs || !budgetMs) return false;
-      return Date.now() - startTimeMs > budgetMs;
-    };
-  }
-
   // Greedy local-move polish: try 8 fixed directions per vertex at a schedule of step sizes,
   // accept any move that improves the 10-metric mean and preserves planarity.
   function polishByLocalMoves(nodeIds, edgePairs, posById, opts) {
@@ -247,18 +242,17 @@
     var maxPasses = opts.maxPasses || 2;
     var stepScale = opts.stepScale || 0.08;
     var minStepScale = opts.minStepScale || 0.005;
-    var timeUp = makeTimeGuard(opts.startTimeMs, opts.budgetMs);
 
     var ctx = polishScaffold(nodeIds, edgePairs, posById);
     var posArr = ctx.posArr, n = ctx.n, diag = ctx.diag, adjIndex = ctx.adjIndex;
     var bestTotal = computeScores(nodeIds, edgePairs, ctx.snapshot(), embedding).total;
 
     var scale = stepScale;
-    for (var pass = 0; pass < maxPasses && !timeUp(); pass += 1) {
+    for (var pass = 0; pass < maxPasses; pass += 1) {
       var step = scale * diag;
       if (step < minStepScale * diag) break;
       var improved = false;
-      for (var vi = 0; vi < n && !timeUp(); vi += 1) {
+      for (var vi = 0; vi < n; vi += 1) {
         var px = posArr[vi].x, py = posArr[vi].y;
         var bestDx = 0, bestDy = 0;
         for (var di = 0; di < DIRS8.length; di += 1) {
@@ -287,7 +281,6 @@
     opts = opts || {};
     var embedding = opts.embedding;
     var maxPasses = opts.maxPasses || 3;
-    var timeUp = makeTimeGuard(opts.startTimeMs, opts.budgetMs);
 
     var ctx = polishScaffold(nodeIds, edgePairs, posById);
     var posArr = ctx.posArr, n = ctx.n, diag = ctx.diag, adjIndex = ctx.adjIndex;
@@ -321,12 +314,12 @@
       return result;
     }
 
-    for (var pass = 0; pass < maxPasses && !timeUp(); pass += 1) {
+    for (var pass = 0; pass < maxPasses; pass += 1) {
       var emb = embedding;
       if (!emb || !emb.ok) break;
       var outerIdx = PlanarGraphUtils.findOuterFaceIndex(emb.faces, emb.outerFace || []);
       var improved = false;
-      for (var fi = 0; fi < emb.faces.length && !timeUp(); fi += 1) {
+      for (var fi = 0; fi < emb.faces.length; fi += 1) {
         if (fi === outerIdx) continue;
         var face = emb.faces[fi];
         if (!Array.isArray(face) || face.length < 4) continue;
@@ -341,7 +334,7 @@
         }
         if (m === 0) continue;
         cx /= m; cy /= m;
-        for (var r = 0; r < reflex.length && !timeUp(); r += 1) {
+        for (var r = 0; r < reflex.length; r += 1) {
           var vIdx = reflex[r];
           var px = posArr[vIdx].x, py = posArr[vIdx].y;
           var dx = cx - px, dy = cy - py;
@@ -421,9 +414,7 @@
       embedding: embedding,
       maxPasses: opts.maxPasses || 3,
       stepScale: opts.stepScale || 0.012,
-      minStepScale: 0.0005,
-      startTimeMs: opts.startTimeMs,
-      budgetMs: opts.budgetMs
+      minStepScale: 0.0005
     });
   }
 
@@ -1397,6 +1388,16 @@
       : BALANCER_MAX_INTERIOR_AUG_VERTICES;
   }
 
+  function balancerAugEdgeCount(prepared) {
+    if (!prepared || !prepared.ok || !prepared.augmented || !prepared.augmented.graph) return Infinity;
+    var edgePairs = prepared.augmented.graph.edgePairs || [];
+    return edgePairs.length;
+  }
+
+  function isHeavyBalancerCandidate(label) {
+    return label === 'FABalancer' || label === 'AngleBalancer';
+  }
+
   function buildCandidateRunners(graph, options, runtime) {
     var opts = options;
     var n = graph.nodeIds.length;
@@ -1416,7 +1417,20 @@
       if (!hasComputeInterface(module)) return;
       var prepared = getBalancerPrepared(module);
       if (balancerInteriorAugVertexCount(prepared) > balancerInteriorLimit(opts)) return;
+      if (isHeavyBalancerCandidate(label) &&
+          balancerAugEdgeCount(prepared) > HEAVY_BALANCER_AUG_EDGE_LIMIT) {
+        return;
+      }
       runners.push([label, function () { return runPreparedModuleCandidate(module, graph, prepared); }]);
+    }
+
+    function maybePushLateFallback(label, module) {
+      if (!hasComputeInterface(module)) return;
+      if (graph.nodeIds.length + graph.edgePairs.length >= LATE_FALLBACK_SKIP_MIN_GRAPH_SIZE &&
+          runners.length > 0) {
+        return;
+      }
+      runners.push([label, function () { return runModuleCandidate(module, graph, runtime); }]);
     }
 
     if (n <= customLimit(opts, 'treeMaxNodes') && isTreeGraph(graph)) {
@@ -1441,30 +1455,19 @@
     maybePushBalancer('EdgeBalancer', global.PlanarVibeEdgeBalancer);
     maybePushBalancer('FABalancer', global.PlanarVibeFABalancer);
     maybePushBalancer('AngleBalancer', global.PlanarVibeAngleBalancer);
-    if (hasComputeInterface(global.PlanarVibeAreaGrad)) {
-      runners.push(['AreaGrad', function () { return runModuleCandidate(global.PlanarVibeAreaGrad, graph, runtime); }]);
-    }
     maybePushBalancer('FaceBalancer', global.PlanarVibeFaceBalancer);
     if (hasComputeInterface(global.PlanarVibeReweight)) {
       runners.push(['Reweight', function () { return runModuleCandidate(global.PlanarVibeReweight, graph, runtime); }]);
     }
-    if (hasComputeInterface(global.PlanarVibeSchnyder)) {
-      runners.push(['Schnyder', function () { return runModuleCandidate(global.PlanarVibeSchnyder, graph, runtime); }]);
-    }
-    if (hasComputeInterface(global.PlanarVibeCEGBfs)) {
-      runners.push(['CEGBfs', function () { return runModuleCandidate(global.PlanarVibeCEGBfs, graph, runtime); }]);
-    }
-    if (hasComputeInterface(global.PlanarVibeTutte)) {
-      runners.push(['Tutte', function () { return runModuleCandidate(global.PlanarVibeTutte, graph, runtime); }]);
-    }
+    maybePushLateFallback('Schnyder', global.PlanarVibeSchnyder);
+    maybePushLateFallback('CEGBfs', global.PlanarVibeCEGBfs);
+    maybePushLateFallback('Tutte', global.PlanarVibeTutte);
 
     return runners;
   }
 
-  // Try a candidate + generate base/rot/rot+align/align variants, scoring each.
-  // timeLeft is a callback returning remaining budget in ms; used to skip expensive
-  // rotation / alignment work on large graphs when time is tight.
-  function expandVariants(label, posById, embedding, nodeIds, edgePairs, timeLeft) {
+  // Try a candidate + generate base and best rotation/alignment variants.
+  function expandVariants(label, posById, embedding, nodeIds, edgePairs) {
     var variants = [];
     variants.push({
       label: label + ':base',
@@ -1472,10 +1475,6 @@
       embedding: embedding,
       scores: computeScores(nodeIds, edgePairs, posById, embedding)
     });
-    // Skip rotation/alignment variants if not enough time; base alone is enough to be a
-    // valid fallback. Rotation sweep does 19 computeScores calls, each O(n+m).
-    if (timeLeft && timeLeft() < 1000) return variants;
-
     var rotAlign = findBestRotationAndAlignment(nodeIds, edgePairs, posById, embedding);
     if (rotAlign) {
       variants.push({
@@ -1530,12 +1529,6 @@
 
   async function computePositions(layoutInput, options) {
     var opts = options;
-    var startMs = Date.now();
-    // Default 22s instead of 25s — gives an 8s wall-clock safety margin against the 30s
-    // eval timeout even if a single candidate runs several seconds longer than expected.
-    var globalBudgetMs = Number.isFinite(opts.claudeBudgetMs) ? opts.claudeBudgetMs : 22000;
-    var timeLeft = function () { return globalBudgetMs - (Date.now() - startMs); };
-
     var graph = opts.graph;
     var nodeIds = graph.nodeIds;
     var edgePairs = graph.edgePairs;
@@ -1547,12 +1540,10 @@
 
     var variants = [];
     for (var i = 0; i < runners.length; i += 1) {
-      // If we've already spent most of the budget, skip further candidates.
-      if (i > 0 && timeLeft() < 3000) break;
       var label = runners[i][0];
       var out = await runners[i][1]();
       if (out.ok) {
-        var expanded = expandVariants(label, out.posById, out.embedding, nodeIds, edgePairs, timeLeft);
+        var expanded = expandVariants(label, out.posById, out.embedding, nodeIds, edgePairs);
         for (var k = 0; k < expanded.length; k += 1) variants.push(expanded[k]);
       }
     }
@@ -1565,18 +1556,15 @@
     var polishPasses = n > 80 ? 2 : (n > 60 ? 3 : (n > 40 ? 4 : 5));
     var polishStep = n > 80 ? 0.03 : (n > 60 ? 0.04 : (n > 40 ? 0.05 : 0.06));
 
-    if (n <= 150 && timeLeft() > 1500) {
-      var totalBudget = Math.min(n > 75 ? 7000 : (n > 50 ? 16000 : 22000), timeLeft() - 1500);
+    if (n <= 150) {
       var numStarts = n > 75 ? 1 : (n > 50 ? 2 : 3);
       var topK = variants.slice(0, Math.min(numStarts, variants.length));
-      var perVariant = Math.max(1500, Math.floor(totalBudget / topK.length));
 
       for (var si = 0; si < topK.length; si += 1) {
         var startVar = topK[si];
         var polished = polishByLocalMoves(nodeIds, edgePairs, startVar.posById, {
           embedding: startVar.embedding,
-          maxPasses: polishPasses, stepScale: polishStep,
-          startTimeMs: Date.now(), budgetMs: perVariant
+          maxPasses: polishPasses, stepScale: polishStep
         });
         if (polished.scores.total > best.scores.total) {
           best = {
@@ -1592,57 +1580,43 @@
       best = tryRotAlign(nodeIds, edgePairs, best);
 
       // 3. Fine then micro polish. Re-align after.
-      if (n <= 75 && timeLeft() > 1000) {
+      if (n <= 75) {
         best = tryPolish(nodeIds, edgePairs, best, {
-          maxPasses: 4, stepScale: 0.015, minStepScale: 0.001,
-          startTimeMs: Date.now(), budgetMs: Math.min(n > 50 ? 3500 : 5000, timeLeft() - 1000)
+          maxPasses: 4, stepScale: 0.015, minStepScale: 0.001
         }, '+fine');
 
-        if (timeLeft() > 800) {
-          best = tryPolish(nodeIds, edgePairs, best, {
-            maxPasses: 3, stepScale: 0.004, minStepScale: 0.0003,
-            startTimeMs: Date.now(), budgetMs: Math.min(n > 50 ? 2000 : 3000, timeLeft() - 500)
-          }, '+micro');
-          best = tryAlign(nodeIds, edgePairs, best);
-        }
+        best = tryPolish(nodeIds, edgePairs, best, {
+          maxPasses: 3, stepScale: 0.004, minStepScale: 0.0003
+        }, '+micro');
+        best = tryAlign(nodeIds, edgePairs, best);
 
         // 4. Convexity repair for non-convex faces, followed by a brief settle polish.
-        if (timeLeft() > 600) {
-          var repaired = convexityRepair(nodeIds, edgePairs, best.posById, {
+        var repaired = convexityRepair(nodeIds, edgePairs, best.posById, {
+          embedding: best.embedding,
+          maxPasses: 3
+        });
+        if (repaired.scores.total > best.scores.total) {
+          best = {
+            label: best.label + '+cvx',
+            posById: repaired.positions,
             embedding: best.embedding,
-            maxPasses: 3, startTimeMs: Date.now(),
-            budgetMs: Math.min(n > 50 ? 2500 : 4000, timeLeft() - 500)
-          });
-          if (repaired.scores.total > best.scores.total) {
-            best = {
-              label: best.label + '+cvx',
-              posById: repaired.positions,
-              embedding: best.embedding,
-              scores: repaired.scores
-            };
-          }
-          if (timeLeft() > 400) {
-            best = tryPolish(nodeIds, edgePairs, best, {
-              maxPasses: 2, stepScale: 0.008, minStepScale: 0.0005,
-              startTimeMs: Date.now(), budgetMs: Math.min(1500, timeLeft() - 300)
-            }, '+cvxpol');
-          }
+            scores: repaired.scores
+          };
         }
+        best = tryPolish(nodeIds, edgePairs, best, {
+          maxPasses: 2, stepScale: 0.008, minStepScale: 0.0005
+        }, '+cvxpol');
 
         // 5. Restart search: small random perturbations + polish.
-        if (n <= 50 && timeLeft() > 2000) {
+        if (n <= 50) {
           var rng = seededRng(nodeIds, edgePairs);
-          var restartBudget = Math.min(4000, timeLeft() - 1500);
           var numRestarts = n > 30 ? 2 : 3;
-          var perRestart = Math.floor(restartBudget / numRestarts);
           var perturbScales = [0.015, 0.03, 0.06];
           for (var ri = 0; ri < numRestarts; ri += 1) {
-            if (timeLeft() < 800) break;
             var res = restartPerturbAndPolish(nodeIds, edgePairs, best.posById, rng, {
               embedding: best.embedding,
               perturbScale: perturbScales[ri % perturbScales.length],
-              maxPasses: 3, stepScale: 0.012,
-              startTimeMs: Date.now(), budgetMs: perRestart
+              maxPasses: 3, stepScale: 0.012
             });
             if (res.scores.total > best.scores.total) {
               best = {
@@ -1656,29 +1630,22 @@
         }
 
         // 6. Final settle polish.
-        if (timeLeft() > 300) {
-          best = tryPolish(nodeIds, edgePairs, best, {
-            maxPasses: 2, stepScale: 0.003, minStepScale: 0.0002,
-            startTimeMs: Date.now(), budgetMs: Math.min(1500, timeLeft() - 200)
-          }, '+settle');
-        }
+        best = tryPolish(nodeIds, edgePairs, best, {
+          maxPasses: 2, stepScale: 0.003, minStepScale: 0.0002
+        }, '+settle');
       }
     }
 
     // 7. Iterative outer loop: re-apply rotation/alignment/fine polish a few times;
     //    new alignment can unlock further fine improvements.
-    if (n <= 70 && timeLeft() > 1500) {
+    if (n <= 70) {
       var outerIters = n > 40 ? 2 : 3;
       for (var oi = 0; oi < outerIters; oi += 1) {
-        if (timeLeft() < 800) break;
         var before = best.scores.total;
         best = tryRotAlign(nodeIds, edgePairs, best);
-        if (timeLeft() > 800) {
-          best = tryPolish(nodeIds, edgePairs, best, {
-            maxPasses: 3, stepScale: 0.006, minStepScale: 0.0003,
-            startTimeMs: Date.now(), budgetMs: Math.min(1800, timeLeft() - 500)
-          }, '+fineIter');
-        }
+        best = tryPolish(nodeIds, edgePairs, best, {
+          maxPasses: 3, stepScale: 0.006, minStepScale: 0.0003
+        }, '+fineIter');
         if (best.scores.total <= before + 1e-6) break;
       }
     }

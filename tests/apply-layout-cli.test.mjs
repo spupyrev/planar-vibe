@@ -144,7 +144,7 @@ test('Claude module candidates receive initial positions during preparation', as
   };
 
   try {
-    const result = await windowObj.PlanarVibeClaude.applyLayout(cy, { claudeBudgetMs: 500 });
+    const result = await windowObj.PlanarVibeClaude.applyLayout(cy);
     assert.equal(result && result.ok, true, result && result.message ? result.message : 'Claude failed');
   } finally {
     windowObj.PlanarVibeEdgeBalancer.prepareGraphData = originalPrepare;
@@ -188,7 +188,7 @@ test('Claude skips balancer candidates when augmented interior is above cap', as
   };
 
   try {
-    const result = await windowObj.PlanarVibeClaude.applyLayout(cy, { claudeBudgetMs: 500 });
+    const result = await windowObj.PlanarVibeClaude.applyLayout(cy);
     assert.equal(result && result.ok, true, result && result.message ? result.message : 'Claude failed');
   } finally {
     windowObj.PlanarVibeEdgeBalancer.prepareGraphData = originalPrepare;
