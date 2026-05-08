@@ -49,11 +49,12 @@ struct Config {
     int lbfgsMemory = 10;
     double lineSearchC1 = 1e-4;
     double lineSearchTau = 0.5;
+    double lineSearchAcceptTol = 5e-9;
     double movementStopTol = 1e-6;
     double avgMovementStopTol = 2e-7;
     int alignMaxPasses = 3;
     StageCfg faceWarmStage = {20, 20, 6, 0.02, 0.25, 0.2, 0.05, 0.02, 1.0, 0.0, 0.0, 0.0, 10, 0.0};
-    StageCfg angleStage = {180, 40, 8, 0.01, 0.2, 0.02, 0.005, 0.002, 0.0, 1.0, 0.5, 0.25, 10, 0.5};
+    StageCfg angleStage = {180, 40, 8, 0.01, 0.2, 0.02, 0.005, 0.002, 0.0, 1.0, 0.5, 0.0, 10, 0.5};
 };
 
 std::string ekey(const std::string& a, const std::string& b) {
@@ -803,7 +804,7 @@ OptResult run_optimization(const std::vector<double>& q0, Data& d, const Config&
                     auto tms = gh::compute_move_stats(d.interiorAugIndices, dist_fn, 1e-9);
                     if (tms.max_move > maxPositionStep) { alpha *= cfg.lineSearchTau; continue; }
                 }
-                if (trial.ok && trial.E <= current.E + cfg.lineSearchC1 * alpha * gtd) {
+                if (trial.ok && trial.E <= current.E + cfg.lineSearchC1 * alpha * gtd + cfg.lineSearchAcceptTol) {
                     accepted = true;
                     break;
                 }

@@ -816,6 +816,49 @@ PositionResult compute_core_tree_positions_with_core(
     cx /= core_info.core.size(); cy /= core_info.core.size();
     auto med = median_edge_length(core_info.core_edge_pairs, positions);
     double level_gap = (med.value_or(1.0)) * 0.95;
+    auto stable_outward_angle = [&](const std::string& cid) -> double {
+        Point p = positions[cid];
+        double dx = p[0] - cx, dy = p[1] - cy;
+        double raw_angle = std::atan2(dy, dx);
+        double radial = std::hypot(dx, dy);
+        if (radial > std::max(1e-9, level_gap * 1e-8)) return raw_angle;
+
+        std::vector<double> occupied;
+        auto nbr_it = core_info.info.adjacency.find(cid);
+        if (nbr_it != core_info.info.adjacency.end()) {
+            for (const auto& nb : nbr_it->second) {
+                if (!core_info.core_set.count(nb)) continue;
+                auto qit = positions.find(nb);
+                if (qit == positions.end()) continue;
+                double a = std::atan2(qit->second[1] - p[1], qit->second[0] - p[0]);
+                if (a < 0) a += 2 * PI;
+                occupied.push_back(a);
+            }
+        }
+        if (occupied.empty()) return 0.0;
+        auto normalize_pi = [](double a) {
+            while (a > PI) a -= 2 * PI;
+            while (a <= -PI) a += 2 * PI;
+            return a;
+        };
+        auto angle_dist = [&](double a, double b) {
+            double d = std::fabs(a - b);
+            while (d > 2 * PI) d -= 2 * PI;
+            return std::min(d, 2 * PI - d);
+        };
+        double raw_norm = normalize_pi(raw_angle);
+        double nearest = normalize_pi(occupied[0]);
+        double nearest_dist = angle_dist(nearest, raw_norm);
+        for (double a : occupied) {
+            double an = normalize_pi(a);
+            double d = angle_dist(an, raw_norm);
+            if (d < nearest_dist) { nearest = an; nearest_dist = d; }
+        }
+        double side = normalize_pi(raw_norm - nearest);
+        if (std::fabs(side) < 1e-12) side = 1.0;
+        return normalize_pi(nearest + (side > 0 ? 1e-3 : -1e-3));
+
+    };
 
     std::unordered_map<std::string, int> leaf_memo;
     std::function<int(const std::string&)> leaf_count = [&](const std::string& u) -> int {
@@ -855,7 +898,7 @@ PositionResult compute_core_tree_positions_with_core(
         for (const auto& r : children[cid]) if (!core_info.core_set.count(r)) ac += 1;
         if (ac == 0) continue;
         Point p = positions[cid];
-        double outward = std::atan2(p[1] - cy, p[0] - cx);
+        double outward = stable_outward_angle(cid);
         double half = std::min(PI * 0.72, std::max(PI / 5, ac * PI / 9));
         assign_subtree(cid, p, 1, outward - half, outward + half);
     }
