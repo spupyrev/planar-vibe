@@ -2,4 +2,4 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec node "$SCRIPT_DIR/gen-layout-table.mjs" --cache-only "$@"
+exec node "$SCRIPT_DIR/layout-cache.mjs" "$@"

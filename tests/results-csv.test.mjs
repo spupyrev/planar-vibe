@@ -33,7 +33,7 @@ const HEADER = [
   'spacing'
 ];
 
-test('update-results-from-layout-cache replaces selected rows from cache', async () => {
+test('results-csv replaces selected rows from cache', async () => {
   const resultsPath = path.join(process.cwd(), 'tmp-cache-update-results.csv');
   const cachePath = path.join(process.cwd(), 'tmp-cache-update-layout-table-cache.json');
   fs.writeFileSync(resultsPath, [
@@ -128,7 +128,7 @@ test('update-results-from-layout-cache replaces selected rows from cache', async
     await execFileAsync(
       process.execPath,
       [
-        'scripts/update-results-from-layout-cache.mjs',
+        'scripts/results-csv.mjs',
         '--results', resultsPath,
         '--caches', cachePath,
         '--algorithms', 'gpt,claude'

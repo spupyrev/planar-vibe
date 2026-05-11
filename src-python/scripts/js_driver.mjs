@@ -17,7 +17,7 @@ const REPO_ROOT = path.resolve(path.dirname(SELF), '..', '..');
 
 // Import from the existing JS pipeline.
 const reportShared = await import(path.join(REPO_ROOT, 'scripts/report-shared.mjs'));
-const applyLayout = await import(path.join(REPO_ROOT, 'scripts/apply-layout.mjs'));
+const applyLayout = await import(path.join(REPO_ROOT, 'scripts/apply-layout-js.mjs'));
 
 const {
   createAlgorithmSpecs,

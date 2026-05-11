@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 
-import { loadGraphs } from './apply-layout.mjs';
+import { loadGraphs } from './apply-layout-js.mjs';
 import {
   createAlgorithmSpecs,
   createMockCy,

@@ -25,17 +25,18 @@ For each metric, aggregate values across graphs with p50. The final score is the
 
 Use `planar_train.dot` for development and progress checks. Final evaluation will use a larger, unreleased benchmark. The time limit is 30 seconds per graph instance.
 
-Use this command for local evaluation:
+The old JS batch evaluator has been removed. For the current benchmark data
+refresh workflow, rebuild the C++ layout-table caches and then refresh derived
+CSV/HTML data from those caches:
 
 ```bash
-node scripts/run-dataset-multi-algorithm-batch.mjs \
-  --algorithms agentic \
-  --timeout-ms 30000 \
-  --files planar_train.dot \
-  --output evaluation_data/agentic-train-results.csv
+./scripts/layout-cache
+./scripts/results-csv
+./scripts/layout-html
 ```
 
-The script also writes `evaluation_data/agentic-train-results-scores.csv`. In that score file, `ok=0` or a missing metric value counts as `0.0` for that metric before p50.
+Rows with `ok=0` or missing metric values count as `0.0` for that metric in
+downstream score summaries.
 
 ## Baselines
 

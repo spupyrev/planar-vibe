@@ -43,23 +43,21 @@ python3 -m http.server 8000
 
 Then open `http://localhost:8000`.
 
-Run one or more layouts using the JS implementation:
+Run one or more layouts. The public CLI defaults to the C++ implementation:
 
 ```bash
-./scripts/apply_layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
+./scripts/apply-layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
 ```
 
-Requires Node.js 18+.
-
-## Python Usage
-
-Run a layout using the Python implementation:
+Choose a different implementation with `--implementation`:
 
 ```bash
-python3 src-python/scripts/apply_layout.py benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
+./scripts/apply-layout --implementation js benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
+./scripts/apply-layout --implementation py benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
 ```
 
-Requires Python 3.10+.
+Requires Node.js 18+ for the wrapper and JS implementation, Python 3.10+ for
+the Python implementation, and a built C++ binary for the default path.
 
 ## C++ Usage
 
@@ -69,10 +67,10 @@ Build the C++ binary:
 make -C src-cpp
 ```
 
-Run a layout using the C++ implementation:
+The public `apply-layout` wrapper uses this binary by default:
 
 ```bash
-src-cpp/build/apply_layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
+./scripts/apply-layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
 ```
 
 ## License

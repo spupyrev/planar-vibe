@@ -3,7 +3,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { Worker } from 'node:worker_threads';
 
-import { loadGraphs } from './apply-layout.mjs';
+import { loadGraphs } from './apply-layout-js.mjs';
 
 const DEFAULT_DATASET = 'benchmark/planar_all.dot';
 const DEFAULT_PREVIOUS = '/tmp/claude-policy-actual-planar-all-top100.json';
@@ -313,7 +313,7 @@ function workerSource() {
     import { pathToFileURL } from 'node:url';
 
     const root = workerData.root;
-    const { loadGraphs } = await import(pathToFileURL(path.join(root, 'scripts/apply-layout.mjs')).href);
+    const { loadGraphs } = await import(pathToFileURL(path.join(root, 'scripts/apply-layout-js.mjs')).href);
     const shared = await import(pathToFileURL(path.join(root, 'scripts/report-shared.mjs')).href);
     const { createAlgorithmSpecs, createMockCy, initializeMockCyPositions, positionsFromCy } = shared;
     const metricKeys = ${JSON.stringify(METRIC_KEYS)};

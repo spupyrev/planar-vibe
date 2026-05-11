@@ -1,6 +1,6 @@
 """Benchmark DOT file loader.
 
-Mirrors the tiny DOT parser used by scripts/apply-layout.mjs (parseDotCollections).
+Mirrors the tiny DOT parser used by scripts/apply-layout-js.mjs (parseDotCollections).
 Reads `graph <name> { ... }` blocks with two kinds of statements:
   - vertex with coords:  v <id> <x> <y> ;
   - edge:                <u> -- <v> ;

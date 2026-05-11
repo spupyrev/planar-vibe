@@ -25,8 +25,8 @@ export function usage(message, io) {
     out.stderr.write(`${message}\n\n`);
   }
   out.stderr.write(
-    'Usage: ./scripts/aggregate_metric <csv-file> --metric=<metric|pattern>[,<metric|pattern>]\n' +
-    'Example: ./scripts/aggregate_metric evaluation_data/all-algorithms-4bench-results.csv --metric="*"\n'
+    'Usage: ./scripts/aggregate-metric <csv-file> --metric=<metric|pattern>[,<metric|pattern>]\n' +
+    'Example: ./scripts/aggregate-metric evaluation_data/all-algorithms-4bench-results.csv --metric="*"\n'
   );
 }
 

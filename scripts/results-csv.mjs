@@ -11,7 +11,22 @@ const DEFAULT_CACHE_FILES = [
   path.join('evaluation_data', 'north-layout-table-cache.json'),
   path.join('evaluation_data', 'rome-layout-table-cache.json')
 ];
-const DEFAULT_ALGORITHMS = ['gpt', 'claude'];
+const DEFAULT_ALGORITHMS = [
+  'schnyder',
+  'fpp',
+  'tutte',
+  'ceg_bfs',
+  'ceg_xy',
+  'reweight',
+  'forcedir',
+  'impred',
+  'air',
+  'anglebalancer',
+  'edgebalancer',
+  'facebalancer',
+  'gpt',
+  'claude'
+];
 const METRIC_KEYS = [
   'angularResolution',
   'aspectRatio',
@@ -42,9 +57,9 @@ const HEADER = [
 
 function usage() {
   process.stderr.write(
-    'Usage: node scripts/update-results-from-layout-cache.mjs ' +
+    'Usage: ./scripts/results-csv ' +
     '[--results evaluation_data/all-algorithms-4bench-results.csv] ' +
-    '[--algorithms gpt,claude] ' +
+    `[--algorithms ${DEFAULT_ALGORITHMS.join(',')}] ` +
     '[--caches evaluation_data/named-layout-table-cache.json,...]\n'
   );
 }
@@ -109,6 +124,10 @@ function normalizeCell(value) {
   return value;
 }
 
+function displayAlgorithmLabel(rec) {
+  return rec.algorithm === 'input' ? 'Human' : rec.algorithmLabel;
+}
+
 function recordToCsvRow(rec) {
   return [
     rec.dataset,
@@ -116,7 +135,7 @@ function recordToCsvRow(rec) {
     rec.n,
     rec.m,
     rec.algorithm,
-    rec.algorithmLabel,
+    displayAlgorithmLabel(rec),
     Number.isFinite(rec.runtimeMs) ? rec.runtimeMs : '',
     rec.ok ? '1' : '0',
     rec.message || '',
@@ -209,7 +228,8 @@ function main() {
   for (let i = 0; i < bodyRows.length; i += 1) {
     const row = bodyRows[i];
     const rec = csvRowToRecord(row, columnIndex);
-    if (algorithmSet.has(rec.algorithm)) {
+    const rowCacheKey = cacheRecordKey(rec.dataset, rec.graph, rec.algorithm);
+    if (algorithmSet.has(rec.algorithm) && cacheRecords.has(rowCacheKey)) {
       removedExisting += 1;
     } else {
       outputRows.push(row.map(csvEscape));

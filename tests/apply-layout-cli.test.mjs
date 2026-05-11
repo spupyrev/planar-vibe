@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { runCli } from '../scripts/apply-layout.mjs';
+import { runCli } from '../scripts/apply-layout-js.mjs';
 import {
   createMockCy,
   initializeMockCyPositions,

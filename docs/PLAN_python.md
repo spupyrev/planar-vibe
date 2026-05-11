@@ -8,7 +8,7 @@ node coordinates + 10 drawing metrics + runtime.
 
 The JS side (`static/js/`, `scripts/`, `tests/`, `index.html`, everything
 outside `src-python/`) is **read-only** for the entire port. We read JS to
-understand behaviour, we run the JS tools (`scripts/apply-layout.mjs` etc.) to
+understand behaviour, we run the JS tools (`scripts/apply-layout-js.mjs` etc.) to
 capture reference output, but we never edit a JS file. If a JS bug makes the
 Python port awkward, we replicate the bug in Python — we do not patch JS.
 
@@ -93,8 +93,8 @@ src-python/
       gpt.py                 # from layout-gpt.js
       claude.py              # from layout-claude.js
   scripts/
-    apply_layout.py          # mirrors scripts/apply-layout.mjs
-    gen_layout_table.py      # mirrors scripts/gen-layout-table.mjs
+    apply_layout.py          # mirrors scripts/apply-layout-js.mjs
+    layout_table_renderer.py # mirrors scripts/layout-html-renderer.mjs
     freeze_js_reference.py   # runs the JS side and captures golden data
     parity_check.py          # compares Python output vs JS golden
   tests/
@@ -203,7 +203,7 @@ Bottom-up. Pause at each, report parity, discuss before next.
 **C0 — scaffolding**
 - `src-python/` package skeleton, `pyproject.toml`, `pytest` configured.
 - Benchmark loader working on `sample_graphs_coords.dot`.
-- `freeze_js_reference.py` runs JS via `scripts/apply-layout.mjs` and saves
+- `freeze_js_reference.py` runs JS via `scripts/apply-layout-js.mjs` and saves
   golden JSON per (graph, layout). (No Python layouts ported yet — just proves
   we can capture reference data.)
 

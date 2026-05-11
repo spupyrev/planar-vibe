@@ -126,7 +126,7 @@ src-cpp/
   src/
     *.cpp                     # one .cpp per header above; split only if big
   apps/
-    apply_layout.cpp          # CLI binary (mirrors scripts/apply-layout.mjs)
+    apply_layout.cpp          # CLI binary (mirrors scripts/apply-layout-js.mjs)
   tests/
     test_main.cpp             # single binary, plain asserts
   build/                      # gitignored

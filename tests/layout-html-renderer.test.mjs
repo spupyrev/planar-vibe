@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { runCli } from '../scripts/gen-layout-table.mjs';
+import { runCli } from '../scripts/layout-html-renderer.mjs';
 
-test('gen_layout_table writes an html table with graph rows and algorithm columns', async () => {
+test('layout-table renderer writes an html table with graph rows and algorithm columns', async () => {
   const outputPath = path.join(process.cwd(), 'tmp-layout-table-test.html');
   if (fs.existsSync(outputPath)) {
     fs.unlinkSync(outputPath);
@@ -34,7 +34,8 @@ test('gen_layout_table writes an html table with graph rows and algorithm column
     const html = fs.readFileSync(outputPath, 'utf8');
     assert.match(html, /<table>/);
     assert.match(html, />Graph</);
-    assert.match(html, />Input</);
+    assert.match(html, />Human</);
+    assert.doesNotMatch(html, />Input</);
     assert.match(html, />Tutte</);
     assert.match(html, /sample1<br><span class="graph-size">\|V\| = 50, \|E\| = 96<\/span>/);
     assert.match(html, /<svg\b/);
@@ -47,7 +48,7 @@ test('gen_layout_table writes an html table with graph rows and algorithm column
   }
 });
 
-test('gen_layout_table accepts glob patterns for algorithm selection', async () => {
+test('layout-table renderer accepts glob patterns for algorithm selection', async () => {
   const outputPath = path.join(process.cwd(), 'tmp-layout-table-glob-test.html');
   if (fs.existsSync(outputPath)) {
     fs.unlinkSync(outputPath);
@@ -69,7 +70,8 @@ test('gen_layout_table accepts glob patterns for algorithm selection', async () 
     );
 
     const html = fs.readFileSync(outputPath, 'utf8');
-    assert.match(html, />Input</);
+    assert.match(html, />Human</);
+    assert.doesNotMatch(html, />Input</);
     assert.match(html, />Tutte</);
     assert.doesNotMatch(html, />Air</);
   } finally {
@@ -79,7 +81,7 @@ test('gen_layout_table accepts glob patterns for algorithm selection', async () 
   }
 });
 
-test('gen_layout_table can render html from a cached layout table payload', async () => {
+test('layout-table renderer can render html from a cached layout table payload', async () => {
   const cachePath = path.join(process.cwd(), 'tmp-layout-table-cache-test.json');
   const outputPath = path.join(process.cwd(), 'tmp-layout-table-from-cache-test.html');
   for (const filePath of [cachePath, outputPath]) {
@@ -130,7 +132,8 @@ test('gen_layout_table can render html from a cached layout table payload', asyn
     );
 
     const html = fs.readFileSync(outputPath, 'utf8');
-    assert.match(html, />Input</);
+    assert.match(html, />Human</);
+    assert.doesNotMatch(html, />Input</);
     assert.match(html, />Tutte</);
     assert.match(html, /sample1<br><span class="graph-size">\|V\| = 50, \|E\| = 96<\/span>/);
     assert.match(html, /<svg\b/);
@@ -145,7 +148,75 @@ test('gen_layout_table can render html from a cached layout table payload', asyn
   }
 });
 
-test('gen_layout_table_cache update mode preserves cached algorithm results', async () => {
+test('layout-table renderer orders cached columns for display', async () => {
+  const cachePath = path.join(process.cwd(), 'tmp-layout-table-order-cache-test.json');
+  const outputPath = path.join(process.cwd(), 'tmp-layout-table-order-test.html');
+  for (const filePath of [cachePath, outputPath]) {
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  }
+
+  try {
+    const cache = {
+      schema: 'planarvibe-layout-table-cache',
+      version: 1,
+      generatedAt: '2026-05-11T00:00:00.000Z',
+      dataset: {
+        name: 'sample_graphs_coords',
+        filePath: 'benchmark/sample_graphs_coords.dot'
+      },
+      graphPattern: 'sample1',
+      algorithms: [
+        { key: 'tutte', label: 'Tutte' },
+        { key: 'claude', label: 'Claude' },
+        { key: 'schnyder', label: 'Schnyder' },
+        { key: 'gpt', label: 'GPT' },
+        { key: 'input', label: 'Input' }
+      ],
+      rows: [
+        {
+          graphName: 'sample1',
+          parsed: {
+            nodeIds: ['0', '1'],
+            edgePairs: [['0', '1']]
+          },
+          results: [
+            { algorithm: 'tutte', ok: false, message: 'test' },
+            { algorithm: 'claude', ok: false, message: 'test' },
+            { algorithm: 'schnyder', ok: false, message: 'test' },
+            { algorithm: 'gpt', ok: false, message: 'test' },
+            { algorithm: 'input', ok: false, message: 'test' }
+          ]
+        }
+      ]
+    };
+    fs.writeFileSync(cachePath, `${JSON.stringify(cache, null, 2)}\n`);
+
+    await runCli(
+      [
+        '--from-cache', cachePath,
+        '--output', outputPath
+      ],
+      {
+        stdout: { write() {} },
+        stderr: { write() {} }
+      }
+    );
+
+    const html = fs.readFileSync(outputPath, 'utf8');
+    const headers = [...html.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map((match) => match[1]);
+    assert.deepEqual(headers, ['Graph', 'Human', 'GPT', 'Claude', 'Schnyder', 'Tutte']);
+  } finally {
+    for (const filePath of [cachePath, outputPath]) {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+  }
+});
+
+test('layout-table renderer cache-only update mode preserves cached algorithm results', async () => {
   const cachePath = path.join(process.cwd(), 'tmp-layout-table-update-cache-test.json');
   if (fs.existsSync(cachePath)) {
     fs.unlinkSync(cachePath);
@@ -197,7 +268,7 @@ test('gen_layout_table_cache update mode preserves cached algorithm results', as
   }
 });
 
-test('gen_layout_table still renders non-plane input drawings when positions are available', async () => {
+test('layout-table renderer still renders non-plane input drawings when positions are available', async () => {
   const datasetPath = path.join(process.cwd(), 'tmp-nonplane-input.dot');
   const outputPath = path.join(process.cwd(), 'tmp-layout-table-nonplane-test.html');
 
@@ -229,7 +300,8 @@ test('gen_layout_table still renders non-plane input drawings when positions are
     );
 
     const html = fs.readFileSync(outputPath, 'utf8');
-    assert.match(html, />Input</);
+    assert.match(html, />Human</);
+    assert.doesNotMatch(html, />Input</);
     assert.match(html, /cell-status is-fail">failed</);
     assert.match(html, /Used input coordinates \[non-plane drawing\]/);
     assert.match(html, /<svg\b/);

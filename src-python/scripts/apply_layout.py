@@ -1,4 +1,4 @@
-"""Python CLI mirroring scripts/apply-layout.mjs.
+"""Python CLI mirroring scripts/apply-layout-js.mjs.
 
 Usage:
   python src-python/scripts/apply_layout.py <benchmark.dot> <graph-name> <algorithm> [--out PATH]

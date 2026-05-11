@@ -13,7 +13,7 @@ import {
   loadGraphs,
   resolveAlgorithmPatterns,
   runOne
-} from './apply-layout.mjs';
+} from './apply-layout-js.mjs';
 
 const DEFAULT_TIMEOUT_MS = 30 * 1000;
 const DEFAULT_CONCURRENCY = 1;
@@ -33,6 +33,23 @@ const SCORE_METRIC_KEYS = [
   'alignment',
   'spacing'
 ];
+const DISPLAY_ALGORITHM_ORDER = [
+  'input',
+  'gpt',
+  'claude',
+  'schnyder',
+  'fpp',
+  'tutte',
+  'ceg_bfs',
+  'ceg_xy',
+  'reweight',
+  'forcedir',
+  'impred',
+  'air',
+  'anglebalancer',
+  'edgebalancer',
+  'facebalancer'
+];
 
 export function usage(message, io) {
   const out = createIo(io);
@@ -40,12 +57,11 @@ export function usage(message, io) {
     out.stderr.write(`${message}\n\n`);
   }
   out.stderr.write(
-    'Usage: ./scripts/gen_layout_table <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--output layout-table.html] [--cache-output evaluation_data/layout-table-cache.json]\n' +
-    '       ./scripts/gen_layout_table --from-cache evaluation_data/layout-table-cache.json [--output layout-table.html]\n' +
-    '       ./scripts/gen_layout_table_cache <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--concurrency 1] [--update-cache] [--checkpoint-interval 0] [--output evaluation_data/layout-table-cache.json]\n' +
-    'Example: ./scripts/gen_layout_table benchmark/sample_graphs_coords.dot "sample*" --algorithms input,tutte,*balancer* --output layout-table.html\n' +
-    'Example: ./scripts/gen_layout_table_cache benchmark/sample_graphs_coords.dot "sample*" --algorithms input,tutte,*balancer* --output evaluation_data/sample-layout-table-cache.json\n' +
-    'Example: ./scripts/gen_layout_table --from-cache evaluation_data/sample-layout-table-cache.json --output layout-table.html\n'
+    'Usage: node scripts/layout-html-renderer.mjs <graph-file> <graph-pattern> [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--output layout-table.html] [--cache-output evaluation_data/layout-table-cache.json]\n' +
+    '       node scripts/layout-html-renderer.mjs --from-cache evaluation_data/layout-table-cache.json [--output layout-table.html]\n' +
+    '       node scripts/layout-html-renderer.mjs <graph-file> <graph-pattern> --cache-only [--algorithms input,tutte,air|*balancer*|*] [--timeout 30] [--concurrency 1] [--update-cache] [--checkpoint-interval 0] [--output evaluation_data/layout-table-cache.json]\n' +
+    'Example: ./scripts/layout-html --only sample\n' +
+    'Example: node scripts/layout-html-renderer.mjs --from-cache evaluation_data/sample-layout-table-cache.json --output layout-table.html\n'
   );
 }
 
@@ -152,6 +168,22 @@ function parseArgs(argv) {
   return opts;
 }
 
+function displayAlgorithmLabel(algorithm) {
+  return algorithm && algorithm.key === 'input' ? 'Human' : algorithm.label;
+}
+
+function orderAlgorithmsForDisplay(algorithms) {
+  const displayOrder = new Map(DISPLAY_ALGORITHM_ORDER.map((key, index) => [key, index]));
+  return [...algorithms].sort((a, b) => {
+    const ai = displayOrder.has(a.key) ? displayOrder.get(a.key) : Number.MAX_SAFE_INTEGER;
+    const bi = displayOrder.has(b.key) ? displayOrder.get(b.key) : Number.MAX_SAFE_INTEGER;
+    if (ai !== bi) {
+      return ai - bi;
+    }
+    return String(a.key || '').localeCompare(String(b.key || ''));
+  });
+}
+
 function renderCellSvg(graph, rec) {
   if (!rec.positions) {
     return '';
@@ -193,13 +225,18 @@ function renderCell(graph, rec) {
 }
 
 export function buildHtml(dataset, regexText, algorithms, rows) {
-  const headerCells = algorithms.map((alg) => `<th scope="col">${escapeXml(alg.label)}</th>`).join('');
+  const displayAlgorithms = orderAlgorithmsForDisplay(algorithms);
+  const headerCells = displayAlgorithms.map((alg) => `<th scope="col">${escapeXml(displayAlgorithmLabel(alg))}</th>`).join('');
   const bodyRows = rows.map((row) => {
     const graphLabel = [
       escapeXml(row.graphName),
       `<span class="graph-size">|V| = ${row.parsed.nodeIds.length}, |E| = ${row.parsed.edgePairs.length}</span>`
     ].join('<br>');
-    const cells = row.results.map((result) => `<td>${renderCell(row, result)}</td>`).join('');
+    const resultsByAlgorithm = new Map(row.results.map((result) => [result.algorithm, result]));
+    const cells = displayAlgorithms.map((algorithm) => {
+      const result = resultsByAlgorithm.get(algorithm.key);
+      return `<td>${result ? renderCell(row, result) : '<div class="cell-error">No cached result available</div>'}</td>`;
+    }).join('');
     return `<tr><th scope="row">${graphLabel}</th>${cells}</tr>`;
   }).join('\n');
 
