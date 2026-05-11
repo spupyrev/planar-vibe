@@ -265,7 +265,8 @@ export function resolveAlgorithmSpec(specs, requestedName) {
       spec.key,
       spec.label,
       String(spec.key).replaceAll('_', '-'),
-      String(spec.label).replaceAll('_', '-')
+      String(spec.label).replaceAll('_', '-'),
+      ...(spec.key === 'claude' ? ['hybrid', 'claudehybrid'] : [])
     ];
     if (candidates.some((candidate) => normalizeName(candidate) === requested)) {
       return spec;
@@ -279,7 +280,8 @@ export function algorithmCandidates(algorithm) {
     algorithm.key,
     algorithm.label,
     String(algorithm.key).replaceAll('_', '-'),
-    String(algorithm.label).replaceAll('_', '-')
+    String(algorithm.label).replaceAll('_', '-'),
+    ...(algorithm.key === 'claude' ? ['hybrid', 'claudehybrid'] : [])
   ].map(normalizeName);
 }
 

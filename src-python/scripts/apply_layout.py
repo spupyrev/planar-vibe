@@ -153,12 +153,15 @@ def _normalize_glob_pattern(value: str) -> str:
 
 def _algorithm_candidates(name: str) -> list[str]:
     label = LAYOUT_LABELS.get(name, name)
-    return [
+    candidates = [
         _normalize_name(name),
         _normalize_name(label),
         _normalize_name(name.replace("_", "-")),
         _normalize_name(label.replace("_", "-")),
     ]
+    if name == "claude":
+        candidates.extend(["hybrid", "claudehybrid"])
+    return candidates
 
 
 def _resolve_algorithm_patterns(patterns: list[str]) -> list[str]:

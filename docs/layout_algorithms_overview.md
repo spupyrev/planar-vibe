@@ -306,18 +306,22 @@ return the normalized highest-scoring drawing
 Complexity: LOC 2026. Time is portfolio-dependent: it is dominated by the most expensive candidate layouts that are enabled for the graph, plus `O(R * S)` metric evaluations for the rotation/stretch sweep and a bounded local-polish pass. When balancer candidates are used, their dense solves contribute the `O(T * k^3)` term described above.
 
 ## ClaudeHybrid (`layout-claude.js`, 1679 LOC)
-Claude is a deterministic ensemble selector with a stronger post-selection refinement stage.
-It first tries specialized constructions for trees, radial trees, unicyclic graphs, rectangular grids, outerplanar graphs, and core-tree decompositions.
-It then adds guarded balancer candidates, Reweight, and, for smaller or otherwise uncovered cases, Schnyder, CEG-BFS, and Tutte fallbacks.
-Each candidate must yield a recoverable plane embedding; valid candidates are expanded by rotations and greedy axis alignment, then scored by the same ten-metric mean used by GPT.
-The best variants are refined by planarity-preserving eight-direction local moves, and small graphs may also receive convexity repair, fine polishing, and deterministic perturbation restarts.
+ClaudeHybrid is a deterministic portfolio method for producing readable planar drawings.
+Rather than committing to one mathematical construction, it first looks for broad structural features of the graph and uses that information to propose several plausible drawings.
+For example, tree-like graphs, grid-like graphs, graphs with a strong outer cycle, and more general planar graphs are each handled by layout strategies suited to their shape.
+All proposals are required to preserve the planar drawing: the method does not accept a candidate that introduces crossings or changes the visible topology.
+
+ClaudeHybrid then compares the candidate drawings using a balanced set of visual criteria.
+The score favors drawings with well-separated vertices, reasonably uniform edge lengths, good angular resolution at vertices, compact aspect ratio, consistent face sizes, convex-looking faces, and useful horizontal or vertical alignment.
+After the best candidates have been selected, ClaudeHybrid performs a local cleanup step that slightly adjusts vertex positions to improve the same visual criteria while keeping the drawing planar.
+This makes ClaudeHybrid useful as a general-purpose "quality seeking" layout: it is usually less predictable than a single classical algorithm, but it can adapt better across mixed collections of planar graphs.
 Pseudocode:
 ```text
-generate structural, balancer, reweighting, and fallback candidates
-recover a plane embedding for each candidate and discard failures
-expand each valid candidate by rotation and axis alignment
-rank variants by the mean ten-metric score
-refine the best variants with local moves and small-graph repairs
+recognize broad graph structure
+generate several planar candidate drawings
+discard candidates that are not valid planar drawings
+score candidates by multiple readability criteria
+adjust the best drawing locally without creating crossings
 return the normalized highest-scoring drawing
 ```
-Complexity: LOC 1679. Time is again portfolio-dependent. Candidate generation includes the costs of the selected constituent algorithms; local refinement performs repeated metric evaluations and planarity checks, with additional bounded repair and restart passes only on smaller graphs.
+Complexity: LOC 1679. Time is portfolio-dependent because several layout strategies may be tried before one is chosen. In practice, ClaudeHybrid is more expensive than a single direct layout algorithm, but the extra work is spent on selecting and polishing a higher-scoring planar drawing.

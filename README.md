@@ -56,7 +56,7 @@ Requires Node.js 18+.
 Run a layout using the Python implementation:
 
 ```bash
-./scripts/apply-layout --implementation py benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
+./scripts/apply-layout --implementation py benchmark/sample_graphs_coords.dot sample1 --algorithms air,reweight,fpp --out /tmp/sample1-layouts.json
 ```
 
 Requires Python 3.10+.
@@ -72,7 +72,7 @@ make -C src-cpp
 Run a layout using the C++ implementation:
 
 ```bash
-./scripts/apply-layout --implementation cpp benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
+./scripts/apply-layout --implementation cpp benchmark/sample_graphs_coords.dot sample1 --algorithms impred,hybrid --out /tmp/sample1-layouts.json
 ```
 
 ## License

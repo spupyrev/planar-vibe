@@ -163,12 +163,17 @@ std::string replace_underscores_with_hyphens(std::string value) {
 }
 
 std::vector<std::string> algorithm_candidates(const AlgorithmSpec& spec) {
-    return {
+    std::vector<std::string> candidates = {
         normalize_name(spec.key),
         normalize_name(spec.label),
         normalize_name(replace_underscores_with_hyphens(spec.key)),
         normalize_name(replace_underscores_with_hyphens(spec.label)),
     };
+    if (spec.key == "claude") {
+        candidates.push_back("hybrid");
+        candidates.push_back("claudehybrid");
+    }
+    return candidates;
 }
 
 std::regex glob_to_regex(const std::string& pattern) {
