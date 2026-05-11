@@ -287,3 +287,37 @@ after each stage, report angle score, face score, and tradeoff score
 return the aligned original-vertex drawing
 ```
 Complexity: LOC 1809. Time is roughly `O((T1 + T2) * k^3)` for the two optimization stages, plus a small final alignment pass; in practice it is the most expensive layout in the codebase.
+
+## GPTHybrid (`layout-gpt.js`, 2026 LOC)
+GPT is a deterministic ensemble selector over the preceding algorithms and several graph-family-specific constructions.
+It generates candidate drawings from Tutte, EdgeBalancer, FABalancer, AIR, and specialized layouts for trees, radial trees, unicyclic graphs, rectangular grids, planar 3-trees, outerplanar graphs, and core-tree decompositions.
+Every candidate is rejected if a valid plane drawing cannot be recovered.
+The remaining candidates are evaluated by the mean of ten drawing-quality metrics: angular resolution, aspect ratio, convexity, edge-length deviation, edge-length ratio, edge orthogonality, face-area uniformity, node uniformity, axis alignment, and spacing.
+For moderate-size graphs, GPT also searches rotations and determinant-one affine stretches before applying a bounded planarity-preserving local polish.
+Pseudocode:
+```text
+generate generic and structure-specific candidate drawings
+discard candidates with crossings or invalid recovered embeddings
+for each valid candidate, search rotations and affine stretches
+score each transformed drawing by the mean benchmark metric
+optionally improve the best drawing by bounded local vertex moves
+return the normalized highest-scoring drawing
+```
+Complexity: LOC 2026. Time is portfolio-dependent: it is dominated by the most expensive candidate layouts that are enabled for the graph, plus `O(R * S)` metric evaluations for the rotation/stretch sweep and a bounded local-polish pass. When balancer candidates are used, their dense solves contribute the `O(T * k^3)` term described above.
+
+## ClaudeHybrid (`layout-claude.js`, 1679 LOC)
+Claude is a deterministic ensemble selector with a stronger post-selection refinement stage.
+It first tries specialized constructions for trees, radial trees, unicyclic graphs, rectangular grids, outerplanar graphs, and core-tree decompositions.
+It then adds guarded balancer candidates, Reweight, and, for smaller or otherwise uncovered cases, Schnyder, CEG-BFS, and Tutte fallbacks.
+Each candidate must yield a recoverable plane embedding; valid candidates are expanded by rotations and greedy axis alignment, then scored by the same ten-metric mean used by GPT.
+The best variants are refined by planarity-preserving eight-direction local moves, and small graphs may also receive convexity repair, fine polishing, and deterministic perturbation restarts.
+Pseudocode:
+```text
+generate structural, balancer, reweighting, and fallback candidates
+recover a plane embedding for each candidate and discard failures
+expand each valid candidate by rotation and axis alignment
+rank variants by the mean ten-metric score
+refine the best variants with local moves and small-graph repairs
+return the normalized highest-scoring drawing
+```
+Complexity: LOC 1679. Time is again portfolio-dependent. Candidate generation includes the costs of the selected constituent algorithms; local refinement performs repeated metric evaluations and planarity checks, with additional bounded repair and restart passes only on smaller graphs.
