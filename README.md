@@ -43,21 +43,23 @@ python3 -m http.server 8000
 
 Then open `http://localhost:8000`.
 
-Run one or more layouts. The public CLI defaults to the C++ implementation:
-
-```bash
-./scripts/apply-layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
-```
-
-Choose a different implementation with `--implementation`:
+Run one or more layouts using the JS implementation:
 
 ```bash
 ./scripts/apply-layout --implementation js benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer*
+```
+
+Requires Node.js 18+.
+
+## Python Usage
+
+Run a layout using the Python implementation:
+
+```bash
 ./scripts/apply-layout --implementation py benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
 ```
 
-Requires Node.js 18+ for the wrapper and JS implementation, Python 3.10+ for
-the Python implementation, and a built C++ binary for the default path.
+Requires Python 3.10+.
 
 ## C++ Usage
 
@@ -67,10 +69,10 @@ Build the C++ binary:
 make -C src-cpp
 ```
 
-The public `apply-layout` wrapper uses this binary by default:
+Run a layout using the C++ implementation:
 
 ```bash
-./scripts/apply-layout benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
+./scripts/apply-layout --implementation cpp benchmark/sample_graphs_coords.dot sample1 --algorithms input,tutte,*balancer* --out /tmp/sample1-layouts.json
 ```
 
 ## License
