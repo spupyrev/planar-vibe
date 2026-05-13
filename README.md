@@ -6,7 +6,7 @@
 
 PlanarVibe is a self-contained toolkit for drawing planar graphs and evaluating drawing quality
 with an [interactive playground](https://spupyrev.github.io/planar-vibe/).
-Visit [gallery1](gallery.html) and [gallery2](layout-table-gd-collection.html) for a selection of generated drawings.
+Visit [gallery1](https://spupyrev.github.io/planar-vibe/gallery.html) and [gallery2](https://spupyrev.github.io/planar-vibe/layout-table-gd-collection.html) for a selection of generated drawings.
 
 The implementation is available in **JavaScript** (either through a static browser page or Node.js command-line scripts), **Python**, and **C++** for command-line scripting.
 
