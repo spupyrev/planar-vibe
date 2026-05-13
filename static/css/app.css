@@ -72,13 +72,17 @@ body {
 .layout-table-nav a {
   display: block;
   color: #000;
-  background: #f1f1f1;
+  background: #e3e7ec;
   padding: 8px 16px;
   font-weight: 600;
   line-height: 1.1;
   text-decoration: none;
   white-space: nowrap;
   transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.layout-table-nav a + a {
+  border-left: 1px solid #9aa8b7;
 }
 
 .layout-table-nav a:hover,

@@ -1,7 +1,11 @@
 import path from 'node:path';
+import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { runCli as runTableRenderer } from './layout-html-renderer.mjs';
+import {
+  buildHtml,
+  runCli as runTableRenderer
+} from './layout-html-renderer.mjs';
 
 export const LAYOUT_TABLE_REFRESH_TARGETS = [
   {
@@ -13,6 +17,23 @@ export const LAYOUT_TABLE_REFRESH_TARGETS = [
     name: 'named',
     cachePath: 'evaluation_data/named-layout-table-cache.json',
     outputPath: 'layout-table-named.html'
+  },
+  {
+    name: 'gallery',
+    outputPath: 'gallery.html',
+    sources: [
+      {
+        cachePath: 'evaluation_data/sample-graphs-layout-table-cache.json'
+      },
+      {
+        cachePath: 'evaluation_data/named-layout-table-cache.json'
+      },
+      {
+        cachePath: 'evaluation_data/gd-collection-coords-layout-table-cache.json',
+        sampleSize: 50,
+        sampleSeed: 'gallery-gd-collection'
+      }
+    ]
   },
   {
     name: 'gd-collection',
@@ -34,7 +55,7 @@ function usage(message, io) {
     out.stderr.write(`${message}\n\n`);
   }
   out.stderr.write(
-    'Usage: ./scripts/layout-html [--only sample,named,gd-collection] [--list]\n'
+    'Usage: ./scripts/layout-html [--only sample,named,gallery,gd-collection] [--list]\n'
   );
 }
 
@@ -64,6 +85,98 @@ function parseArgs(argv) {
   return opts;
 }
 
+function readLayoutTableCache(cachePath) {
+  const absPath = path.resolve(process.cwd(), cachePath);
+  const cache = JSON.parse(fs.readFileSync(absPath, 'utf8'));
+  if (!cache || cache.schema !== 'planarvibe-layout-table-cache' || cache.version !== 1) {
+    throw new Error(`Unsupported layout table cache: ${cachePath}`);
+  }
+  if (!cache.dataset || !Array.isArray(cache.algorithms) || !Array.isArray(cache.rows)) {
+    throw new Error(`Malformed layout table cache: ${cachePath}`);
+  }
+  return cache;
+}
+
+function mergeAlgorithms(caches) {
+  const algorithms = [];
+  const seen = new Set();
+  for (const cache of caches) {
+    for (const algorithm of cache.algorithms) {
+      if (!algorithm || !algorithm.key || seen.has(algorithm.key)) {
+        continue;
+      }
+      seen.add(algorithm.key);
+      algorithms.push(algorithm);
+    }
+  }
+  return algorithms;
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function selectSourceRows(source, cache) {
+  const rows = cache.rows || [];
+  if (!source.sampleSize) {
+    return rows;
+  }
+  const sampleSize = Math.max(0, Math.floor(source.sampleSize));
+  const seed = source.sampleSeed || source.cachePath;
+  return rows
+    .map((row, index) => ({
+      row,
+      index,
+      score: hashString(`${seed}:${row.graphName || ''}:${index}`)
+    }))
+    .sort((a, b) => {
+      if (a.score !== b.score) {
+        return a.score - b.score;
+      }
+      return a.index - b.index;
+    })
+    .slice(0, sampleSize)
+    .map((entry) => entry.row);
+}
+
+function mergeRowsByGraphName(sources, caches) {
+  const rows = [];
+  const seen = new Set();
+  for (let i = 0; i < caches.length; i += 1) {
+    for (const row of selectSourceRows(sources[i], caches[i])) {
+      if (!row || !row.graphName || seen.has(row.graphName)) {
+        continue;
+      }
+      seen.add(row.graphName);
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+function buildCombinedGallery(target, out) {
+  const caches = target.sources.map((source) => {
+    const cache = readLayoutTableCache(source.cachePath);
+    out.stdout.write(`Read ${source.cachePath}\n`);
+    return cache;
+  });
+  const dataset = {
+    dataset: 'gallery',
+    filePath: caches.map((cache) => cache.dataset.filePath).join(' + ')
+  };
+  const algorithms = mergeAlgorithms(caches);
+  const rows = mergeRowsByGraphName(target.sources, caches);
+  const html = buildHtml(dataset, '*', algorithms, rows);
+  const absOutputPath = path.resolve(process.cwd(), target.outputPath);
+  fs.writeFileSync(absOutputPath, html, 'utf8');
+  out.stdout.write(`Wrote ${path.relative(process.cwd(), absOutputPath)}\n`);
+}
+
 function selectTargets(only) {
   if (!only || only.length === 0) {
     return LAYOUT_TABLE_REFRESH_TARGETS;
@@ -85,12 +198,21 @@ export async function runCli(argv = process.argv.slice(2), io) {
 
   if (opts.list) {
     for (const target of targets) {
-      out.stdout.write(`${target.name}: ${target.cachePath} -> ${target.outputPath}\n`);
+      if (target.sources) {
+        out.stdout.write(`${target.name}: ${target.sources.map((source) => source.cachePath).join(', ')} -> ${target.outputPath}\n`);
+      } else {
+        out.stdout.write(`${target.name}: ${target.cachePath} -> ${target.outputPath}\n`);
+      }
     }
     return;
   }
 
   for (const target of targets) {
+    if (target.sources) {
+      out.stdout.write(`Refreshing ${target.outputPath} from ${target.sources.map((source) => source.cachePath).join(', ')}\n`);
+      buildCombinedGallery(target, out);
+      continue;
+    }
     out.stdout.write(`Refreshing ${target.outputPath} from ${target.cachePath}\n`);
     await runTableRenderer(
       ['--from-cache', target.cachePath, '--output', target.outputPath],

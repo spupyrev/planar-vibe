@@ -35,11 +35,14 @@ test('layout-table renderer writes an html table with graph rows and algorithm c
     assert.match(html, /<table>/);
     assert.match(html, />Graph</);
     assert.match(html, />Human</);
+    assert.match(html, /<div class="drawing" data-label="Human">/);
+    assert.match(html, /@media \(max-width: 720px\)/);
     assert.doesNotMatch(html, />Input</);
     assert.match(html, />Tutte</);
     assert.match(html, /sample1<br><span class="graph-size">\|V\| = 50, \|E\| = 96<\/span>/);
     assert.match(html, /<svg\b/);
-    assert.match(html, /Layout Table/);
+    assert.match(html, /PlanarVibe: Gallery/);
+    assert.match(html, /static\/img\/favicon\.png/);
     assert.match(stdout.join(''), /Wrote .*tmp-layout-table-test\.html/);
   } finally {
     if (fs.existsSync(outputPath)) {
@@ -206,7 +209,7 @@ test('layout-table renderer orders cached columns for display', async () => {
 
     const html = fs.readFileSync(outputPath, 'utf8');
     const headers = [...html.matchAll(/<th scope="col">([^<]+)<\/th>/g)].map((match) => match[1]);
-    assert.deepEqual(headers, ['Graph', 'Human', 'GPT', 'Claude', 'Schnyder', 'Tutte']);
+    assert.deepEqual(headers, ['Graph', 'Human', 'GPTHybrid', 'ClaudeHybrid', 'Schnyder', 'Tutte']);
   } finally {
     for (const filePath of [cachePath, outputPath]) {
       if (fs.existsSync(filePath)) {

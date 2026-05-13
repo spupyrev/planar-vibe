@@ -19,6 +19,23 @@ test('refresh layout table manifest stores explicit cache to html mappings', () 
       outputPath: 'layout-table-named.html'
     },
     {
+      name: 'gallery',
+      outputPath: 'gallery.html',
+      sources: [
+        {
+          cachePath: 'evaluation_data/sample-graphs-layout-table-cache.json'
+        },
+        {
+          cachePath: 'evaluation_data/named-layout-table-cache.json'
+        },
+        {
+          cachePath: 'evaluation_data/gd-collection-coords-layout-table-cache.json',
+          sampleSize: 50,
+          sampleSeed: 'gallery-gd-collection'
+        }
+      ]
+    },
+    {
       name: 'gd-collection',
       cachePath: 'evaluation_data/gd-collection-coords-layout-table-cache.json',
       outputPath: 'layout-table-gd-collection.html'
@@ -37,5 +54,6 @@ test('refresh layout table --list prints the explicit mappings', async () => {
   assert.equal(stderr.join(''), '');
   assert.match(stdout.join(''), /sample: evaluation_data\/sample-graphs-layout-table-cache\.json -> layout-table-sample\.html/);
   assert.match(stdout.join(''), /named: evaluation_data\/named-layout-table-cache\.json -> layout-table-named\.html/);
+  assert.match(stdout.join(''), /gallery: evaluation_data\/sample-graphs-layout-table-cache\.json, evaluation_data\/named-layout-table-cache\.json, evaluation_data\/gd-collection-coords-layout-table-cache\.json -> gallery\.html/);
   assert.match(stdout.join(''), /gd-collection: evaluation_data\/gd-collection-coords-layout-table-cache\.json -> layout-table-gd-collection\.html/);
 });

@@ -50,6 +50,11 @@ const DISPLAY_ALGORITHM_ORDER = [
   'edgebalancer',
   'facebalancer'
 ];
+const DISPLAY_ALGORITHM_LABELS = new Map([
+  ['input', 'Human'],
+  ['gpt', 'GPTHybrid'],
+  ['claude', 'ClaudeHybrid']
+]);
 
 export function usage(message, io) {
   const out = createIo(io);
@@ -169,7 +174,7 @@ function parseArgs(argv) {
 }
 
 function displayAlgorithmLabel(algorithm) {
-  return algorithm && algorithm.key === 'input' ? 'Human' : algorithm.label;
+  return DISPLAY_ALGORITHM_LABELS.get(algorithm.key) || algorithm.label;
 }
 
 function orderAlgorithmsForDisplay(algorithms) {
@@ -200,17 +205,18 @@ function meanMetricScore(rec) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-function renderCell(graph, rec) {
+function renderCell(graph, rec, algorithmLabel) {
   const statusClass = rec.ok ? 'is-ok' : 'is-fail';
   const pieces = [];
   if (!rec.ok) {
     pieces.push(`<div class="cell-status ${statusClass}">${escapeXml('failed')}</div>`);
   }
   const svg = renderCellSvg(graph, rec);
+  const labelAttr = ` data-label="${escapeXml(algorithmLabel)}"`;
   if (svg) {
-    pieces.push(`<div class="drawing">${svg}</div>`);
+    pieces.push(`<div class="drawing"${labelAttr}>${svg}</div>`);
   } else {
-    pieces.push('<div class="cell-error">No drawing available</div>');
+    pieces.push(`<div class="cell-error"${labelAttr}>No drawing available</div>`);
   }
   if (!rec.ok) {
     pieces.push(`<div class="cell-message">${escapeXml(rec.message || 'failed')}</div>`);
@@ -235,7 +241,8 @@ export function buildHtml(dataset, regexText, algorithms, rows) {
     const resultsByAlgorithm = new Map(row.results.map((result) => [result.algorithm, result]));
     const cells = displayAlgorithms.map((algorithm) => {
       const result = resultsByAlgorithm.get(algorithm.key);
-      return `<td>${result ? renderCell(row, result) : '<div class="cell-error">No cached result available</div>'}</td>`;
+      const algorithmLabel = displayAlgorithmLabel(algorithm);
+      return `<td>${result ? renderCell(row, result, algorithmLabel) : `<div class="cell-error" data-label="${escapeXml(algorithmLabel)}">No result available</div>`}</td>`;
     }).join('');
     return `<tr><th scope="row">${graphLabel}</th>${cells}</tr>`;
   }).join('\n');
@@ -245,7 +252,8 @@ export function buildHtml(dataset, regexText, algorithms, rows) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Layout Table</title>
+  <title>PlanarVibe: Gallery</title>
+  <link href="static/img/favicon.png" type="image/ico" rel="shortcut icon" />
   <style>
     :root {
       --bg: #f6f3ea;
@@ -385,6 +393,113 @@ export function buildHtml(dataset, regexText, algorithms, rows) {
       color: var(--fail);
       font-size: 13px;
       text-align: center;
+    }
+    @media (max-width: 720px) {
+      body {
+        height: auto;
+        min-height: 100vh;
+        overflow: auto;
+        background: #f8f5ee;
+      }
+      main {
+        height: auto;
+        min-height: 100vh;
+        padding: 12px;
+        display: block;
+      }
+      .summary {
+        margin: 0 0 12px;
+        font-size: 14px;
+        line-height: 1.35;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+      .table-wrap {
+        overflow: visible;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+      }
+      table,
+      thead,
+      tbody,
+      tr,
+      th,
+      td {
+        display: block;
+        width: 100%;
+      }
+      table {
+        min-width: 0;
+        border-collapse: separate;
+        border-spacing: 0;
+      }
+      thead {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+      }
+      tbody tr {
+        margin: 0 0 16px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        box-shadow: 0 6px 18px rgba(17, 17, 17, 0.08);
+      }
+      tbody th {
+        position: static;
+        min-width: 0;
+        padding: 12px;
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        background: #efe7d6;
+      }
+      td {
+        width: 100%;
+        padding: 12px;
+        border-width: 0 0 1px;
+      }
+      td:last-child {
+        border-bottom: 0;
+      }
+      .drawing,
+      .cell-error {
+        position: relative;
+      }
+      .drawing::before,
+      .cell-error::before {
+        display: block;
+        position: absolute;
+        top: 6px;
+        left: 6px;
+        z-index: 1;
+        margin: 0;
+        padding: 3px 7px;
+        color: #ffffff;
+        background: rgba(16, 96, 168, 0.9);
+        border-radius: 4px;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.2;
+        content: attr(data-label);
+      }
+      .drawing {
+        width: 100%;
+        max-width: 340px;
+        height: auto;
+        aspect-ratio: 22 / 15;
+      }
+      .drawing svg {
+        width: 100%;
+        height: 100%;
+      }
+      .cell-error {
+        min-height: 120px;
+      }
     }
   </style>
 </head>
