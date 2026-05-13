@@ -53,7 +53,7 @@ body {
   right: 0;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0;
   flex-wrap: wrap;
   justify-content: flex-end;
   max-width: 42%;
@@ -70,23 +70,21 @@ body {
 }
 
 .layout-table-nav a {
-  width: 112px;
-  color: var(--pv-blue);
-  border: 1px solid var(--pv-border);
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.82);
-  padding: 3px 8px;
-  line-height: 1.2;
-  text-align: center;
+  display: block;
+  color: #000;
+  background: #f1f1f1;
+  padding: 8px 16px;
+  font-weight: 600;
+  line-height: 1.1;
   text-decoration: none;
   white-space: nowrap;
+  transition: background-color 0.16s ease, color 0.16s ease;
 }
 
 .layout-table-nav a:hover,
 .layout-table-nav a:focus {
   color: #fff;
-  background: var(--pv-blue);
-  border-color: var(--pv-blue);
+  background: #fad390;
 }
 
 .panel {
