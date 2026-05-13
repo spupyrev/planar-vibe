@@ -130,7 +130,7 @@ test('Drawing controls use a unified responsive action bar', () => {
   assert.match(indexHtml, /<div class="drawing-action-bar" aria-label="Drawing actions">/, 'drawing controls should be grouped in one action bar');
   assert.equal((indexHtml.match(/draw-tool-btn/g) || []).length, 5, 'icon drawing actions should share the draw-tool-btn class');
   assert.match(indexHtml, /<label class="debug-augmentation-toggle"[\s\S]*?<input id="show-augmentation-toggle" type="checkbox">[\s\S]*?<img src="static\/img\/bug\.svg" alt="">/, 'debug augmentation toggle should use the bug icon');
-  assert.match(indexHtml, /id="interactive-toggle-btn"[\s\S]*?title="Disable graph interaction"[\s\S]*?aria-label="Disable graph interaction"/, 'interaction toggle should use plain enable/disable wording');
+  assert.match(indexHtml, /id="interactive-toggle-btn"[\s\S]*?title="Enable graph interaction"[\s\S]*?aria-label="Enable graph interaction"[\s\S]*?aria-pressed="false"/, 'interaction toggle should default to static mode with plain enable/disable wording');
   assert.doesNotMatch(indexHtml, /Toggle Cytoscape interactivity|Cytoscape\.js/, 'user-facing tooltips should not mention Cytoscape');
   assert.match(pluginJs, /var interactionLabel = isInteractive \? 'Disable graph interaction' : 'Enable graph interaction';[\s\S]*?\.attr\('title', interactionLabel\)[\s\S]*?\.attr\('aria-label', interactionLabel\)/, 'interaction toggle label should track the current state');
   assert.doesNotMatch(indexHtml, /status-current/, 'status bar should remain a simple scrollback');

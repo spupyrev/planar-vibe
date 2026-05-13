@@ -212,7 +212,7 @@
       vertexSize: readNumericPreference(PREF_VERTEX_SIZE_KEY, DEFAULT_VERTEX_SIZE, 4, 20),
       edgeWidth: readNumericPreference(PREF_EDGE_WIDTH_KEY, DEFAULT_EDGE_WIDTH, 0.25, 5)
     };
-    var isInteractive = readStorage(PREF_INTERACTIVE_KEY) !== '0';
+    var isInteractive = readStorage(PREF_INTERACTIVE_KEY) === '1';
     var isStatusCollapsed = readStorage(PREF_STATUS_COLLAPSED_KEY) === '1';
     var currentPositionsCache = {};
     var savedViewport = null;
