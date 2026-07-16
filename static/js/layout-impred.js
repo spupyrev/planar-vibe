@@ -167,7 +167,7 @@
       forces[nodeIds[i]] = { x: 0, y: 0 };
     }
 
-    // f_Node_Repulsive and f_Node_Attractive (OGDF/Bertault style)
+    // PrEd/ImPrEd node-node repulsion and edge attraction.
     for (i = 0; i < nodeIds.length; i += 1) {
       var v = nodeIds[i];
       var pv = posById[v];

@@ -395,7 +395,7 @@
     if (idxA === -1) {
       return out;
     }
-    // Mimic OGDF default: adja = firstEdge->adjSource, then faceCyclePred twice.
+    // Use the triangular face preceding the first edge in the rotation system.
     var c = String(rotB[(idxA - 1 + rotB.length) % rotB.length]);
     out.push([a, b, c]);
     // Try mirrored orientation as deterministic fallback.
