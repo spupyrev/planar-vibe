@@ -1,8 +1,7 @@
-"""Tutte barycentric layout. Literal port of static/js/layout-tutte.js.
+"""Tutte barycentric layout.
 
 Entry point: `apply_layout(graph, initial_positions=None, options=None)`.
-Mirrors the JS PlanarVibeTutte.applyLayout but without the Cytoscape runtime;
-preprocessing chain is driven directly via `preprocessing.prepare_graph_data`.
+The preprocessing chain is driven by `preprocessing.prepare_graph_data`.
 """
 
 from __future__ import annotations

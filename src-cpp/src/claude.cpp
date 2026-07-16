@@ -1,4 +1,4 @@
-// Claude ensemble — port of src-python/planarvibe/layouts/claude.py (from JS).
+// Claude ensemble layout.
 
 #include "layouts/claude.hpp"
 

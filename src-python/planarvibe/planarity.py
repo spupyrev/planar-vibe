@@ -1,11 +1,10 @@
 """LR-planarity algorithm (de Fraysseix-Rosenstiehl).
 
-Literal port of static/js/planarity-test.js. Produces a combinatorial
-planar embedding for planar graphs in O(n) or reports non-planarity.
+Produces a combinatorial planar embedding for planar graphs in O(n) or
+reports non-planarity.
 
 Vertex ids on the wire are arbitrary strings; internally the algorithm
-operates on integer indices 0..n-1. Edge keys are `"u|v"` strings matching
-the JS implementation.
+operates on integer indices 0..n-1. Edge keys are `"u|v"` strings.
 """
 
 from __future__ import annotations

@@ -1,7 +1,6 @@
 #pragma once
 
-// alignToAxisGreedy — literal port of static/js/alignment.js.
-// Greedy axis-alignment sweep: merge close x-coords (then y-coords) into
+// Greedy axis-alignment sweep: merge close x-coordinates (then y-coordinates) into
 // shared gridlines as long as doing so doesn't introduce edge crossings.
 
 #include "graph.hpp"

@@ -1,4 +1,4 @@
-"""ForceDir (planarity-preserving force-directed). Port of static/js/layout-forcedir.js."""
+"""ForceDir planarity-preserving force-directed layout."""
 
 from __future__ import annotations
 
@@ -308,12 +308,8 @@ def apply_layout(graph, initial_positions: dict | None = None, options: dict | N
         return gu.build_layout_error(layout_input or {"message": "ForceDir failed"})
 
     orig_graph = layout_input["graph"]
-    # ForceDir runs on the augmented graph (JS uses layoutInput.graph which is
-    # the prepared+augmented one in cy-runtime). But the 'graph' field of
-    # prepare_graph_and_layout_data is the ORIGINAL graph. Checking JS: the
-    # runtime's computeOptions.graph is graphFromCy(cy) which is the pre-augment
-    # graph minus dummy nodes. So ForceDir iterates over the original nodes and
-    # edges only, with the augmented positions as initial seed.
+    # ForceDir iterates over the original nodes and edges, using the augmented
+    # positions only as its initial seed.
     base_graph = orig_graph
     ids = list(base_graph.node_ids)
     pairs = list(base_graph.edge_pairs)

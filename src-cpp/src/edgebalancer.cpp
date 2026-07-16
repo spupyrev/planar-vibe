@@ -1,4 +1,4 @@
-// EdgeBalancer L-BFGS layout. Literal port of static/js/layout-edgebalancer.js.
+// EdgeBalancer L-BFGS layout.
 
 #include "layouts/edgebalancer.hpp"
 #include "layouts/tutte.hpp"

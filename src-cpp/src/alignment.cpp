@@ -1,4 +1,4 @@
-// Axis-alignment greedy sweep. Literal port of static/js/alignment.js.
+// Greedy axis-alignment sweep.
 
 #include "alignment.hpp"
 #include "geometry.hpp"

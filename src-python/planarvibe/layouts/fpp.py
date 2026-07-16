@@ -1,4 +1,4 @@
-"""de Fraysseix-Pach-Pollack grid drawing. Port of static/js/layout-fpp.js."""
+"""de Fraysseix-Pach-Pollack grid drawing."""
 
 from __future__ import annotations
 

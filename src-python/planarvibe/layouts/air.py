@@ -1,4 +1,4 @@
-"""Air pressure layout (equal bounded face areas). Port of static/js/layout-air.js."""
+"""Air-pressure layout for equalizing bounded face areas."""
 
 from __future__ import annotations
 

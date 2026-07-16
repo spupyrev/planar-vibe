@@ -1,11 +1,8 @@
 """Geometric primitives and drawing checks.
 
-Literal port of static/js/geometry-utils.js.
-
 Positions are represented as dicts mapping node-id -> (x, y) tuples. A
-`Point` type alias is used for `(x, y)` pairs. Node ids must be strings, as in
-JS; callers feeding integers should stringify first (load_benchmark already
-produces strings).
+`Point` type alias is used for `(x, y)` pairs. Node ids must be strings;
+callers feeding integers should stringify them first.
 """
 
 from __future__ import annotations

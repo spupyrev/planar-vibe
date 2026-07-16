@@ -1,6 +1,6 @@
 #pragma once
 
-// Tutte barycentric layout. Literal port of static/js/layout-tutte.js.
+// Tutte barycentric layout.
 
 #include "graph.hpp"
 #include "layout_result.hpp"

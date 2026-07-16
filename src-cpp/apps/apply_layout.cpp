@@ -1,5 +1,4 @@
-// CLI mirroring src-python/scripts/apply_layout.py. Emits the same JSON
-// schema the Python version emits, so compare_metrics.py reads both.
+// CLI for applying one or more layouts and emitting JSON results.
 //
 // Usage: apply_layout <benchmark.dot> <graph-name> <algorithm> [--out PATH]
 //        apply_layout <benchmark.dot> <graph-name> --algorithms input,tutte,*balancer* [--out PATH]
@@ -44,7 +43,7 @@ using namespace planarvibe;
 
 namespace {
 
-// Linear-congruential RNG matching src-python/scripts/apply_layout.py :: _seeded_rng.
+// Linear-congruential RNG for deterministic initial positions.
 struct SeededRng {
     uint32_t state;
     explicit SeededRng(uint32_t seed) : state(seed == 0 ? 1u : seed) {}
@@ -54,7 +53,7 @@ struct SeededRng {
     }
 };
 
-// FNV-like hash used as seed input. Mirrors Python's _hash_string_to_seed.
+// FNV-like hash used as seed input.
 uint32_t hash_string_to_seed(const std::string& s) {
     uint32_t h = 2166136261u;
     for (char ch : s) {
@@ -64,11 +63,9 @@ uint32_t hash_string_to_seed(const std::string& s) {
     return h;
 }
 
-// Mirrors report-shared.mjs initializeMockCyPositions via src-python's
-// _initialize_mock_positions. For parity with JS runtime, every layout invocation
-// is seeded with dataset:graph-name — producing deterministic non-empty positions
-// that the layout preprocessing can use to extract an embedding when the random
-// drawing happens to be crossing-free (notably on trees / near-trees).
+// Seed every layout invocation with dataset:graph-name to produce deterministic
+// non-empty positions. Preprocessing can use them to extract an embedding when
+// the initial drawing is crossing-free, notably on trees and near-trees.
 pg::PosByStr initialize_mock_positions(
     const std::vector<std::string>& node_ids, const std::string& seed_key,
     const pg::PosByStr* explicit_positions) {
@@ -293,7 +290,7 @@ LayoutResult dispatch(const std::string& algorithm, const Graph& g,
     return r;
 }
 
-// Mirrors compute_all_metrics from src-python/scripts/apply_layout.py.
+// Compute all drawing-quality metrics for a layout result.
 void compute_all_metrics(const Graph& g, const PositionMap& pos, LayoutResult& r) {
     // Planarity by brute crossings (isPlane flag).
     bool is_plane = !geo::has_position_crossings(pos, g.edges);

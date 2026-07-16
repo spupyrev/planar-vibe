@@ -1,8 +1,7 @@
 #pragma once
 
 // Minimal JSON writer for apply_layout output. We only need object/array of
-// number/string/bool/null; no parsing. Uses std::ostream. Keeps the schema
-// identical to src-python/scripts/apply_layout.py for harness interop.
+// number/string/bool/null; no parsing. Uses std::ostream.
 
 #include <cmath>
 #include <cstdio>

@@ -1,6 +1,6 @@
 #pragma once
 
-// Geometric primitives. Literal port of static/js/geometry-utils.js.
+// Geometric primitives and drawing checks.
 // Positions are indexed by int node id (PositionMap from graph.hpp).
 
 #include "graph.hpp"

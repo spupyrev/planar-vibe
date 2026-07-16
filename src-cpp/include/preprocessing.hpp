@@ -1,6 +1,6 @@
 #pragma once
 
-// Layout preprocessing. Literal port of static/js/layout-preprocessing.js.
+// Layout preprocessing: planarity, outer-face selection, and augmentation.
 
 #include "graph.hpp"
 #include "planar_graph.hpp"

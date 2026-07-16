@@ -1,4 +1,4 @@
-"""EdgeBalancer layout. Port of static/js/layout-edgebalancer.js.
+"""EdgeBalancer layout.
 
 L-BFGS minimization of edge-length variance with soft-range, log-abs, and
 face-barrier regularizers, over softmax-weighted barycentric positions.

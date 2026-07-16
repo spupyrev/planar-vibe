@@ -1,6 +1,6 @@
 #pragma once
 
-// Drawing-quality metrics. Literal port of static/js/metrics.js.
+// Drawing-quality metrics.
 // Each function returns a MetricResult { ok, score, ... }.
 
 #include "graph.hpp"

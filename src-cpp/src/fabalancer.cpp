@@ -1,5 +1,4 @@
 // FABalancer staged layout: face-warm -> angle -> axis-align.
-// Literal port of static/js/layout-fabalancer.js.
 
 #include "layouts/fabalancer.hpp"
 #include "layouts/tutte.hpp"

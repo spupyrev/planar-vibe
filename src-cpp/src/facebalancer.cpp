@@ -1,4 +1,4 @@
-// FaceBalancer L-BFGS layout. Literal port of static/js/layout-facebalancer.js.
+// FaceBalancer L-BFGS layout.
 // Self-contained — no cross-balancer shared module.
 
 #include "layouts/facebalancer.hpp"

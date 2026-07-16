@@ -1,4 +1,4 @@
-// Air layout — literal port of static/js/layout-air.js.
+// Air-pressure layout for equalizing bounded face areas.
 // Vertex-by-vertex Newton step on the per-vertex area-entropy objective.
 
 #include "layouts/air.hpp"

@@ -150,8 +150,8 @@ RealizerOut realizer(const StrVec& node_ids, const StrVec& L,
     return r;
 }
 
-// Non-recursive subtree sizes. Mirrors the Python recursive DFS in which a
-// recursive call on a currently-visiting vertex returns 1 (cycle guard).
+// Non-recursive subtree sizes. A currently visiting child contributes 1 as a
+// cycle guard.
 // Iterative form: post-order walk; on-stack kids contribute 1 directly to
 // their parent's sum rather than being pushed again.
 std::unordered_map<std::string, int> subtree_sizes(const Adj& adj, const std::string& root) {
@@ -287,8 +287,7 @@ std::vector<StrVec> group_overlaps(const pg::PosByStr& pos) {
     return out;
 }
 
-// Port of Python _resolve_overlaps_without_crossings. Tries to move
-// overlapping points onto a small ring around the anchor, picking the first
+// Move overlapping points onto a small ring around the anchor, picking the first
 // configuration that has no remaining overlaps AND no edge crossings.
 std::optional<pg::PosByStr> resolve_overlaps_without_crossings(
     const pg::PosByStr& pos,

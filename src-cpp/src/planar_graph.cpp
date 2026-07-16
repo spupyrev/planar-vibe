@@ -15,7 +15,7 @@ std::string ekey(const std::string& a, const std::string& b) {
 
 bool is_finite(double x) { return std::isfinite(x); }
 
-// Compare neighbors by (angle, dist, id). Mirrors Python _compare_neighbors.
+// Compare neighbors by angle, distance, and id.
 struct NeighborCmp {
     Point pu;
     const PosByStr* pos;
@@ -524,7 +524,7 @@ OuterResult triangulate_outer_face_if_requested(PlanarEmbedding& pe,
 
 } // namespace
 
-// add_outer_face_cycle: mirror Python PlanarEmbedding.add_outer_face_cycle.
+// Add a dummy cycle around the selected outer face.
 std::vector<std::string> PlanarEmbedding::add_outer_face_cycle(
     const std::vector<std::string>& face,
     const std::string& outer_dummy_prefix) {

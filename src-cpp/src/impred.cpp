@@ -1,4 +1,4 @@
-// ImPrEd layout — literal port of static/js/layout-impred.js.
+// ImPrEd planarity-preserving force-directed layout.
 
 #include "layouts/impred.hpp"
 

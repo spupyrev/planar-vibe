@@ -30,8 +30,7 @@ struct Graph {
     }
 
     // Add an undirected edge; silently dedup self-loops and duplicates.
-    // Insertion order matters: adjacency[u] appends v in the order the edge
-    // was added (mirrors JS `this.adjacency[u].push(v); this.adjacency[v].push(u);`).
+    // Insertion order matters: each adjacency list follows edge insertion order.
     // The stored `edges` preserves the (u, v) order of insertion too.
     void add_edge(int u, int v) {
         if (u == v) return;

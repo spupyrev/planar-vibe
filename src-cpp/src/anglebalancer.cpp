@@ -1,4 +1,4 @@
-// AngleBalancer L-BFGS layout. Literal port of static/js/layout-anglebalancer.js.
+// AngleBalancer L-BFGS layout.
 
 #include "layouts/anglebalancer.hpp"
 #include "layouts/tutte.hpp"

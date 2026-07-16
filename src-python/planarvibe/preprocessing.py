@@ -1,7 +1,7 @@
 """Layout preprocessing: planarity, outer-face selection, augmentation.
 
-Literal port of static/js/layout-preprocessing.js. Every non-trivial layout
-starts with prepareGraphData / prepareGraphAndLayoutData to produce:
+Every non-trivial layout starts with prepareGraphData or
+prepareGraphAndLayoutData to produce:
   - a planar embedding (from current positions if plane, else Boyer-Myrvold)
   - a chosen outer face
   - an augmented (triangulated) graph + embedding

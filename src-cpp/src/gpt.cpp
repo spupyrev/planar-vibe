@@ -1,4 +1,4 @@
-// GPT ensemble — port of src-python/planarvibe/layouts/gpt.py (from JS).
+// GPT ensemble layout.
 
 #include "layouts/gpt.hpp"
 

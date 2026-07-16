@@ -1,5 +1,4 @@
-// Ensemble helpers: port of the shared gpt/claude infrastructure from
-// src-python/planarvibe/layouts/{gpt,claude}.py (ultimately from JS).
+// Shared infrastructure for the GPT and Claude ensemble layouts.
 
 #include "layouts/ensemble_helpers.hpp"
 
@@ -1269,7 +1268,7 @@ std::unordered_map<std::string, double> compute_scores_claude(
 }
 
 namespace {
-// Planarity check for a tentative move. Port of Python _move_breaks_planarity.
+// Planarity check for a tentative vertex move.
 bool move_breaks_planarity(int v_idx, double nx, double ny,
                            const std::vector<Point>& pos_arr,
                            const std::vector<std::pair<int,int>>& edges,

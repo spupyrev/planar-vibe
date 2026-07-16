@@ -1,4 +1,4 @@
-// AreaGrad layout — literal port of static/js/layout-areagrad.js.
+// AreaGrad gradient-based equal-area layout.
 // Vertex sweep with per-vertex 2x2 Gauss-Newton step on triangle-area residuals.
 
 #include "layouts/areagrad.hpp"

@@ -1,4 +1,4 @@
-"""Claude ensemble layout. Port of static/js/layout-claude.js.
+"""Claude ensemble layout.
 
 Runs many candidate layouts (internal structural + core modules), builds
 base/rot/align variants, then iteratively polishes with local moves,

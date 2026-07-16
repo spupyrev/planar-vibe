@@ -1,4 +1,4 @@
-"""Schnyder grid drawing. Port of static/js/layout-schnyder.js."""
+"""Schnyder grid drawing."""
 
 from __future__ import annotations
 

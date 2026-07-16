@@ -1,4 +1,4 @@
-"""CEG-bfs and CEG-xy layouts. Port of static/js/layout-ceg.js.
+"""CEG-bfs and CEG-xy layouts.
 
 Exports two apply functions: `apply_bfs` and `apply_xy`.
 """

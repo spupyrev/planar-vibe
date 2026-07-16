@@ -1,12 +1,11 @@
-"""Graph container + light graph helpers.
+"""Graph container and lightweight graph helpers.
 
-Literal port of static/js/graph-utils.js. Exposes:
+Exposes:
   - Graph dataclass-like with `node_ids`, `edge_pairs`, `adjacency`,
     `adjacency_sets`.
   - `edge_key`, `face_key`, hashing helpers.
   - `build_layout_result`/`build_layout_error`: a uniform dict-like result
-    object returned from every layout (matches JS shape; positions keyed by
-    node id → (x, y) tuple).
+    object returned from every layout, with positions keyed by node id.
   - `create_movement_convergence_tracker`, `compute_position_move_stats`:
     shared iteration-control helpers.
 """

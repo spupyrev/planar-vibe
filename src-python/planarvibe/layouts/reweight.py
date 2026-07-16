@@ -1,7 +1,4 @@
-"""Reweight layout (iterative barycentric reweighting for equal face areas).
-
-Literal port of static/js/layout-reweight.js.
-"""
+"""Iterative barycentric reweighting for equal face areas."""
 
 from __future__ import annotations
 

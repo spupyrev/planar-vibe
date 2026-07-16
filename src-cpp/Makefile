@@ -1,4 +1,4 @@
-# C++ port build.
+# C++ build.
 # Usage: make            # build everything
 #        make test       # build + run tests
 #        make clean

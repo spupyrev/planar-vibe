@@ -1,7 +1,6 @@
-"""Axis alignment (greedy). Port of static/js/alignment.js.
+"""Greedy axis alignment.
 
-The port keeps position tuples immutable by cloning on mutation (matches JS's
-`posById[id].x = ...` semantics since JS uses plain objects and we use tuples).
+Position tuples remain immutable; updates create replacement tuples.
 """
 
 from __future__ import annotations

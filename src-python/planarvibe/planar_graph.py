@@ -1,12 +1,12 @@
 """Planar embedding helpers and augmentation routines.
 
-Literal port of static/js/planar-graph-utils.js. The two main entry points
-used by layouts are `extract_embedding_from_positions` (reads a drawing and
+The two main entry points used by layouts are
+`extract_embedding_from_positions` (reads a drawing and
 returns the combinatorial embedding) and `triangulate_by_face_stellation` /
 `triangulate_by_outer_cycle` (add dummy vertices so interior faces are
 triangles and the outer face is fixed).
 
-All embeddings are dicts matching the JS shape:
+All embeddings are represented as dicts:
     { "ok": True,
       "idByIndex": [...],
       "indexById": {id: idx},

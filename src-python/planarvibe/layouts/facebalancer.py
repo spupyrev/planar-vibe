@@ -1,4 +1,4 @@
-"""FaceBalancer layout. Port of static/js/layout-facebalancer.js.
+"""FaceBalancer layout.
 
 L-BFGS minimization over softmax-weighted barycentric positions, balancing
 triangulated face areas with barrier and uniformity terms.

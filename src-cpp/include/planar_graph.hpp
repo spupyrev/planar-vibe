@@ -1,9 +1,8 @@
 #pragma once
 
-// Planar embedding helpers + augmentation. Literal port of
-// static/js/planar-graph-utils.js via src-python/.../planar_graph.py.
+// Planar embedding helpers and augmentation.
 //
-// Works with string-id embeddings (matches JS schema exactly) since the
+// Works with string-id embeddings since the
 // PlanarEmbedding class mutates the vertex list (adding dummies) and we want
 // the resulting "dummy_0" names etc. to round-trip to JSON cleanly.
 
@@ -105,8 +104,8 @@ TriangulationCheck analyze_internally_triangulated(
     const planarity::StringEmbedding& emb,
     const std::vector<std::string>& outer_face);
 
-// Longest-face selector for outer-cycle augmentation (prefers chord-free
-// longest face from the embedding). Mirrors Python choose_longest_face_from_embedding.
+// Longest-face selector for outer-cycle augmentation, preferring a chord-free
+// longest face from the embedding.
 std::vector<std::string> choose_longest_face_from_embedding(
     const planarity::StringEmbedding& emb);
 

@@ -1,12 +1,11 @@
 """Drawing-quality metrics.
 
-Literal port of static/js/metrics.js. Each function returns a dict with an
-`ok` key matching the JS shape (so callers can do the same null-handling).
+Each function returns a dict with an `ok` key for uniform error handling.
 
 Depends on:
   - geometry.compute_quantile, collect_positive_gaps, polygon_area_abs,
-    triangle_area2, compute_drawing_diameter (matching JS GeometryUtils).
-  - planar_graph.find_outer_face_index (matching JS PlanarGraphUtils), used
+    triangle_area2, compute_drawing_diameter.
+  - planar_graph.find_outer_face_index, used
     by face-dependent metrics. Imported lazily to avoid a cycle at import
     time if planar_graph depends on metrics in the future.
 """

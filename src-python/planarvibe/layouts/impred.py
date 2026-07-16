@@ -1,4 +1,4 @@
-"""ImPrEd layout. Port of static/js/layout-impred.js."""
+"""ImPrEd planarity-preserving force-directed layout."""
 
 from __future__ import annotations
 

@@ -1,7 +1,6 @@
 #pragma once
 
 // Shared layout-utility helpers used across iterative/balancer layouts.
-// Literal port of static/js/graph-utils.js pieces needed by layouts.
 
 #include "graph.hpp"
 

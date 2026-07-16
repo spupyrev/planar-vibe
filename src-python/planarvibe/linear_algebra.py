@@ -1,8 +1,6 @@
 """Small dense linear-algebra helpers shared by layout code.
 
-Literal port of static/js/linear-algebra.js. Uses plain Python lists for row
-ordering / pivoting to match the JS pivot semantics exactly; numeric output
-should be bit-close to JS (modulo floating-point fma differences).
+Uses plain Python lists for row ordering and pivoting.
 """
 
 from __future__ import annotations

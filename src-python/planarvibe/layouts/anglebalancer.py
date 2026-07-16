@@ -1,4 +1,4 @@
-"""AngleBalancer layout. Port of static/js/layout-anglebalancer.js.
+"""AngleBalancer layout.
 
 L-BFGS minimization of per-vertex angular-resolution residuals with a smooth
 min-ratio penalty and face-barrier term. Numpy-vectorized inner loops.

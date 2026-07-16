@@ -1,4 +1,4 @@
-"""P3T equal-face-area layout (planar 3-trees only). Port of static/js/layout-p3t.js."""
+"""P3T equal-face-area layout for planar 3-trees."""
 
 from __future__ import annotations
 

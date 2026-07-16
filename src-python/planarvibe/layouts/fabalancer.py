@@ -1,4 +1,4 @@
-"""FABalancer layout (staged: face-warm -> angle -> align). Port of static/js/layout-fabalancer.js.
+"""FABalancer layout (staged: face-warm -> angle -> align).
 
 Numpy-vectorized inner loops.
 """

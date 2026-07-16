@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "planarvibe"
 version = "0.1.0"
-description = "Python port of PlanarVibe geometric layout algorithms"
+description = "PlanarVibe geometric layout algorithms"
 requires-python = ">=3.10"
 dependencies = ["numpy>=1.24"]
 

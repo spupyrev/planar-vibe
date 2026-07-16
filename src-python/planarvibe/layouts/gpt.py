@@ -1,4 +1,4 @@
-"""GPT ensemble layout. Port of static/js/layout-gpt.js.
+"""GPT ensemble layout.
 
 Tries multiple specialized (tree/grid/outerplanar/unicyclic/coretree/leafspread)
 and core (tutte/edgebalancer/fabalancer/air/p3t) candidate layouts, evaluates

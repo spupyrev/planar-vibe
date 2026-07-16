@@ -9,8 +9,7 @@ namespace planarvibe::planarity {
 
 namespace {
 
-// Interval / conflict-pair state, keyed by EdgeKey. JS uses nested objects;
-// here we keep the same fields so the code translates line-for-line.
+// Interval and conflict-pair state, keyed by EdgeKey.
 struct Interval {
     // EdgeKey or kNoKey if "empty".
     static constexpr EdgeKey kNoKey = INT64_MIN;
@@ -49,7 +48,7 @@ struct LRState {
     std::unordered_map<EdgeKey, int> side;
     // stack_bottom[ei] = optional index into S (-1 for null). We store the
     // S-element "identity" by index; if stack is modified the invariants are
-    // maintained by the algorithm's semantics (JS uses identity comparison).
+    // maintained by the algorithm's semantics.
     // Because the algorithm only ever pops until we see the same stack-bottom,
     // storing a pointer to the element value works if we snapshot it. We store
     // an int id: the value is an index assigned at push time.
@@ -78,8 +77,8 @@ struct LRState {
 
     void sort_by_signed_nesting(int v) {
         auto& adj = ordered_adjs[v];
-        // Stable sort mirrors Python's list.sort() — needed to match JS/Python
-        // face traversal when nesting_depth values tie.
+        // Stable ordering ensures deterministic face traversal when
+        // nesting_depth values tie.
         std::stable_sort(adj.begin(), adj.end(), [&](int a, int b){
             return nesting_depth[make_key(v, a)] < nesting_depth[make_key(v, b)];
         });

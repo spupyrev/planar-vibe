@@ -1,8 +1,7 @@
-"""Random layout. Literal port of static/js/layout-random.js.
+"""Deterministic random layout.
 
-Position of a node id `v` is deterministic given the (hashed) id; the JS
-"cy.width()/cy.height()" defaults come from the mock-cy fixture
-(900 / 620 in scripts/report-shared.mjs). We inline those defaults.
+The position of a node id `v` is deterministic given its hashed id. The
+default viewport is 900 by 620.
 """
 
 from __future__ import annotations

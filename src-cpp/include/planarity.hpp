@@ -1,7 +1,6 @@
 #pragma once
 
 // LR-planarity (de Fraysseix-Rosenstiehl).
-// Literal port of static/js/planarity-test.js via src-python/.../planarity.py.
 // Edge keys are int64 packings of (u<<32|v) to avoid string overhead.
 
 #include <cstdint>

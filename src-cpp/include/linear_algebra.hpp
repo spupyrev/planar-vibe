@@ -1,6 +1,6 @@
 #pragma once
 
-// Dense LU with partial pivoting. Literal port of static/js/linear-algebra.js.
+// Dense LU with partial pivoting.
 // Used by Tutte / balancers. For nI×nI systems with ~graph-n size.
 
 #include <optional>

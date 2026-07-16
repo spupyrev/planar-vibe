@@ -1,4 +1,4 @@
-"""AreaGrad layout (gradient-based equal-area). Port of static/js/layout-areagrad.js."""
+"""AreaGrad gradient-based equal-area layout."""
 
 from __future__ import annotations
 

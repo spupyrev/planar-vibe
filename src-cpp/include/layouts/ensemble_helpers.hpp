@@ -1,8 +1,7 @@
 #pragma once
 // Shared helpers for gpt + claude ensembles.
 // Structural detectors (tree/unicyclic/grid/outerplanar/core-tree),
-// position computers, evaluate/polish routines. Port of parts of
-// src-python/planarvibe/layouts/{gpt,claude}.py that both share.
+// position computers, and evaluate/polish routines.
 
 #include "graph.hpp"
 #include "planar_graph.hpp"

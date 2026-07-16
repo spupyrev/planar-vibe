@@ -5,8 +5,7 @@
 
 namespace planarvibe::layouts {
 
-// Literal port of static/js/layout-random.js via the Python port's
-// compute_random_positions. Node id is hashed with seeds 2166136261 (x) and
+// Node id is hashed with seeds 2166136261 (x) and
 // 33554467 (y); the result is a deterministic scatter in a viewport box.
 LayoutResult random_layout(const Graph& g) {
     LayoutResult r;
